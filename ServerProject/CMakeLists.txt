@@ -7,7 +7,7 @@ cmake_minimum_required (VERSION 3.8)
 #==============================================================================
 
 # Note: for android build 'main' library as it expect library libmain.so
-set(PROJECT_NAME "communicator")
+set(PROJECT_NAME "communicatorsrv")
 set(ENGINE_PATH "../Engine/Engine")
 set(PROJECT_VERSION 0.0.1)
 
