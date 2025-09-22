@@ -10,18 +10,18 @@ mkdir buildsrv
 mkdir buildsrv\win-%ARCH%
 cd buildsrv\win-%ARCH%
 
-REM Use CMAKE to generate ServerProject
-cmake -G "Visual Studio 17 2022" -A %ARCH% ..\..\ServerProject
+REM Use CMAKE to generate ProjectServer
+cmake -G "Visual Studio 17 2022" -A %ARCH% ..\..\ProjectServer
 
 cd /d "%INITIAL_SAVED_DIR%"
 cd ..
 
-REM Prebuild every engine ServerProject so user can skip this.
+REM Prebuild every engine ProjectServer so user can skip this.
 echo Try to build all necesary engine projects
 cmake --build buildsrv\win-%ARCH% --target BuildAllEngine
 echo All engine builds complete!
 
-REM Prebuild every ServerProject subprojects so user can skip this.
+REM Prebuild every ProjectServer subprojects so user can skip this.
 echo Try to build all necesary projects
 cmake --build buildsrv\win-%ARCH% --target BuildAllProject
 echo All builds complete!

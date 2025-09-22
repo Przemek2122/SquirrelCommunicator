@@ -6,10 +6,14 @@ cmake_minimum_required (VERSION 3.8)
 # Config
 #==============================================================================
 
+# Options setup
+option(USE_CUSTOM_ENGINE "Should we use custom engine?" ON)
+
 # Note: for android build 'main' library as it expect library libmain.so
 set(PROJECT_NAME "communicator")
-set(ENGINE_PATH "../Engine/Engine")
 set(PROJECT_VERSION 0.0.1)
+set(ENGINE_PATH_DEFAULT "../Engine/Engine")
+set(ENGINE_PATH_CUSTOM "C:/Repos/Engine/Engine")
 
 # Define project
 project("${PROJECT_NAME}" LANGUAGES CXX VERSION ${PROJECT_VERSION})
@@ -27,6 +31,13 @@ set(SDLMIXER_GME_SHARED OFF CACHE BOOL "Disable dynamic loading of libgme" FORCE
 
 # Make sure engine compiles as library
 set(ENGINE_BUILD_AS_LIBRARY ON CACHE BOOL "ON - build as library, OFF - build as executable" FORCE)
+
+# Check which engine to use
+if(USE_CUSTOM_ENGINE)
+	set(ENGINE_PATH "${ENGINE_PATH_CUSTOM}")
+else()
+	set(ENGINE_PATH "${ENGINE_PATH_DEFAULT}")
+endif()
 
 #==============================================================================
 # Executable (Except android which is linked into sample SDL project)
@@ -259,7 +270,7 @@ function(copy_runtime_dlls target)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_mixer-shared> $<TARGET_FILE_DIR:${target}>
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_image-shared> $<TARGET_FILE_DIR:${target}>
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Engine> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:uv> $<TARGET_FILE_DIR:${target}>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Crow> $<TARGET_FILE_DIR:${target}>
     )
 endfunction()
 
@@ -280,10 +291,10 @@ if(PROJECT_TESTS_ENABLED)
     # Discover after DLLs are copied
     gtest_discover_tests(ProjectTests)
 
-    group_targets("Tests" ProjectTests)
+	group_targets("Test" ProjectTests)
 
     message(STATUS "Discovered gtests")
 endif()
 
 # Then group everything else
-group_remaining_targets()
+group_remaining_targets("Other")
