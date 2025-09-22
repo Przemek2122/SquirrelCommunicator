@@ -1,0 +1,41 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "dll",
+      "exe": "",
+      "project": "CMakeLists.txt",
+      "projectTarget": "SDL3_ttf.dll (bin\\Debug\\SDL3_ttf.dll)",
+      "name": "SDL3_ttf.dll (bin\\Debug\\SDL3_ttf.dll)"
+    },
+    {
+      "type": "dll",
+      "exe": "",
+      "project": "CMakeLists.txt",
+      "projectTarget": "SDL3_image.dll (bin\\Debug\\SDL3_image.dll)",
+      "name": "SDL3_image.dll (bin\\Debug\\SDL3_image.dll)"
+    },
+    {
+      "type": "dll",
+      "exe": "",
+      "project": "CMakeLists.txt",
+      "projectTarget": "SDL3.dll (bin\\Debug\\SDL3.dll)",
+      "name": "SDL3.dll (bin\\Debug\\SDL3.dll)"
+    },
+    {
+      "type": "dll",
+      "exe": "",
+      "project": "CMakeLists.txt",
+      "projectTarget": "SDL3_mixer.dll (bin\\Debug\\SDL3_mixer.dll)",
+      "name": "SDL3_mixer.dll (bin\\Debug\\SDL3_mixer.dll)"
+    },
+    {
+      "type": "dll",
+      "exe": "",
+      "project": "CMakeLists.txt",
+      "projectTarget": "uv.dll (bin\\Debug\\uv.dll)",
+      "name": "uv.dll (bin\\Debug\\uv.dll)"
+    }
+  ]
+}

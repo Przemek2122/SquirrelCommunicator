@@ -1,0 +1,19 @@
+{
+  "OutputFoldersPerTargetSystem": {
+    "Local Machine": [
+      "..\\output\\build\\x64-debug",
+      "..\\output\\install\\x64-debug",
+      "..\\output\\build\\x64-release",
+      "..\\output\\install\\x64-release",
+      "..\\output\\build\\x86-debug",
+      "..\\output\\install\\x86-debug",
+      "..\\output\\build\\x86-release",
+      "..\\output\\install\\x86-release"
+    ]
+  },
+  "ExpandedNodes": [
+    ""
+  ],
+  "SelectedNode": "\\C:\\Repos\\EngineSampleProject\\Project\\CMakeLists.txt",
+  "PreviewInSolutionExplorer": false
+}

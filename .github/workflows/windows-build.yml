@@ -1,0 +1,63 @@
+name: Build Windows
+on: [push, pull_request]
+
+jobs:
+    build-win:
+        name: Build for Windows
+        runs-on: windows-latest
+        strategy:
+          fail-fast: false
+          matrix:
+              arch: [x64, ARM64]
+        steps:
+          - uses: actions/checkout@v4
+            with:
+                submodules: false  # Don't auto-checkout, handle manually
+          
+          - name: Download Submodules
+            run: |
+                Write-Host "Using git submodule update"
+                git submodule update --init --recursive
+            shell: powershell
+          
+          - name: Verify Submodules
+            run: |
+                Write-Host "Checking submodule directories..."
+                if (Test-Path "Engine/ThirdParty/SDL/CMakeLists.txt") {
+                    Write-Host "SDL submodule found"
+                } else {
+                    Write-Host "SDL submodule missing"
+                    if (Test-Path "Engine/ThirdParty/") {
+                        Get-ChildItem "Engine/ThirdParty/" -ErrorAction SilentlyContinue
+                    } else {
+                        Write-Host "Engine/ThirdParty directory does not exist"
+                    }
+                }
+            shell: powershell
+          
+          - name: Clean Build Directory
+            run: |
+                if (Test-Path "build") {
+                    Remove-Item "build" -Recurse -Force
+                    Write-Host "Cleaned existing build directory"
+                }
+            shell: powershell
+          
+          - name: Run Build Script
+            run: |
+                cd config
+                config-win.bat ${{ matrix.arch }}
+            shell: cmd
+            env:
+              CI: true
+          
+          - name: Upload Build Artifacts
+            uses: actions/upload-artifact@v4
+            with: 
+                name: build-win-${{ matrix.arch }}
+                path: |
+                    build/win-${{ matrix.arch }}/bin/**/*.exe
+                    build/win-${{ matrix.arch }}/bin/**/*.dll
+                    build/win-${{ matrix.arch }}/lib/**/*.lib
+                    build/win-${{ matrix.arch }}/Release/**/*.exe
+                    build/win-${{ matrix.arch }}/Release/**/*.dll

@@ -1,0 +1,43 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Ignore directories
+/Project/out
+/Project/.vs/Project
+/build/win
+/build/android/android-project/app/build
+/build/android/android-project/build
+/build/android/android-project/app/.cxx
+/build/android/android-project/.idea
+/build/android/android-project/.gradle
+/build/win-x64

@@ -1,0 +1,46 @@
+name: Build Android
+on: [push, pull_request]
+
+jobs:
+  apk:
+    name: Apk Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false  # Don't auto-download, use custom script
+          
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm
+          
+      - name: Download Submodules
+        run: |
+          echo "Using git submodule update"
+          git submodule update --init --recursive
+        shell: bash
+      
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Make gradlew executable
+        run: |
+          cd build/android/android-project/
+          chmod +x gradlew
+      
+      - name: Build the APK
+        run: |
+          cd build/android/android-project/
+          ./gradlew assembleDebug
+      
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with: 
+          name: app-debug-apk
+          path: build/android/android-project/app/build/outputs/apk/debug/app-debug.apk
