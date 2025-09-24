@@ -3,7 +3,7 @@
 
 #include "Core/CoreMinimal.h"
 #include "Core/Engine.h"
-#include "Core/Memory/AutoDeletePointer.h"
+#include "crow/app.h"
 
 class FProjectGameMode;
 class FGameMode;
@@ -27,4 +27,7 @@ protected:
 
 	FGameModeManager* GameModeManager;
 	FProjectGameMode* GameMode;
+
+	// @TODO Should be moved to thread or class properly
+	crow::SimpleApp CrowApp;
 };
