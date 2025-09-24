@@ -28,6 +28,5 @@ protected:
 	FGameModeManager* GameModeManager;
 	FProjectGameMode* GameMode;
 
-	// @TODO Should be moved to thread or class properly
 	crow::SimpleApp CrowApp;
 };
