@@ -23,6 +23,8 @@ void FProjectEngine::Init()
 	std::shared_ptr<FIniObject> ServerSettingsIni = IniManager->GetIniObject("ServerSettings");
 	if (ServerSettingsIni->DoesIniExist())
 	{
+		ServerSettingsIni->LoadIni();
+
 		// Basic route
 		CROW_ROUTE(CrowApp, "/api")([]()
 		{
