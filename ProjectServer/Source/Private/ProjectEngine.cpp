@@ -2,8 +2,8 @@
 #include "UserManager.h"
 #include "Assets/IniReader/IniManager.h"
 #include "Assets/IniReader/IniObject.h"
-#include "Engine/Logic/GameModeManager.h"
-#include "Renderer/Widgets/Samples/TextWidget.h"
+#include "Misc/EncryptionManager.h"
+#include "Misc/PasswordEncryptionBase.h"
 #include "Threads/ThreadsManager.h"
 
 FProjectEngine::FProjectEngine()
@@ -39,7 +39,7 @@ void FProjectEngine::Init()
 
 		CROW_ROUTE(CrowApp, "/api/user")([]()
 		{
-			return "true";
+			return "no user specified";
 		});
 
 		LOG_DEBUG("Created api user");
