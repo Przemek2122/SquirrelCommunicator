@@ -1,4 +1,5 @@
 #include "ProjectEngine.h"
+#include "UserManager.h"
 #include "Assets/IniReader/IniManager.h"
 #include "Assets/IniReader/IniObject.h"
 #include "Engine/Logic/GameModeManager.h"
@@ -6,10 +7,7 @@
 #include "Threads/ThreadsManager.h"
 
 FProjectEngine::FProjectEngine()
-	: GameWindow(nullptr)
-	, TextFPSWidget(nullptr)
-	, GameModeManager(nullptr)
-	, GameMode(nullptr)
+	: UserManager(new FUserManager())
 {
 }
 
@@ -25,19 +23,26 @@ void FProjectEngine::Init()
 	{
 		ServerSettingsIni->LoadIni();
 
-		// Basic route
-		CROW_ROUTE(CrowApp, "/api")([]()
+		// Most common address to check if it works
+		CROW_ROUTE(CrowApp, "/")([]()
 		{
 			return "Crow C++ API Server is running.";
 		});
 
-		// Test endpoint
+		// Route for testing if api works
 		CROW_ROUTE(CrowApp, "/api/test")([]()
 		{
 			return "true";
 		});
 
 		LOG_DEBUG("Created api test");
+
+		CROW_ROUTE(CrowApp, "/api/user")([]()
+		{
+			return "true";
+		});
+
+		LOG_DEBUG("Created api user");
 
 		// Find port in settings
 		constexpr uint16 ServerPortDefault = 8080;
@@ -123,15 +128,9 @@ void FProjectEngine::Init()
 	*/
 }
 
-void FProjectEngine::Tick()
-{
-	FEngine::Tick();
-}
-
 void FProjectEngine::PostSecondTick()
 {
 	FEngine::PostSecondTick();
 
-	// Update FPS number every second
-	//TextFPSWidget->SetText(std::to_string(FGlobalDefines::GEngine->GetFramesThisSecond()));
+	UserManager->PostSecondTick();
 }

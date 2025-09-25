@@ -1,13 +1,11 @@
 // Created by Przemys³aw Wiewióra 2020-2024 https://github.com/Przemek2122/Engine
 #pragma once
 
-#include "Core/CoreMinimal.h"
-#include "Core/Engine.h"
+#include "CoreMinimal.h"
+#include "Engine.h"
 #include "crow/app.h"
 
-class FProjectGameMode;
-class FGameMode;
-class FTextWidget;
+class FUserManager;
 
 /**
  * Primary engine class for your project.
@@ -18,15 +16,13 @@ public:
 	FProjectEngine();
 
 	void Init() override;
-	void Tick() override;
 	void PostSecondTick() override;
 
 protected:
-	FWindow* GameWindow;
-	FTextWidget* TextFPSWidget;
-
-	FGameModeManager* GameModeManager;
-	FProjectGameMode* GameMode;
-
+	/** API Server */
 	crow::SimpleApp CrowApp;
+
+	/** Class for managing users */
+	std::unique_ptr<FUserManager> UserManager;
+
 };
