@@ -18,6 +18,14 @@ public:
 	void Init() override;
 	void PostSecondTick() override;
 
+	void InitBasicSetup();
+	void InitUsersSetup();
+
+	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
+
+protected:
+	crow::response CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const;
+
 protected:
 	/** API Server */
 	crow::SimpleApp CrowApp;

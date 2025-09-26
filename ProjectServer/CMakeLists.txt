@@ -204,11 +204,12 @@ if(PROJECT_TESTS_ENABLED)
     )
 
     # Link test libraries
-    target_link_libraries(
-	    ProjectTests
-	    GTest::gtest_main
+	target_link_libraries(ProjectTests PUBLIC 
 		Engine
-    )
+		gtest 
+		gtest_main
+		# More libs
+	)
 
     # Add the files to your target
     target_sources(ProjectTests
