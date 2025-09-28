@@ -18,12 +18,12 @@ cd ..
 
 REM Prebuild every engine ProjectServer so user can skip this.
 echo Try to build all necesary engine projects
-cmake --build buildsrv\win-%ARCH% --target BuildAllEngine
+cmake --build buildsrv\win-%ARCH% --target BuildAllEngine --parallel
 echo All engine builds complete!
 
 REM Prebuild every ProjectServer subprojects so user can skip this.
 echo Try to build all necesary projects
-cmake --build buildsrv\win-%ARCH% --target BuildAllProject
+cmake --build buildsrv\win-%ARCH% --target BuildAllProject --parallel
 echo All builds complete!
 
 REM 
