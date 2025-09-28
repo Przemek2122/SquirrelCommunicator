@@ -38,6 +38,9 @@ public:
 	void DeactivateSession(const std::string& InSessionToken);
 	bool IsSessionTokenAlive(const std::string& InSessionToken);
 
+	void Save();
+	void Load();
+
 private:
 	/** Session to user Id map */
 	CUnorderedMap<std::string, FUserSessionData, Uint64> SessionIdToUserIdMap;
@@ -50,6 +53,9 @@ private:
 
 	/** Time saved for performance */
 	Uint64 CurrentTimeCached;
+
+	/** Key for generating sessions */
+	std::string EncryptionKey;
 
 	FThreadData* SessionManagerThreadData;
 

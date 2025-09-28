@@ -13,6 +13,8 @@ FUserSessionData::FUserSessionData(const Uint64 InUserId, const Uint64 InSession
 
 FSessionManager::FSessionManager()
 	: AsyncWorkLastTime(0)
+	, CurrentTimeCached(0)
+	, SessionManagerThreadData(nullptr)
 {
 }
 
@@ -25,6 +27,11 @@ FSessionManager::~FSessionManager()
 void FSessionManager::Init()
 {
 	CurrentTimeCached = FUtil::GetSeconds();
+
+	if (EncryptionKey.empty())
+	{
+		EncryptionKey = FUtil::GenerateSecureSalt(64);
+	}
 
 	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
 	SessionManagerThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(SessionManagerThreadName);
@@ -91,7 +98,9 @@ std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId)
 
 	static constexpr uint64_t SessionFlipMask = 0x9E3779B97F4A7C15ULL;
 	const Uint64 FlippedNumber = FUtil::FlipBits(InUserId, SessionFlipMask);
-	const std::string NumberAsBase62 = FUtil::ToBaseN(FlippedNumber);
+	const std::string NumberAsBase62 = FUtil::ToBaseN(FlippedNumber, PREDEFINED_CHARACTERSET_BASE62);
+
+	const std::string Encrypted = FUtil::EncryptCustomBaseValidated(NumberAsBase62, PREDEFINED_CHARACTERSET_BASE62, EncryptionKey, true);
 
 	// Add id as something that will be potentialy not as easy to read as number
 	OutSession += NumberAsBase62;
@@ -131,4 +140,14 @@ bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)
 	}
 
 	return bIsSessionTokenAlive;
+}
+
+void FSessionManager::Save()
+{
+	// Save EncryptionKey
+}
+
+void FSessionManager::Load()
+{
+	// Load EncryptionKey
 }
