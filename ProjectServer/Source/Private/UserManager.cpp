@@ -10,7 +10,7 @@ FUserManager::FUserManager()
 
 void FUserManager::PostSecondTick()
 {
-	CurrentTimeCached = FUtil::GetRawTime();
+	CurrentTimeCached = FUtil::GetSeconds();
 }
 
 ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, const std::string& InUserPassword, const std::string& InUserEMail)

@@ -32,7 +32,7 @@ void FUser::SetUserEMail(const std::string& InUserEMail)
 void FUser::SetPassword(const std::string& InUserPassword)
 {
 	const std::unique_ptr<FPasswordEncryptionArgon> Encryptor = FEncryptionManager::CreateEncryptorForPassword<FPasswordEncryptionArgon>();
-	UserPassword = Encryptor->HashPassword(InUserPassword);
+	UserPassword = Encryptor->HashPasswordCustom(InUserPassword, GetArgonSettings());
 }
 
 bool FUser::IsUserNameCorrect(const std::string& InUserName) const
@@ -63,4 +63,9 @@ EUserStatus FUser::GetUserStatus() const
 Uint64 FUser::GetCurrentTime() const
 {
 	return UserManager->GetCurrentTimeCached();
+}
+
+FArgonSettings FUser::GetArgonSettings() const
+{
+	return FArgonSettings(2, 15 * 1024, 1, 128, 64);
 }

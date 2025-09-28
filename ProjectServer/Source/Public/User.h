@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Misc/PasswordEncryptionArgon.h"
 
 class FUserManager;
 
@@ -43,6 +44,8 @@ public:
 
 protected:
 	Uint64 GetCurrentTime() const;
+
+	FArgonSettings GetArgonSettings() const;
 
 private:
 	/** Displayed name to other users */
