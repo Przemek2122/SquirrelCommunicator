@@ -1,10 +1,13 @@
 #include "SessionManager.h"
 #include "Threads/Thread.h"
 #include "Threads/ThreadsManager.h"
+#include "Types/Mutex/MutexScopeLock.h"
 
-FUserSessionData::FUserSessionData(const Uint64 InUserId)
+static const char* SessionManagerThreadName = "SessionManagerThread";
+
+FUserSessionData::FUserSessionData(const Uint64 InUserId, const Uint64 InSessionStartTime)
 	: UserId(InUserId)
-	, SessionStartTime(0)
+	, SessionStartTime(InSessionStartTime)
 {
 }
 
@@ -13,24 +16,38 @@ FSessionManager::FSessionManager()
 {
 }
 
-void FSessionManager::Init()
+FSessionManager::~FSessionManager()
 {
 	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	FThreadData* CheckForDeadSessionsThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>("SessionManagerThread");
-	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(CheckForDeadSessionsThreadData->GetThread());
+	ThreadsManager->TryStopThread(SessionManagerThreadData);
+}
+
+void FSessionManager::Init()
+{
+	CurrentTimeCached = FUtil::GetSeconds();
+
+	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
+	SessionManagerThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(SessionManagerThreadName);
+	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(SessionManagerThreadData->GetThread());
+	GenericThread->SetShouldRemoveDoneJobs(false);
 	if (GenericThread != nullptr)
 	{
 		GenericThread->AddTask([this]()
-		{
-			AsyncWork();
-		});
+			{
+				AsyncWork();
+			});
 	}
+}
+
+void FSessionManager::PostSecondTick()
+{
+	CurrentTimeCached = FUtil::GetSeconds();
 }
 
 void FSessionManager::AsyncWork()
 {
 	constexpr Uint64 TimeBetweenRuns = 3 * 60; // Time in seconds
-	const Uint64 CurrentTime = FUtil::GetSeconds();
+	const Uint64 CurrentTime = CurrentTimeCached;
 
 	if (AsyncWorkLastTime + TimeBetweenRuns > CurrentTime)
 	{
@@ -54,7 +71,18 @@ void FSessionManager::CheckForDeadSessions()
 	}
 }
 
-std::string FSessionManager::CreateSessionFromToken(const Uint64 InUserId)
+std::string FSessionManager::CreateSession(const Uint64 InUserId)
+{
+	const std::string SessionToken = CreateTokenFromId(InUserId);
+	FUserSessionData UserSessionData(InUserId, CurrentTimeCached);
+
+	FMutexScopeLock MutexScopeLock(SessionIdToUserIdMapMutex);
+	SessionIdToUserIdMap.Emplace(SessionToken, UserSessionData);
+
+	return SessionToken;
+}
+
+std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId)
 {
 	std::string OutSession;
 

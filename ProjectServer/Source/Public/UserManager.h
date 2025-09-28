@@ -11,6 +11,8 @@ class FUserManager
 public:
 	FUserManager();
 
+	void Init();
+
 	/** Updated every second */
 	void PostSecondTick();
 

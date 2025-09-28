@@ -29,6 +29,7 @@ void FProjectEngine::Init()
 
 		LOG_DEBUG("Created api user");
 
+		UserManager->Init();
 		StartServer(ServerSettingsIni);
 	}
 	else
@@ -120,9 +121,9 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 	if (GenericThread != nullptr)
 	{
 		GenericThread->AddTask([this, ServerPort]()
-			{
-				CrowApp.port(static_cast<uint16>(ServerPort)).multithreaded().run();
-			});
+		{
+			CrowApp.port(static_cast<uint16>(ServerPort)).multithreaded().run();
+		});
 
 		LOG_DEBUG("Started server at port: '" << ServerPort << "'.");
 		LOG_DEBUG("Go to localhost:" << ServerPort << "\\");
