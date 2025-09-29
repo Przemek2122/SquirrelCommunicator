@@ -48,30 +48,32 @@ void FProjectEngine::PostSecondTick()
 void FProjectEngine::InitBasicSetup()
 {
 	// Most common address to check if it works
-	CROW_ROUTE(CrowApp, "/")([]()
+	CROW_ROUTE(CrowApp, "/")([this]()
 		{
-			return "Crow C++ API Server is running.";
+			return CreateResponse(200, { { "status", "success" }, { "message", "Crow C++ API Server is running."} });
 		});
 
 	// Route for testing if api works
-	CROW_ROUTE(CrowApp, "/api/v1/test")([]()
+	CROW_ROUTE(CrowApp, "/api/v1/test")([this]()
 		{
-			return "true";
+			return CreateResponse(200, { { "status", "success" }, { "message", "API is working."} });
 		});
 }
 
 void FProjectEngine::InitUsersSetup()
 {
 
-	CROW_ROUTE(CrowApp, "/api/v1/users")([]()
+	CROW_ROUTE(CrowApp, "/api/v1/users")([this]()
 		{
-			return "no user specified";
+			return CreateResponse(400, { { "status", "error" }, { "message", "Wrong API Request."} });
 		});
 
 	CROW_ROUTE(CrowApp, "/api/v1/users/register")
 		.methods("POST"_method)
 		([this] (const crow::request& req)
 		{
+			crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
 			{
@@ -82,23 +84,23 @@ void FProjectEngine::InitUsersSetup()
 				const ERegisterUserStatus RegisterStatus = UserManager->RegisterUser(UserName, UserPassword, EMail);
 				if (RegisterStatus == ERegisterUserStatus::Successful)
 				{
-					return CreateResponse(200, { { "status", "success" }, { "message", "User registered successfully"} });
+					OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "User registered successfully"} });
 				}
 				else
 				{
-					return CreateResponse(400, { { "status", "error" }, { "message","Registration failed. User may already exist or invalid input."} });
+					OutResponse = CreateResponse(400, { { "status", "error" }, { "message","Registration failed. User may already exist or invalid input."} });
 				}
 			}
-			else
-			{
-				return CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
-			}
+
+			return OutResponse;
 		});
 
 	CROW_ROUTE(CrowApp, "/api/v1/users/login")
 		.methods("POST"_method)
 		([this](const crow::request& req)
 		{
+			crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
 			{
@@ -112,22 +114,37 @@ void FProjectEngine::InitUsersSetup()
 				{
 					if (LoginStatus == ELoginStatus::Successful)
 					{
-						return CreateResponse(200, { { "status", "success" }, { "message", "User login successful!"}, { "token", OutSessionToken } });
+						OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "User login successful!"}, { "token", OutSessionToken } });
 					}
 					else if (LoginStatus == ELoginStatus::SessionAlreadyExist)
 					{
-						return CreateResponse(200, { { "status", "error" }, { "message", "Session already exists!"} });
+						OutResponse = CreateResponse(200, { { "status", "error" }, { "message", "Session already exists!"} });
 					}
 				}
 				else
 				{
-					return CreateResponse(400, { { "status", "error" }, { "message", "Unable to generate session."} });
+					OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Unable to generate session."} });
 				}
 			}
-			else
+
+			return OutResponse;
+		});
+
+	CROW_ROUTE(CrowApp, "/api/v1/users/logout")
+		.methods("POST"_method)
+		([this](const crow::request& req)
+		{
+			crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
 			{
-				return CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+				const std::string UserName = JsonData["token"].s();
+
+				OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Not fully implemented."} });
 			}
+
+			return OutResponse;
 		});
 }
 
