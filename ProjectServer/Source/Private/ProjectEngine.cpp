@@ -68,15 +68,16 @@ void FProjectEngine::InitUsersSetup()
 			return "no user specified";
 		});
 
-	CROW_ROUTE(CrowApp, "/api/v1/users/register").methods("POST"_method)
+	CROW_ROUTE(CrowApp, "/api/v1/users/register")
+		.methods("POST"_method)
 		([this] (const crow::request& req)
 		{
-			const crow::json::rvalue json_data = crow::json::load(req.body);
-			if (json_data)
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
 			{
-				const std::string UserName = json_data["username"].s();
-				const std::string UserPassword = json_data["password"].s();
-				const std::string EMail = json_data["email"].s();
+				const std::string UserName = JsonData["username"].s();
+				const std::string UserPassword = JsonData["password"].s();
+				const std::string EMail = JsonData["email"].s();
 
 				const ERegisterUserStatus RegisterStatus = UserManager->RegisterUser(UserName, UserPassword, EMail);
 				if (RegisterStatus == ERegisterUserStatus::Successful)
@@ -94,9 +95,39 @@ void FProjectEngine::InitUsersSetup()
 			}
 		});
 
-	CROW_ROUTE(CrowApp, "/api/v1/users/login")([]()
+	CROW_ROUTE(CrowApp, "/api/v1/users/login")
+		.methods("POST"_method)
+		([this](const crow::request& req)
 		{
-			return "no user specified";
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
+			{
+				const std::string UserName = JsonData["username"].s();
+				const std::string UserPassword = JsonData["password"].s();
+
+				std::string OutSessionToken;
+				const ELoginStatus LoginStatus = UserManager->LoginUser(UserName, UserPassword, OutSessionToken);
+
+				if (!OutSessionToken.empty())
+				{
+					if (LoginStatus == ELoginStatus::Successful)
+					{
+						return CreateResponse(200, { { "status", "success" }, { "message", "User login successful!"}, { "token", OutSessionToken } });
+					}
+					else if (LoginStatus == ELoginStatus::SessionAlreadyExist)
+					{
+						return CreateResponse(200, { { "status", "error" }, { "message", "Session already exists!"} });
+					}
+				}
+				else
+				{
+					return CreateResponse(400, { { "status", "error" }, { "message", "Unable to generate session."} });
+				}
+			}
+			else
+			{
+				return CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+			}
 		});
 }
 

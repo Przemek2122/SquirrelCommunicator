@@ -32,8 +32,10 @@ public:
 	void CheckForDeadSessions();
 
 	std::string CreateSession(const Uint64 InUserId);
-	std::string CreateTokenFromId(const Uint64 InUserId);
+	std::string CreateTokenFromId(const Uint64 InUserId) const;
 	Uint64 GetUserIdFromSessionId(const std::string& InSessionToken);
+
+	bool DoesUserHaveSession(const Uint64 InUserId);
 
 	void DeactivateSession(const std::string& InSessionToken);
 	bool IsSessionTokenAlive(const std::string& InSessionToken);
@@ -44,6 +46,9 @@ public:
 private:
 	/** Session to user Id map */
 	CUnorderedMap<std::string, FUserSessionData, Uint64> SessionIdToUserIdMap;
+
+	/** Map with user id to session token mapping */
+	CUnorderedMap<Uint64, std::string, Uint64> UserIdToSessionTokenMap;
 
 	/** Mutex for UserDataBase */
 	FMutex SessionIdToUserIdMapMutex;

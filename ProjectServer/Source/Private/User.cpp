@@ -1,10 +1,10 @@
 #include "UserManager.h"
 #include "Misc/EncryptionManager.h"
 #include "Misc/PasswordEncryptionArgon.h"
-#include "Types/Mutex/MutexScopeLock.h"
 
 FUser::FUser(FUserManager* InUserManager)
-	: LastActiveTime(0)
+	: UserId(0)
+	, LastActiveTime(0)
 	, UserManager(InUserManager)
 {
 }
@@ -27,6 +27,11 @@ void FUser::SetUserName(const std::string& InUserName)
 void FUser::SetUserEMail(const std::string& InUserEMail)
 {
 	UserEMail = InUserEMail;
+}
+
+void FUser::SetUserId(const Uint64 InUserId)
+{
+	UserId = InUserId;
 }
 
 void FUser::SetPassword(const std::string& InUserPassword)
@@ -58,6 +63,11 @@ EUserStatus FUser::GetUserStatus() const
 	static constexpr Uint64 TimeWhileActive = 180;
 
 	return ( ((LastActiveTime + TimeWhileActive) > GetCurrentTime()) ? EUserStatus::Online : EUserStatus::Offline );
+}
+
+Uint64 FUser::GetUserId() const
+{
+	return UserId;
 }
 
 Uint64 FUser::GetCurrentTime() const

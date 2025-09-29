@@ -40,9 +40,9 @@ void FSessionManager::Init()
 	if (GenericThread != nullptr)
 	{
 		GenericThread->AddTask([this]()
-			{
-				AsyncWork();
-			});
+		{
+			AsyncWork();
+		});
 	}
 }
 
@@ -85,20 +85,23 @@ std::string FSessionManager::CreateSession(const Uint64 InUserId)
 
 	FMutexScopeLock MutexScopeLock(SessionIdToUserIdMapMutex);
 	SessionIdToUserIdMap.Emplace(SessionToken, UserSessionData);
+	UserIdToSessionTokenMap.Emplace(InUserId, SessionToken);
 
 	return SessionToken;
 }
 
-std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId)
+std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const 
 {
 	std::string OutSession;
 
 	// Add salt
-	OutSession += FUtil::GenerateSecureSalt(32);
+	const std::string Salt = FUtil::GenerateSecureSalt(128);
+	const std::string SaltAsBase62 = FUtil::ToBaseN_Irreversible(Salt, PREDEFINED_CHARACTERSET_BASE62);
+	OutSession += SaltAsBase62;
 
 	static constexpr uint64_t SessionFlipMask = 0x9E3779B97F4A7C15ULL;
 	const Uint64 FlippedNumber = FUtil::FlipBits(InUserId, SessionFlipMask);
-	const std::string NumberAsBase62 = FUtil::ToBaseN(FlippedNumber, PREDEFINED_CHARACTERSET_BASE62);
+	const std::string NumberAsBase62 = FUtil::ToBaseNNum(FlippedNumber, PREDEFINED_CHARACTERSET_BASE62);
 
 	const std::string Encrypted = FUtil::EncryptCustomBaseValidated(NumberAsBase62, PREDEFINED_CHARACTERSET_BASE62, EncryptionKey, true);
 
@@ -123,9 +126,23 @@ Uint64 FSessionManager::GetUserIdFromSessionId(const std::string& InSessionToken
 	return OutId;
 }
 
+bool FSessionManager::DoesUserHaveSession(const Uint64 InUserId)
+{
+	return UserIdToSessionTokenMap.ContainsKey(InUserId);
+}
+
 void FSessionManager::DeactivateSession(const std::string& InSessionToken)
 {
-	SessionIdToUserIdMap.Remove(InSessionToken);
+	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
+	{
+		{
+			const FUserSessionData& UserSessionData = SessionIdToUserIdMap.FindValueByKey(InSessionToken);
+			const Uint64 UserId = UserSessionData.UserId;
+			UserIdToSessionTokenMap.Remove(UserId);
+		}
+
+		SessionIdToUserIdMap.Remove(InSessionToken);
+	}
 }
 
 bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)

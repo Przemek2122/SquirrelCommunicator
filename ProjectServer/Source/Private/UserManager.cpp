@@ -26,12 +26,15 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 
 	if (!DoesUserExist(InUserName))
 	{
+		const Uint64 Id = GenerateNextAvailableId();
+
 		const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
 		FUser* User = UserPtr.get();
 		User->SetDisplayedName(InUserName);
 		User->SetUserName(InUserName);
 		User->SetPassword(InUserPassword);
 		User->SetUserEMail(InUserEMail);
+		User->SetUserId(Id);
 		User->UpdateLastActiveTime();
 
 		RegisterUserStatus = ERegisterUserStatus::Successful;
@@ -40,17 +43,46 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 		const FMutexScopeLock ThreadScopeLock(UserDataBaseMutex);
 
 		// Create user
-		UserDataBase.Emplace(GenerateNextAvailableId(), UserPtr);
+		UserDataBase.Emplace(Id, UserPtr);
 	}
 
 	return RegisterUserStatus;
+}
+
+ELoginStatus FUserManager::LoginUser(const std::string& InUserName, const std::string& InUserPassword, std::string& OutSessionToken)
+{
+	ELoginStatus LoginStatus = ELoginStatus::IncorrectCredentialsOrUserDoesNotExist;
+
+	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
+	{
+		if (UserPair.second->IsUserNameCorrect(InUserName))
+		{
+			const Uint64 Id = UserPair.second->GetUserId();
+
+			if (!SessionManager->DoesUserHaveSession(Id))
+			{
+				OutSessionToken = SessionManager->CreateSession(Id);
+
+				// We should never get an empty session
+				ENSURE_VALID(!OutSessionToken.empty());
+
+				LoginStatus = ELoginStatus::Successful;
+			}
+			else
+			{
+				LoginStatus = ELoginStatus::SessionAlreadyExist;
+			}
+		}
+	}
+
+	return LoginStatus;
 }
 
 bool FUserManager::DoesUserExist(const std::string& InUserName)
 {
 	bool bDoesUserExist = false;
 
-	for (std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
+	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
 	{
 		if (UserPair.second->IsUserNameCorrect(InUserName))
 		{
@@ -65,7 +97,7 @@ bool FUserManager::AreLoginCredentialsCorrect(const std::string& InUserName, con
 {
 	bool bAreLoginCredentialsCorrect = false;
 
-	for (std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
+	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
 	{
 		FUser* User = UserPair.second.get();
 		if (User->IsUserPasswordCorrect(InUserPassword))
