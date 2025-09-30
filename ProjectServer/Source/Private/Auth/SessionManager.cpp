@@ -1,4 +1,4 @@
-#include "SessionManager.h"
+#include "Auth/SessionManager.h"
 
 #include "Misc/EncryptionUtil.h"
 #include "Threads/Thread.h"

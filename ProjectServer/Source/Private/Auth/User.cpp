@@ -1,4 +1,4 @@
-#include "UserManager.h"
+#include "Auth/UserManager.h"
 #include "Misc/EncryptionManager.h"
 #include "Misc/PasswordEncryptionArgon.h"
 
