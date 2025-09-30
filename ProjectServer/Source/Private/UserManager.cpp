@@ -78,6 +78,15 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserName, const std::s
 	return LoginStatus;
 }
 
+bool FUserManager::Logout(const std::string& InSessionToken)
+{
+	bool bLogoutSuccessful;
+
+	bLogoutSuccessful = SessionManager->DeactivateSession(InSessionToken);
+
+	return bLogoutSuccessful;
+}
+
 bool FUserManager::DoesUserExist(const std::string& InUserName)
 {
 	bool bDoesUserExist = false;

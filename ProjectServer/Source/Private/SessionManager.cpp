@@ -133,18 +133,22 @@ bool FSessionManager::DoesUserHaveSession(const Uint64 InUserId)
 	return UserIdToSessionTokenMap.ContainsKey(InUserId);
 }
 
-void FSessionManager::DeactivateSession(const std::string& InSessionToken)
+bool FSessionManager::DeactivateSession(const std::string& InSessionToken)
 {
+	bool bDeactivatedSession = false;
+
 	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
 	{
 		{
 			const FUserSessionData& UserSessionData = SessionIdToUserIdMap.FindValueByKey(InSessionToken);
 			const Uint64 UserId = UserSessionData.UserId;
-			UserIdToSessionTokenMap.Remove(UserId);
+			bDeactivatedSession = UserIdToSessionTokenMap.Remove(UserId);
 		}
 
 		SessionIdToUserIdMap.Remove(InSessionToken);
 	}
+
+	return bDeactivatedSession;
 }
 
 bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)

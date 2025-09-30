@@ -37,7 +37,8 @@ public:
 
 	bool DoesUserHaveSession(const Uint64 InUserId);
 
-	void DeactivateSession(const std::string& InSessionToken);
+	/** @return true if session were found and removed */
+	bool DeactivateSession(const std::string& InSessionToken);
 	bool IsSessionTokenAlive(const std::string& InSessionToken);
 
 	void Save();

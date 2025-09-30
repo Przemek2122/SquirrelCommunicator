@@ -130,7 +130,7 @@ void FProjectEngine::InitUsersSetup()
 			return OutResponse;
 		});
 
-	CROW_ROUTE(CrowApp, "/api/v1/users/refresh_token")
+	CROW_ROUTE(CrowApp, "/api/v1/users/refresh")
 		.methods("POST"_method)
 		([this](const crow::request& req)
 			{
@@ -140,6 +140,8 @@ void FProjectEngine::InitUsersSetup()
 				if (JsonData)
 				{
 					const std::string UserName = JsonData["token"].s();
+
+					// @TODO Add session terminate
 
 					OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Not fully implemented."} });
 				}
@@ -156,9 +158,17 @@ void FProjectEngine::InitUsersSetup()
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
 			{
-				const std::string UserName = JsonData["token"].s();
+				const std::string SessionToken = JsonData["token"].s();
 
-				OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Not fully implemented."} });
+				const bool bSuccessfullyLoggedOut = UserManager->Logout(SessionToken);
+				if (bSuccessfullyLoggedOut)
+				{
+					OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "Session terminated!"} });
+				}
+				else
+				{
+					OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Can not log out."} });
+				}
 			}
 
 			return OutResponse;

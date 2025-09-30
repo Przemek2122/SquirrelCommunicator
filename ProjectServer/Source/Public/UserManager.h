@@ -43,6 +43,9 @@ public:
 	 */
 	ELoginStatus LoginUser(const std::string& InUserName, const std::string& InUserPassword, std::string& OutSessionToken);
 
+	/** @return true if successfully logged out */
+	bool Logout(const std::string& InSessionToken);
+
 	bool DoesUserExist(const std::string& InUserName);
 	bool AreLoginCredentialsCorrect(const std::string& InUserName, const std::string& InUserPassword);
 
