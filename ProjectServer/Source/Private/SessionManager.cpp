@@ -1,4 +1,6 @@
 #include "SessionManager.h"
+
+#include "Misc/EncryptionUtil.h"
 #include "Threads/Thread.h"
 #include "Threads/ThreadsManager.h"
 #include "Types/Mutex/MutexScopeLock.h"
@@ -30,7 +32,7 @@ void FSessionManager::Init()
 
 	if (EncryptionKey.empty())
 	{
-		EncryptionKey = FUtil::GenerateSecureSalt(64);
+		EncryptionKey = FEncryptionUtil::GenerateSecureSalt(64);
 	}
 
 	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
@@ -95,15 +97,15 @@ std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const
 	std::string OutSession;
 
 	// Add salt
-	const std::string Salt = FUtil::GenerateSecureSalt(128);
-	const std::string SaltAsBase62 = FUtil::ToBaseN_Irreversible(Salt, PREDEFINED_CHARACTERSET_BASE62);
+	const std::string Salt = FEncryptionUtil::GenerateSecureSalt(128);
+	const std::string SaltAsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt, FEncryptionUtil::PREDEFINED_CHARACTERSET_BASE62);
 	OutSession += SaltAsBase62;
 
 	static constexpr uint64_t SessionFlipMask = 0x9E3779B97F4A7C15ULL;
-	const Uint64 FlippedNumber = FUtil::FlipBits(InUserId, SessionFlipMask);
-	const std::string NumberAsBase62 = FUtil::ToBaseNNum(FlippedNumber, PREDEFINED_CHARACTERSET_BASE62);
+	const Uint64 FlippedNumber = FEncryptionUtil::FlipBits(InUserId, SessionFlipMask);
+	const std::string NumberAsBase62 = FEncryptionUtil::ToBaseNNum(FlippedNumber, FEncryptionUtil::PREDEFINED_CHARACTERSET_BASE62);
 
-	const std::string Encrypted = FUtil::EncryptCustomBaseValidated(NumberAsBase62, PREDEFINED_CHARACTERSET_BASE62, EncryptionKey, true);
+	const std::string Encrypted = FEncryptionUtil::EncryptCustomBaseValidated(NumberAsBase62, FEncryptionUtil::PREDEFINED_CHARACTERSET_BASE62, EncryptionKey, true);
 
 	// Add id as something that will be potentialy not as easy to read as number
 	OutSession += NumberAsBase62;
