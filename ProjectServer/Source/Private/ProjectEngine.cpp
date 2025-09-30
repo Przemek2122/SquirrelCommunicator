@@ -130,6 +130,23 @@ void FProjectEngine::InitUsersSetup()
 			return OutResponse;
 		});
 
+	CROW_ROUTE(CrowApp, "/api/v1/users/refresh_token")
+		.methods("POST"_method)
+		([this](const crow::request& req)
+			{
+				crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+
+				const crow::json::rvalue JsonData = crow::json::load(req.body);
+				if (JsonData)
+				{
+					const std::string UserName = JsonData["token"].s();
+
+					OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Not fully implemented."} });
+				}
+
+				return OutResponse;
+			});
+
 	CROW_ROUTE(CrowApp, "/api/v1/users/logout")
 		.methods("POST"_method)
 		([this](const crow::request& req)
