@@ -20,6 +20,7 @@ public:
 
 	void InitBasicSetup();
 	void InitUsersSetup();
+	void InitMessagesSetup();
 
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 

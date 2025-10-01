@@ -29,6 +29,10 @@ void FProjectEngine::Init()
 
 		LOG_DEBUG("Created api user");
 
+		InitMessagesSetup();
+
+		LOG_DEBUG("Created api messages");
+
 		UserManager->Init();
 		StartServer(ServerSettingsIni);
 	}
@@ -62,7 +66,6 @@ void FProjectEngine::InitBasicSetup()
 
 void FProjectEngine::InitUsersSetup()
 {
-
 	CROW_ROUTE(CrowApp, "/api/v1/users")([this]()
 		{
 			return CreateResponse(400, { { "status", "error" }, { "message", "Wrong API Request."} });
@@ -173,6 +176,10 @@ void FProjectEngine::InitUsersSetup()
 
 			return OutResponse;
 		});
+}
+
+void FProjectEngine::InitMessagesSetup()
+{
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)
