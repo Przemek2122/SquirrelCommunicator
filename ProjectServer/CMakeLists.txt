@@ -1,6 +1,6 @@
 ﻿# CMakeList.txt : Top-level CMake project file, do global configuration
 # and include sub-projects here.
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 4.1.2)
 
 #==============================================================================
 # Config
@@ -266,23 +266,13 @@ if(WIN32)
     )
 endif()
 
-function(copy_runtime_dlls target)
-    add_custom_command(TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_ttf-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_mixer-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_image-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Engine> $<TARGET_FILE_DIR:${target}>
-    )
-endfunction()
-
 # Use it for your executables
-copy_runtime_dlls("${PROJECT_NAME}")
+copy_runtime_engine_dlls("${PROJECT_NAME}")
 
 group_targets("Core" "${PROJECT_NAME}")
 
 if(PROJECT_TESTS_ENABLED)
-    copy_runtime_dlls(ProjectTests)
+    copy_runtime_engine_dlls(ProjectTests)
 
     # Special test dlls copy
     add_custom_command(TARGET ProjectTests POST_BUILD

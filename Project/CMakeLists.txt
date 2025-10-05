@@ -1,6 +1,6 @@
 ﻿# CMakeList.txt : Top-level CMake project file, do global configuration
 # and include sub-projects here.
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 4.1.2)
 
 #==============================================================================
 # Config
@@ -81,7 +81,7 @@ set(ENGINE_COPY_ENGINE_MAPS OFF)
 get_property(ENGINE_CONFIGURATION GLOBAL PROPERTY ENGINE_CONFIGURATION)
 get_property(RUNTIME_LIB_EXT GLOBAL PROPERTY RUNTIME_LIB_EXT)
 
-set(PROJECT_SOURCE_DIR          "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+set(PROJECT_SOURCE_DIR          "${CMAKE_CURRENT_SOURCE_DIR}/Sources")
 set(PROJECT_SOURCE_PRIVATE_DIR  "${PROJECT_SOURCE_DIR}/Private")
 set(PROJECT_SOURCE_PUBLIC_DIR   "${PROJECT_SOURCE_DIR}/Public")
 
@@ -156,8 +156,8 @@ target_sources("${PROJECT_NAME}"
 )
 
 # Source dirs
-source_group(TREE ${PROJECT_SOURCE_DIR} PREFIX "Source" FILES ${PROJECT_SOURCE_FILES_PUBLIC})
-source_group(TREE ${PROJECT_SOURCE_DIR} PREFIX "Source" FILES ${PROJECT_SOURCE_FILES_PRIVATE})
+source_group(TREE ${PROJECT_SOURCE_DIR} PREFIX "Sources" FILES ${PROJECT_SOURCE_FILES_PUBLIC})
+source_group(TREE ${PROJECT_SOURCE_DIR} PREFIX "Sources" FILES ${PROJECT_SOURCE_FILES_PRIVATE})
 
 # Link engine
 target_link_libraries("${PROJECT_NAME}" PRIVATE Engine)
@@ -171,20 +171,7 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMENT "Copying Engine shared object to output directory"
 )
 
-#==============================================================================
-# TESTS
-#==============================================================================
-
-set(PROJECT_TESTS_ENABLED FALSE)
-
-# Decide if we want tests (for now only windows x64)
-if(WIN32 AND NOT CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
-    if(CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR (NOT DEFINED CMAKE_GENERATOR_PLATFORM AND CMAKE_SIZEOF_VOID_P EQUAL 8))
-        set(PROJECT_TESTS_ENABLED TRUE)
-    endif()
-endif()
-
-if(PROJECT_TESTS_ENABLED)
+if(TESTS_ENABLED)
     message(STATUS "Adding google tests")
 
     # Create test executable
@@ -192,7 +179,7 @@ if(PROJECT_TESTS_ENABLED)
 	    ProjectTests
 
 	    # Sources for Test
-	    SourcesTest/MainTestFile.cpp
+	    SourceTests/MainTestFile.cpp
     )
 
     set_target_properties(ProjectTests PROPERTIES
@@ -243,7 +230,7 @@ if(PROJECT_TESTS_ENABLED)
     message(STATUS "Added google tests!")
 endif()
 
-if(PROJECT_TESTS_ENABLED)
+if(TESTS_ENABLED)
     # Target for build all (To use from config script)
     add_custom_target(BuildAllProject ALL
         DEPENDS Engine "${PROJECT_NAME}" ProjectTests
@@ -263,23 +250,13 @@ if(WIN32)
     )
 endif()
 
-function(copy_runtime_dlls target)
-    add_custom_command(TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_ttf-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_mixer-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3_image-shared> $<TARGET_FILE_DIR:${target}>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Engine> $<TARGET_FILE_DIR:${target}>
-    )
-endfunction()
-
 # Use it for your executables
-copy_runtime_dlls("${PROJECT_NAME}")
+copy_runtime_engine_dlls("${PROJECT_NAME}")
 
 group_targets("Core" "${PROJECT_NAME}")
 
-if(PROJECT_TESTS_ENABLED)
-    copy_runtime_dlls(ProjectTests)
+if(TESTS_ENABLED)
+    copy_runtime_engine_dlls(ProjectTests)
 
     # Special test dlls copy
     add_custom_command(TARGET ProjectTests POST_BUILD

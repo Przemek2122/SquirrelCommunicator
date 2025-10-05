@@ -42,3 +42,5 @@
 /build/android/android-project/.gradle
 /build/win-x64
 /buildsrv
+ProjectServer/Assets/Config/key.pem
+ProjectServer/Assets/Config/cert.pem

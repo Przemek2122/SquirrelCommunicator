@@ -3,6 +3,9 @@
 
 #include "CoreMinimal.h"
 #include "Engine.h"
+
+// Enable SSL Support in crow library
+#define CROW_ENABLE_SSL
 #include "crow/app.h"
 
 class FUserManager;

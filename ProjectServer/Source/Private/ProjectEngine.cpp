@@ -180,17 +180,66 @@ void FProjectEngine::InitUsersSetup()
 
 void FProjectEngine::InitMessagesSetup()
 {
+	// WebSocket endpoint
+	CROW_WEBSOCKET_ROUTE(CrowApp, "/api/v1/ws")
+		.onopen([&](crow::websocket::connection& conn)
+		{
+			CROW_LOG_INFO << "New WebSocket connection";
+		})
+	/*
+		.onclose([&](crow::websocket::connection& Conn, const std::string& Reason)
+		{
+			CROW_LOG_INFO << "Connection closed: " << Reason;
+		})
+	*/
+		.onmessage([&](crow::websocket::connection& Conn, const std::string& Data, bool IsBinary)
+		{
+			// Handle incoming message
+			Conn.send_text("Echo: " + Data);
+		});
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)
 {
 	// Find port in settings
 	constexpr uint16 ServerPortDefault = 8080;
+
 	int32 ServerPort;
-	if (ServerSettingsIni)
+	std::string KeyFilePath;
+	std::string CertFilePath;
+	bool bShouldEnableSSL = false;
+	bool bDoesServerSettingsExist = ServerSettingsIni->DoesIniExist();
+	if (bDoesServerSettingsExist)
 	{
 		const FIniField ServerPortField = ServerSettingsIni->FindFieldByName("Port");
-		ServerPort = ServerPortField.GetValueAsInt();
+		if (ServerPortField.IsValid())
+		{
+			ServerPort = ServerPortField.GetValueAsInt();
+		}
+
+		const FIniField EnableSSLField = ServerSettingsIni->FindFieldByName("EnableSSL");
+		if (EnableSSLField.IsValid())
+		{
+			bShouldEnableSSL = EnableSSLField.GetValueAsBool();
+		}
+
+		if (bShouldEnableSSL)
+		{
+			const FAssetsManager* AssetsManager = FGlobalDefines::GEngine->GetAssetsManager();
+			const std::string ConfigPathAbsolute = AssetsManager->ConvertRelativeToFullPath(AssetsManager->GetConfigPathRelative());
+
+			const FIniField SSLKeyField = ServerSettingsIni->FindFieldByName("SSLKey");
+			if (SSLKeyField.IsValid())
+			{
+				KeyFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLKeyField.GetValueAsString();
+			}
+
+			const FIniField SSLCertField = ServerSettingsIni->FindFieldByName("SSLCert");
+			if (SSLCertField.IsValid())
+			{
+				CertFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLCertField.GetValueAsString();
+			}
+		}
 	}
 	else
 	{
@@ -202,9 +251,23 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(CrowThreadData->GetThread());
 	if (GenericThread != nullptr)
 	{
-		GenericThread->AddTask([this, ServerPort]()
+		GenericThread->AddTask([this, bDoesServerSettingsExist, bShouldEnableSSL, ServerPort, CertFilePath, KeyFilePath]()
 		{
-			CrowApp.port(static_cast<uint16>(ServerPort)).multithreaded().run();
+			if (bDoesServerSettingsExist && bShouldEnableSSL)
+			{
+				LOG_INFO("Server will start with SSL");
+
+				CrowApp.port(static_cast<Uint16>(ServerPort))
+					.ssl_file(CertFilePath.c_str(), KeyFilePath.c_str())
+					.multithreaded()
+					.run();
+			}
+			else
+			{
+				LOG_INFO("Server will start without SSL");
+
+				CrowApp.port(static_cast<uint16>(ServerPort)).multithreaded().run();
+			}
 		});
 
 		LOG_DEBUG("Started server at port: '" << ServerPort << "'.");

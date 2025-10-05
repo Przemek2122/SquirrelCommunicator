@@ -98,14 +98,14 @@ std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const
 
 	// Add salt
 	const std::string Salt = FEncryptionUtil::GenerateSecureSalt(128);
-	const std::string SaltAsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt, FEncryptionUtil::PREDEFINED_CHARACTERSET_BASE62);
+	const std::string SaltAsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt, FPredefinedCharsets::BASE62);
 	OutSession += SaltAsBase62;
 
 	static constexpr uint64_t SessionFlipMask = 0x9E3779B97F4A7C15ULL;
-	const Uint64 FlippedNumber = FEncryptionUtil::FlipBits(InUserId, SessionFlipMask);
-	const std::string NumberAsBase62 = FEncryptionUtil::ToBaseNNum(FlippedNumber, FEncryptionUtil::PREDEFINED_CHARACTERSET_BASE62);
+	const Uint64 FlippedNumber = FBitFlipping::FlipBits(InUserId, SessionFlipMask);
+	const std::string NumberAsBase62 = FEncryptionUtil::ToBaseNNum(FlippedNumber, FPredefinedCharsets::BASE62);
 
-	const std::string Encrypted = FEncryptionUtil::EncryptCustomBaseValidated(NumberAsBase62, FEncryptionUtil::PREDEFINED_CHARACTERSET_BASE62, EncryptionKey, true);
+	const std::string Encrypted = FEncryptionUtil::EncryptDataCustom(NumberAsBase62, EncryptionKey);
 
 	// Add id as something that will be potentialy not as easy to read as number
 	OutSession += NumberAsBase62;
