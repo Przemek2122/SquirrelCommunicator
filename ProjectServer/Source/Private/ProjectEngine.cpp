@@ -292,6 +292,13 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 	}
 }
 
+void FProjectEngine::PreExit()
+{
+	FEngine::PreExit();
+
+	CrowApp.stop();
+}
+
 crow::response FProjectEngine::CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const
 {
 	crow::json::wvalue response;

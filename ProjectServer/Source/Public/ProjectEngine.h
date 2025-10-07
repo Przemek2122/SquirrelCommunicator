@@ -27,6 +27,10 @@ public:
 
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 
+	void PreExit() override;
+
+	crow::SimpleApp& GetCrowApp() { return CrowApp; }
+
 protected:
 	crow::response CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const;
 
