@@ -37,7 +37,7 @@ int main(int argc, char** argv)
     {
         // Wait to do not close before crow app is initialized as it can do not close if called before
         // When more test are added it could be removed
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::seconds(3));
 
         ProjectEngine->RequestExit();
     }
