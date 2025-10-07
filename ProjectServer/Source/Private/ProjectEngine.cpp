@@ -182,20 +182,37 @@ void FProjectEngine::InitMessagesSetup()
 {
 	// WebSocket endpoint
 	CROW_WEBSOCKET_ROUTE(CrowApp, "/api/v1/ws")
+		.onaccept([&](const crow::request& Req, void** UserData)
+		{
+			bool bCanConnect = false;
+
+			const std::string AuthorizationString = Req.get_header_value("Authorization");
+			const std::string AuthorizationStringWithoutBearer = AuthorizationString.substr(7);
+			if (!AuthorizationStringWithoutBearer.empty())
+			{
+				// TODO Check token
+
+				bCanConnect = true;
+			}
+
+			return bCanConnect;
+		})
 		.onopen([&](crow::websocket::connection& conn)
 		{
 			CROW_LOG_INFO << "New WebSocket connection";
 		})
-	/*
-		.onclose([&](crow::websocket::connection& Conn, const std::string& Reason)
+		.onclose([&](crow::websocket::connection& Conn, const std::string& Reason, uint16_t WithStatusCode)
 		{
 			CROW_LOG_INFO << "Connection closed: " << Reason;
 		})
-	*/
-		.onmessage([&](crow::websocket::connection& Conn, const std::string& Data, bool IsBinary)
+		.onerror([&](crow::websocket::connection& conn, const std::string& ErrorMessage)
+		{
+			CROW_LOG_INFO << "Connection error: " << ErrorMessage;
+		})
+		.onmessage([&](crow::websocket::connection& Conn, const std::string& Message, bool bIsBinary)
 		{
 			// Handle incoming message
-			Conn.send_text("Echo: " + Data);
+			Conn.send_text("Echo: " + Message);
 		});
 }
 
