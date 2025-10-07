@@ -11,12 +11,29 @@ int main(int argc, char** argv)
         EngineManager.Start(argc, argv);
     });
 
+    // Wait for EngineThread as we need server for tests
+    for (int32 i = 0; i < 1024; ++i)
+    {
+        FEngine* Engine = FEngineManager::Get();
+        if (Engine != nullptr)
+        {
+            // Engine initialised
+            break;
+        }
+        else
+        {
+	        // Wait
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+
     // Run test
     ::testing::InitGoogleTest(&argc, argv);
     const int RunOutput = RUN_ALL_TESTS();
 
     // Shut down engine
-    FGlobalDefines::GEngine->RequestExit();
+    FEngine* Engine = FEngineManager::Get();
+    Engine->RequestExit();
 
     // Join threads
     EngineThread.join();
@@ -26,7 +43,7 @@ int main(int argc, char** argv)
 
 TEST(BackendTest, Crow)
 {
-    FProjectEngine* ProjectEngine = dynamic_cast<FProjectEngine*>(FGlobalDefines::GEngine);
+    FProjectEngine* ProjectEngine = FEngineManager::Get<FProjectEngine>();
     EXPECT_TRUE(ProjectEngine != nullptr);
     if (ProjectEngine != nullptr)
     {
