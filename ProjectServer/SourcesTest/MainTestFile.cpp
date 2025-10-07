@@ -15,19 +15,8 @@ int main(int argc, char** argv)
     ::testing::InitGoogleTest(&argc, argv);
     const int RunOutput = RUN_ALL_TESTS();
 
-    FProjectEngine* ProjectEngine = dynamic_cast<FProjectEngine*>(FGlobalDefines::GEngine);
-    if (ProjectEngine != nullptr)
-    {
-        LOG_INFO("Testing done.");
-
-        ProjectEngine->RequestExit();
-
-
-    }
-    else
-    {
-        LOG_ERROR("Missing ProjectEngine");
-    }
+    // Shut down engine
+    FGlobalDefines::GEngine->RequestExit();
 
     // Join threads
     EngineThread.join();

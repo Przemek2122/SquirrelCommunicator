@@ -203,12 +203,10 @@ if(PROJECT_TESTS_ENABLED)
         RUNTIME_OUTPUT_DIRECTORY_RELEASE    "${CMAKE_BINARY_DIR}/bin/Release/Test"
     )
 
-    # Link test libraries
-	target_link_libraries(ProjectTests PUBLIC 
-		Engine
-		gtest 
-		gtest_main
-		# More libs
+	# Link test libraries
+	target_link_libraries(ProjectTests
+		PUBLIC Engine
+		PUBLIC GTest::gtest_main
 	)
 
     # Add the files to your target
@@ -266,12 +264,13 @@ if(WIN32)
     )
 endif()
 
-# Use it for your executables
+# Use it to copy engine libraries
 copy_runtime_engine_dlls("${PROJECT_NAME}")
 
 group_targets("Core" "${PROJECT_NAME}")
 
 if(PROJECT_TESTS_ENABLED)
+    # Use it to copy engine libraries
     copy_runtime_engine_dlls(ProjectTests)
 
     # Special test dlls copy
@@ -281,7 +280,7 @@ if(PROJECT_TESTS_ENABLED)
     )
 
     # Discover after DLLs are copied
-    gtest_discover_tests(ProjectTests)
+    add_test(NAME ProjectTests COMMAND ProjectTests)
 
 	group_targets("Test" ProjectTests)
 
