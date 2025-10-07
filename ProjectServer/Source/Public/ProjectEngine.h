@@ -41,4 +41,7 @@ protected:
 	/** Class for managing users */
 	std::unique_ptr<FUserManager> UserManager;
 
+	/** Async for crow app */
+	std::future<void> CrowAppFutureAsync;
+
 };

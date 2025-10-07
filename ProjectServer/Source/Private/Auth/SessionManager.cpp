@@ -22,8 +22,13 @@ FSessionManager::FSessionManager()
 
 FSessionManager::~FSessionManager()
 {
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	ThreadsManager->TryStopThread(SessionManagerThreadData);
+	// Check if engine is closing or just session is being closed
+	// If engine is closing thread will be closed by threads manager
+	if (FGlobalDefines::GEngine->CanContinueMainLoop())
+	{
+		FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
+		ThreadsManager->TryStopThread(SessionManagerThreadData);
+	}
 }
 
 void FSessionManager::Init()
@@ -60,13 +65,14 @@ void FSessionManager::AsyncWork()
 
 	if (AsyncWorkLastTime + TimeBetweenRuns > CurrentTime)
 	{
-		const Uint64 TimeToWait = FUtil::SecondToMilliSecond(CurrentTime - AsyncWorkLastTime + TimeBetweenRuns);
-		THREAD_WAIT_MS(TimeToWait);
+		THREAD_WAIT_SHORT_TIME;
 	}
+	else
+	{
+		AsyncWorkLastTime = CurrentTime;
 
-	AsyncWorkLastTime = CurrentTime;
-
-	CheckForDeadSessions();
+		CheckForDeadSessions();
+	}
 }
 
 void FSessionManager::CheckForDeadSessions()

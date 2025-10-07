@@ -263,32 +263,22 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 		ServerPort = ServerPortDefault;
 	}
 
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	FThreadData* CrowThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>("CrowThread");
-	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(CrowThreadData->GetThread());
-	if (GenericThread != nullptr)
+	if (bDoesServerSettingsExist && bShouldEnableSSL)
 	{
-		GenericThread->AddTask([this, bDoesServerSettingsExist, bShouldEnableSSL, ServerPort, CertFilePath, KeyFilePath]()
-		{
-			if (bDoesServerSettingsExist && bShouldEnableSSL)
-			{
-				LOG_INFO("Server will start with SSL");
+		LOG_INFO("Server will start with SSL");
 
-				CrowApp.port(static_cast<Uint16>(ServerPort))
-					.ssl_file(CertFilePath.c_str(), KeyFilePath.c_str())
-					.multithreaded()
-					.run();
-			}
-			else
-			{
-				LOG_INFO("Server will start without SSL");
+		CrowAppFutureAsync = CrowApp.port(static_cast<Uint16>(ServerPort))
+			.ssl_file(CertFilePath.c_str(), KeyFilePath.c_str())
+			.multithreaded()
+			.run_async();
+	}
+	else
+	{
+		LOG_INFO("Server will start without SSL");
 
-				CrowApp.port(static_cast<uint16>(ServerPort)).multithreaded().run();
-			}
-		});
-
-		LOG_DEBUG("Started server at port: '" << ServerPort << "'.");
-		LOG_DEBUG("Go to localhost:" << ServerPort << "\\");
+		CrowAppFutureAsync = CrowApp.port(static_cast<uint16>(ServerPort))
+			.multithreaded()
+			.run_async();
 	}
 }
 
@@ -297,6 +287,10 @@ void FProjectEngine::PreExit()
 	FEngine::PreExit();
 
 	CrowApp.stop();
+
+	//CrowAppFutureAsync.wait();
+
+	LOG_INFO("Stopped crow");
 }
 
 crow::response FProjectEngine::CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const

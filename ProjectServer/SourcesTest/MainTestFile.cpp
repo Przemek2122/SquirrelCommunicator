@@ -32,8 +32,19 @@ int main(int argc, char** argv)
     const int RunOutput = RUN_ALL_TESTS();
 
     // Shut down engine
-    FEngine* Engine = FEngineManager::Get();
-    Engine->RequestExit();
+    FProjectEngine* ProjectEngine = FEngineManager::Get<FProjectEngine>();
+    if (ProjectEngine != nullptr)
+    {
+        // Wait to do not close before crow app is initialized as it can do not close if called before
+        // When more test are added it could be removed
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+
+        ProjectEngine->RequestExit();
+    }
+    else
+    {
+        LOG_ERROR("Engine init failed");
+    }
 
     // Join threads
     EngineThread.join();
@@ -41,7 +52,7 @@ int main(int argc, char** argv)
     return RunOutput;
 }
 
-TEST(BackendTest, Crow)
+TEST(BackendTest, CrowValidate)
 {
     FProjectEngine* ProjectEngine = FEngineManager::Get<FProjectEngine>();
     EXPECT_TRUE(ProjectEngine != nullptr);
