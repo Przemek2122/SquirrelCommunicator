@@ -1,4 +1,6 @@
 #include "ProjectEngine.h"
+
+#include "PredefinedMessages.h"
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniManager.h"
 #include "Assets/IniReader/IniObject.h"
@@ -54,13 +56,13 @@ void FProjectEngine::InitBasicSetup()
 	// Most common address to check if it works
 	CROW_ROUTE(CrowApp, "/")([this]()
 		{
-			return CreateResponse(200, { { "status", "success" }, { "message", "Crow C++ API Server is running."} });
+			return CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Crow C++ API Server is running."} });
 		});
 
 	// Route for testing if api works
 	CROW_ROUTE(CrowApp, "/api/v1/test")([this]()
 		{
-			return CreateResponse(200, { { "status", "success" }, { "message", "API is working."} });
+			return CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "API is working."} });
 		});
 }
 
@@ -68,14 +70,14 @@ void FProjectEngine::InitUsersSetup()
 {
 	CROW_ROUTE(CrowApp, "/api/v1/users")([this]()
 		{
-			return CreateResponse(400, { { "status", "error" }, { "message", "Wrong API Request."} });
+			return CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Wrong API Request."} });
 		});
 
 	CROW_ROUTE(CrowApp, "/api/v1/users/register")
 		.methods("POST"_method)
 		([this] (const crow::request& req)
 		{
-			crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
@@ -87,11 +89,11 @@ void FProjectEngine::InitUsersSetup()
 				const ERegisterUserStatus RegisterStatus = UserManager->RegisterUser(UserName, UserPassword, EMail);
 				if (RegisterStatus == ERegisterUserStatus::Successful)
 				{
-					OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "User registered successfully."} });
+					OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
 				}
 				else
 				{
-					OutResponse = CreateResponse(400, { { "status", "error" }, { "message","Registration failed. User may already exist or invalid input."} });
+					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
 				}
 			}
 
@@ -102,7 +104,7 @@ void FProjectEngine::InitUsersSetup()
 		.methods("POST"_method)
 		([this](const crow::request& req)
 		{
-			crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
@@ -117,16 +119,16 @@ void FProjectEngine::InitUsersSetup()
 				{
 					if (LoginStatus == ELoginStatus::Successful)
 					{
-						OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "User login successful!"}, { "token", OutSessionToken } });
+						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"}, { "token", OutSessionToken } });
 					}
 					else if (LoginStatus == ELoginStatus::SessionAlreadyExist)
 					{
-						OutResponse = CreateResponse(200, { { "status", "error" }, { "message", "Session already exists!"} });
+						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Session already exists!"} });
 					}
 				}
 				else
 				{
-					OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Unable to generate session."} });
+					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Unable to generate session."} });
 				}
 			}
 
@@ -137,7 +139,7 @@ void FProjectEngine::InitUsersSetup()
 		.methods("POST"_method)
 		([this](const crow::request& req)
 			{
-				crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+				crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
 				const crow::json::rvalue JsonData = crow::json::load(req.body);
 				if (JsonData)
@@ -146,7 +148,7 @@ void FProjectEngine::InitUsersSetup()
 
 					// @TODO Add session terminate
 
-					OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Not fully implemented."} });
+					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Not fully implemented."} });
 				}
 
 				return OutResponse;
@@ -156,7 +158,7 @@ void FProjectEngine::InitUsersSetup()
 		.methods("POST"_method)
 		([this](const crow::request& req)
 		{
-			crow::response OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Invalid JSON."} });
+			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
@@ -166,11 +168,11 @@ void FProjectEngine::InitUsersSetup()
 				const bool bSuccessfullyLoggedOut = UserManager->Logout(SessionToken);
 				if (bSuccessfullyLoggedOut)
 				{
-					OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "Session terminated!"} });
+					OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Session terminated!"} });
 				}
 				else
 				{
-					OutResponse = CreateResponse(400, { { "status", "error" }, { "message", "Can not log out."} });
+					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Can not log out."} });
 				}
 			}
 

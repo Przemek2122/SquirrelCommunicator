@@ -1,6 +1,10 @@
 ﻿#include <gtest/gtest.h>
 #include "Public/ProjectEngine.h"
 
+/**
+ * This main is a bit overcomplicated but it crates engine to allow for running backend server.
+ * When testing we use this server and check if it returns correct values on requests.
+ */
 int main(int argc, char** argv)
 {
     FEngineManager EngineManager;

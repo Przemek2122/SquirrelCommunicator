@@ -1,8 +1,11 @@
 #include "BackendTests.h"
 #include "ProjectEngine.h"
+#include <nlohmann/json.hpp>
+
+#include "PredefinedMessages.h"
 
 std::string FBackendHelper::BuildHttpRequest(const std::string& Method, const std::string& Path,
-	const std::string& Host, const std::map<std::string, std::string>& Headers, const std::string& Body)
+                                             const std::string& Host, const std::map<std::string, std::string>& Headers, const std::string& Body)
 {
 	std::ostringstream Request;
 
@@ -185,10 +188,64 @@ TEST_F(FBackendTest, LoginNewUser)
 
 	LOG_INFO("Response:" << Response);
 
-	EXPECT_TRUE(Response.find("User login successful") != std::string::npos);
+	bool bIsSuccessfulConnection = false;
+	const FHttpResponse HTTPResponse = FBackendHelper::ParseHttpResponse(Response);
+	if (!HTTPResponse.Body.empty())
+	{
+		nlohmann::basic_json<> ResponseBodyJson = nlohmann::json::parse(HTTPResponse.Body);
+		if (ResponseBodyJson.contains("status") && ResponseBodyJson.contains("token"))
+		{
+			if (ResponseBodyJson["status"] == FPredefinedMessages::Status::Success)
+			{
+				bIsSuccessfulConnection = true;
+
+				Token = ResponseBodyJson["token"];
+
+				EXPECT_TRUE(!Token.empty());
+			}
+		}
+	}
+
+	EXPECT_TRUE(bIsSuccessfulConnection);
 }
 
-TEST_F(FBackendTest, VerifyToken)
+// Should be last test, but it's important to know if token is valid
+TEST_F(FBackendTest, Logout)
 {
+	const std::map<std::string, std::string> Headers{
+		{"Content-Type", "application/json"},
+	};
 
+	const std::string Body = "{\n"
+		"\t\"token\":\"" + Token + "\"\n"
+	"}";
+
+	const std::string Request = FBackendHelper::BuildHttpRequest(
+		"POST",
+		"/api/v1/users/logout",
+		LocalConnectionData.HostName,
+		Headers,
+		Body
+	);
+
+	const std::string Response = FBackendHelper::SendRequest(LocalConnectionData, Request);
+
+	LOG_INFO("Response:" << Response);
+
+	bool bIsSuccessfulConnection = false;
+	const FHttpResponse HTTPResponse = FBackendHelper::ParseHttpResponse(Response);
+	if (!HTTPResponse.Body.empty())
+	{
+
+		nlohmann::basic_json<> ResponseBodyJson = nlohmann::json::parse(HTTPResponse.Body);
+		if (ResponseBodyJson.contains("status"))
+		{
+			if (ResponseBodyJson["status"] == FPredefinedMessages::Status::Success)
+			{
+				bIsSuccessfulConnection = true;
+			}
+		}
+	}
+
+	EXPECT_TRUE(bIsSuccessfulConnection);
 }

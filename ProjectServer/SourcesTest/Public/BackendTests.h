@@ -31,6 +31,41 @@ public:
 	 * @return response from server
 	 */
 	static std::string SendRequest(const FConnectionData& InConnectionData, const std::string& Request);
+
+    // Parses raw HTTP response into structured data
+	static FHttpResponse ParseHttpResponse(const std::string& Response)
+    {
+        FHttpResponse Result = FHttpResponse(-1, { });
+        std::istringstream Stream(Response);
+        std::string Line;
+
+        // Parse status line: HTTP/1.1 200 OK
+        std::getline(Stream, Line);
+        std::istringstream StatusLine(Line);
+        std::string HttpVersion;
+        StatusLine >> HttpVersion >> Result.StatusCode;
+
+        // Parse headers
+        while (std::getline(Stream, Line) && Line != "\r")
+        {
+            if (Line.back() == '\r') Line.pop_back();
+
+            size_t Pos = Line.find(':');
+            if (Pos != std::string::npos)
+            {
+                std::string Key = Line.substr(0, Pos);
+                std::string Value = Line.substr(Pos + 2); // Skip ": "
+                Result.Headers[Key] = Value;
+            }
+        }
+
+        // Remaining is body
+        std::ostringstream BodyStream;
+        BodyStream << Stream.rdbuf();
+        Result.Body = BodyStream.str();
+
+        return Result;
+    }
 };
 
 class FBackendTest : public ::testing::Test
@@ -53,4 +88,7 @@ protected:
 
     const FConnectionData LocalConnectionData;
     const FUserSampleData UserData;
+
+    /** Token set when log in successful for next tests */
+    inline static std::string Token;
 };
