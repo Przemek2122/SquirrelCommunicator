@@ -148,8 +148,8 @@ target_include_directories("${PROJECT_NAME}"
 )
 
 # Collect source files
-file(GLOB_RECURSE PROJECT_SOURCE_FILES_PUBLIC "${PROJECT_SOURCE_PUBLIC_DIR}/*.h")
-file(GLOB_RECURSE PROJECT_SOURCE_FILES_PRIVATE "${PROJECT_SOURCE_PRIVATE_DIR}/*.cpp")
+file(GLOB_RECURSE PROJECT_SOURCE_FILES_PUBLIC CONFIGURE_DEPENDS "${PROJECT_SOURCE_PUBLIC_DIR}/*.h")
+file(GLOB_RECURSE PROJECT_SOURCE_FILES_PRIVATE CONFIGURE_DEPENDS "${PROJECT_SOURCE_PRIVATE_DIR}/*.cpp")
 
 # Add the files to your target
 target_sources("${PROJECT_NAME}" 
@@ -158,8 +158,10 @@ target_sources("${PROJECT_NAME}"
 )
 
 # Source dirs
-source_group(TREE ${PROJECT_SOURCE_DIR} PREFIX "Source" FILES ${PROJECT_SOURCE_FILES_PUBLIC})
-source_group(TREE ${PROJECT_SOURCE_DIR} PREFIX "Source" FILES ${PROJECT_SOURCE_FILES_PRIVATE})
+source_group(TREE "${PROJECT_SOURCE_DIR}"
+    PREFIX "Sources"  
+    FILES ${PROJECT_SOURCE_FILES_PUBLIC} ${PROJECT_SOURCE_FILES_PRIVATE}
+)
 
 # Link engine
 target_link_libraries("${PROJECT_NAME}" PRIVATE Engine)
@@ -188,14 +190,20 @@ endif()
 
 if(PROJECT_TESTS_ENABLED)
     message(STATUS "Adding google tests")
+    
+    set(TESTPROJECT_SOURCE_DIR          "${CMAKE_CURRENT_SOURCE_DIR}/SourcesTest")
+    
+    set(TESTPROJECT_SOURCE_PUBLIC_DIR   "${TESTPROJECT_SOURCE_DIR}/Public")
+    set(TESTPROJECT_SOURCE_PRIVATE_DIR  "${TESTPROJECT_SOURCE_DIR}/Private")
+
+    # Collect test source files
+	file(GLOB ESTPROJECT_SOURCE_FILES CONFIGURE_DEPENDS "${TESTPROJECT_SOURCE_DIR}/*.cpp" "${TESTPROJECT_SOURCE_DIR}/*.h")
+
+    file(GLOB_RECURSE TESTPROJECT_SOURCE_FILES_PUBLIC CONFIGURE_DEPENDS "${TESTPROJECT_SOURCE_PUBLIC_DIR}/*.h")
+    file(GLOB_RECURSE TESTPROJECT_SOURCE_FILES_PRIVATE CONFIGURE_DEPENDS "${TESTPROJECT_SOURCE_PRIVATE_DIR}/*.cpp")
 
     # Create test executable
-    add_executable(
-	    ProjectTests
-
-	    # Sources for Test
-	    SourcesTest/MainTestFile.cpp
-    )
+    add_executable(ProjectTests)
 
     set_target_properties(ProjectTests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY            "${CMAKE_BINARY_DIR}/bin/Debug/Test"
@@ -211,17 +219,32 @@ if(PROJECT_TESTS_ENABLED)
 
     # Add the files to your target
     target_sources(ProjectTests
-        PUBLIC      ${PROJECT_SOURCE_FILES_PUBLIC}
-        PRIVATE     ${PROJECT_SOURCE_FILES_PRIVATE}
+        PRIVATE		${PROJECT_SOURCE_FILES_PUBLIC}
+        PRIVATE		${PROJECT_SOURCE_FILES_PRIVATE}
+		
+		# Test project
+	    PRIVATE     ${ESTPROJECT_SOURCE_FILES}
+        PRIVATE     ${TESTPROJECT_SOURCE_FILES_PUBLIC}
+        PRIVATE     ${TESTPROJECT_SOURCE_FILES_PRIVATE}
     )
 
     # Include directories
     target_include_directories(ProjectTests PRIVATE
 	    # Project source files (for testing)
-	    PRIVATE     ${PROJECT_SOURCE_DIR}  
-	    PUBLIC      ${PROJECT_SOURCE_PUBLIC_DIR}
-	    PRIVATE     ${PROJECT_SOURCE_PRIVATE_DIR} 
+	    ${PROJECT_SOURCE_DIR}  
+	    ${PROJECT_SOURCE_PUBLIC_DIR}
+	    ${PROJECT_SOURCE_PRIVATE_DIR} 
+		
+		# Test project
+		${TESTPROJECT_SOURCE_DIR}
+	    ${TESTPROJECT_SOURCE_PUBLIC_DIR}
+	    ${TESTPROJECT_SOURCE_PRIVATE_DIR} 
     )
+	
+	source_group(TREE "${TESTPROJECT_SOURCE_DIR}" 
+		PREFIX "SourceTest"
+		FILES ${TESTPROJECT_SOURCE_FILES_PUBLIC} ${TESTPROJECT_SOURCE_FILES_PRIVATE} ${ESTPROJECT_SOURCE_FILES}
+	)
 	
 	# Skip project run as we run tests instead
 	# A bit hacky but simple
