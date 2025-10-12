@@ -112,15 +112,11 @@ file(GLOB ASSET_FILES_TO_COPY "${ASSETS_DIR_SOURCE_PATH}/*")
 # Print assets dirs
 message(STATUS "COPY PROJECT ASSETS: '${ASSETS_DIR_SOURCE_PATH}', DESTINATION: '${ASSETS_ENGINE_TARGET_PATH}'")
 
-# Attempt to copy files with a fallback for permission issues
-foreach(file ${ASSET_FILES_TO_COPY})
-    get_filename_component(filename ${file} NAME)
-    if (NOT filename MATCHES "^\\..*" AND EXISTS ${file})
-        file(COPY ${file} DESTINATION ${ASSETS_ENGINE_TARGET_PATH} FILE_PERMISSIONS OWNER_READ OWNER_WRITE)
-    else()
-        message(WARNING "Could not access file: ${file} (skipping)")
-    endif()
-endforeach()
+# Copy file before build
+CopyAssetFiles("${ASSET_FILES_TO_COPY}" "${ASSETS_ENGINE_TARGET_PATH}")
+
+# Copy files after build (Only then we know if it's debug/release)
+CopyAssetsPostBuild("${PROJECT_NAME}" "${ASSETS_ENGINE_TARGET_PATH}")
 
 # Enable Hot Reload for MSVC compilers if supported.
 # TODO: Check if it works, should be enabled by child project
@@ -128,18 +124,6 @@ endforeach()
 #  cmake_policy(SET CMP0141 NEW)
 #  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 #endif()
-
-# Copy files custom for Visual as it adds configuration dir
-# Copy assets to the binary directory after build
-if(CMAKE_GENERATOR MATCHES "Visual Studio")
-    add_custom_command(TARGET "${PROJECT_NAME}" POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Copying assets from ${ASSETS_ENGINE_TARGET_PATH} to $<TARGET_FILE_DIR:${PROJECT_NAME}>"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory 
-            "${ASSETS_ENGINE_TARGET_PATH}" 
-            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/Assets"
-        COMMENT "Copying project assets to output directory..."
-    )
-endif()
 
 # Add source files for project (by directory)
 target_include_directories("${PROJECT_NAME}"
@@ -251,6 +235,8 @@ if(PROJECT_TESTS_ENABLED)
 	target_compile_definitions(ProjectTests PRIVATE
 		FLAGS_TESTING_PROJECT
 	)
+
+	CopyAssetsPostBuild(ProjectTests "${ASSETS_ENGINE_TARGET_PATH}")
 
     # Discover and register tests
     include(GoogleTest)
