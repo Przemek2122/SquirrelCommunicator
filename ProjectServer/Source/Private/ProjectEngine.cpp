@@ -87,7 +87,7 @@ void FProjectEngine::InitUsersSetup()
 				const ERegisterUserStatus RegisterStatus = UserManager->RegisterUser(UserName, UserPassword, EMail);
 				if (RegisterStatus == ERegisterUserStatus::Successful)
 				{
-					OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "User registered successfully"} });
+					OutResponse = CreateResponse(200, { { "status", "success" }, { "message", "User registered successfully."} });
 				}
 				else
 				{

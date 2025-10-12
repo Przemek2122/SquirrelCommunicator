@@ -1,6 +1,8 @@
 ﻿#include <gtest/gtest.h>
 #include "asio.hpp"
 #include <asio/ssl.hpp>
+
+#include "Auth/User.h"
 #include "Public/ProjectEngine.h"
 
 int main(int argc, char** argv)
@@ -77,7 +79,59 @@ struct FConnectionData
     std::string Port;
 };
 
+struct FUserSampleData
+{
+	FUserSampleData(std::string InUserName, std::string InPassword, std::string InEMail)
+		: UserName(std::move(InUserName)),
+		  Password(std::move(InPassword)),
+		  EMail(std::move(InEMail))
+	{
+	}
+
+	std::string UserName;
+    std::string Password;
+    std::string EMail;
+};
+
 const FConnectionData LocalConnectionData("127.0.0.1", "8080");
+const FUserSampleData UserData("myUser", "mySecret", "email_secret@secretemail.xyz");
+
+std::string BuildHttpRequest(
+    const std::string& Method,           // GET, POST, etc.
+    const std::string& Path,             // /api/endpoint
+    const std::string& Host,             // example.com
+    const std::map<std::string, std::string>& Headers,  // Custom headers
+    const std::string& Body = "")        // Request body (optional)
+{
+    std::ostringstream Request;
+
+    // Request line
+    Request << Method << " " << Path << " HTTP/1.1\r\n";
+    Request << "Host: " << Host << "\r\n";
+
+    // Add body length if body exists
+    if (!Body.empty())
+    {
+        Request << "Content-Length: " << Body.size() << "\r\n";
+    }
+
+    // Add custom headers
+    for (const auto& [Key, Value] : Headers)
+    {
+        Request << Key << ": " << Value << "\r\n";
+    }
+
+    // End of headers
+    Request << "\r\n";
+
+    // Add body
+    if (!Body.empty())
+    {
+        Request << Body;
+    }
+
+    return Request.str();
+}
 
 std::string SendRequest(const FConnectionData& InConnectionData, const std::string& Request)
 {
@@ -147,16 +201,76 @@ std::string SendRequest(const FConnectionData& InConnectionData, const std::stri
     return ResponseStr;
 }
 
-TEST(BackendTest, ConnectionTest)
+TEST(BackendTest, Connection)
 {
-    const std::string Request =
-        "GET / HTTP/1.1\r\n"
-        "Host: localhost\r\n"
-        "Connection: close\r\n\r\n";
+    const std::map<std::string, std::string> Headers;
+
+    const std::string Body = "";
+
+    const std::string Request = BuildHttpRequest(
+        "GET",
+        "/",
+        LocalConnectionData.HostName,
+        Headers,
+        Body
+    );
 
     const std::string Response = SendRequest(LocalConnectionData, Request);
 
     LOG_INFO("Response:" << Response);
 
     EXPECT_TRUE(Response.find("Crow C++ API Server is running.") != std::string::npos);
+}
+
+TEST(BackendTest, RegisterNewUser)
+{
+    const std::map<std::string, std::string> Headers{
+        {"Content-Type", "application/json"},
+    };
+
+    const std::string Body = "{\n"
+        "\t\"username\":\"" + UserData.UserName + "\",\n"
+        "\t\"password\":\"" + UserData.Password + "\",\n"
+        "\t\"email\":\"" + UserData.EMail + "\"\n"
+	"}";
+
+    const std::string Request = BuildHttpRequest(
+        "POST",
+        "/api/v1/users/register",
+        LocalConnectionData.HostName,
+        Headers,
+        Body
+    );
+
+    const std::string Response = SendRequest(LocalConnectionData, Request);
+
+    LOG_INFO("Response:" << Response);
+
+    EXPECT_TRUE(Response.find("User registered successfully") != std::string::npos);
+}
+
+TEST(BackendTest, LoginNewUser)
+{
+    const std::map<std::string, std::string> Headers{
+        {"Content-Type", "application/json"},
+    };
+
+    const std::string Body = "{\n"
+        "\t\"username\":\"" + UserData.UserName + "\",\n"
+        "\t\"password\":\"" + UserData.Password + "\"\n"
+    "}";
+
+    const std::string Request = BuildHttpRequest(
+        "POST",
+        "/api/v1/users/login",
+        LocalConnectionData.HostName,
+        Headers,
+        Body
+    );
+
+    const std::string Response = SendRequest(LocalConnectionData, Request);
+
+    LOG_INFO("Response:" << Response);
+
+    EXPECT_TRUE(Response.find("User login successful") != std::string::npos);
 }
