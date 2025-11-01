@@ -5,10 +5,36 @@
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniObject.h"
 
-FHTTPHeader::FHTTPHeader(const std::string& InHeaderName, const std::string& InHeaderValue)
-	: HeaderName(InHeaderName)
-	, HeaderValue(InHeaderValue)
+void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, context& Ctx)
 {
+	FProjectEngine* ProjectEngine = static_cast<FProjectEngine*>(FGlobalDefines::GEngine);
+	FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+
+	// Get IP address
+	const std::string& ClientIP = Req.remote_ip_address;
+
+	if (!AbuseProtection->IsAddressBlocked(ClientIP))
+	{
+		// Options support
+		if (Req.method == crow::HTTPMethod::Options)
+		{
+			Res.code = 204;
+			Res.end();
+		}
+	}
+	else
+	{
+		// Block
+		Res.code = 429;  // Too Many Requests
+		Res.body = "{\"error\":\"Rate limit exceeded\"}";
+		Res.end();
+	}
+}
+
+void FCrowAppMiddleware::after_handle(crow::request& Req, crow::response& Res, context& Ctx)
+{
+	FProjectEngine* ProjectEngine = static_cast<FProjectEngine*>(FGlobalDefines::GEngine);
+	ProjectEngine->AddHeaders(Res, ProjectEngine->GetDefaultHeadersCache());
 }
 
 FProjectEngine::FProjectEngine()
@@ -19,6 +45,9 @@ FProjectEngine::FProjectEngine()
 
 void FProjectEngine::Init()
 {
+	/** We do not need SDL input in server */
+	DisableInput();
+
 	FEngine::Init();
 
 	LOG_DEBUG("Server init");
@@ -76,7 +105,7 @@ void FProjectEngine::InitBasicSetup()
 void FProjectEngine::InitUsersSetup()
 {
 	CROW_ROUTE(CrowApp, "/api/v1/users/register")
-		.methods("POST"_method)
+		.methods("POST"_method, "OPTIONS"_method)
 		([this] (const crow::request& req)
 		{
 			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
@@ -99,7 +128,6 @@ void FProjectEngine::InitUsersSetup()
 						AbuseProtectionPtr->AddRateLimitedAttempt(ClientIP);
 
 						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
-						AddHeaders(OutResponse, DefaultHeadersCache);
 					}
 					else
 					{
@@ -116,35 +144,40 @@ void FProjectEngine::InitUsersSetup()
 		});
 
 	CROW_ROUTE(CrowApp, "/api/v1/users/login")
-		.methods("POST"_method)
+		.methods("POST"_method, "OPTIONS"_method)
 		([this](const crow::request& req)
 		{
 			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
-			const crow::json::rvalue JsonData = crow::json::load(req.body);
-			if (JsonData)
+			// Get IP address
+			const std::string& ClientIP = req.remote_ip_address;
+
+			if (!AbuseProtectionPtr->IsAddressBlocked(ClientIP))
 			{
-				const std::string UserName = JsonData["username"].s();
-				const std::string UserPassword = JsonData["password"].s();
-
-				std::string OutSessionToken;
-				const ELoginStatus LoginStatus = UserManager->LoginUser(UserName, UserPassword, OutSessionToken);
-
-				if (!OutSessionToken.empty())
+				const crow::json::rvalue JsonData = crow::json::load(req.body);
+				if (JsonData)
 				{
-					if (LoginStatus == ELoginStatus::Successful)
+					const std::string UserName = JsonData["username"].s();
+					const std::string UserPassword = JsonData["password"].s();
+
+					std::string OutSessionToken;
+					const ELoginStatus LoginStatus = UserManager->LoginUser(UserName, UserPassword, OutSessionToken);
+
+					if (!OutSessionToken.empty())
 					{
-						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"}, { "token", OutSessionToken } });
+						if (LoginStatus == ELoginStatus::Successful)
+						{
+							OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"}, { "token", OutSessionToken } });
+						}
+						else if (LoginStatus == ELoginStatus::SessionAlreadyExist)
+						{
+							OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Session already exists!"} });
+						}
 					}
-					else if (LoginStatus == ELoginStatus::SessionAlreadyExist)
+					else
 					{
-						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Session already exists!"} });
-						AddHeaders(OutResponse, DefaultHeadersCache);
+						OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Unable to generate session."} });
 					}
-				}
-				else
-				{
-					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Unable to generate session."} });
 				}
 			}
 
@@ -152,44 +185,55 @@ void FProjectEngine::InitUsersSetup()
 		});
 
 	CROW_ROUTE(CrowApp, "/api/v1/users/refresh")
-		.methods("POST"_method)
+		.methods("POST"_method, "OPTIONS"_method)
 		([this](const crow::request& req)
 			{
 				crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
-				const crow::json::rvalue JsonData = crow::json::load(req.body);
-				if (JsonData)
+				// Get IP address
+				const std::string& ClientIP = req.remote_ip_address;
+
+				if (!AbuseProtectionPtr->IsAddressBlocked(ClientIP))
 				{
-					const std::string UserName = JsonData["token"].s();
+					const crow::json::rvalue JsonData = crow::json::load(req.body);
+					if (JsonData)
+					{
+						const std::string UserName = JsonData["token"].s();
 
-					// @TODO Add session terminate
+						// @TODO Add session terminate
 
-					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Not fully implemented."} });
+						OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Not fully implemented."} });
+					}
 				}
 
 				return OutResponse;
 			});
 
 	CROW_ROUTE(CrowApp, "/api/v1/users/logout")
-		.methods("POST"_method)
+		.methods("POST"_method, "OPTIONS"_method)
 		([this](const crow::request& req)
 		{
 			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
-			const crow::json::rvalue JsonData = crow::json::load(req.body);
-			if (JsonData)
-			{
-				const std::string SessionToken = JsonData["token"].s();
+			// Get IP address
+			const std::string& ClientIP = req.remote_ip_address;
 
-				const bool bSuccessfullyLoggedOut = UserManager->Logout(SessionToken);
-				if (bSuccessfullyLoggedOut)
+			if (!AbuseProtectionPtr->IsAddressBlocked(ClientIP))
+			{
+				const crow::json::rvalue JsonData = crow::json::load(req.body);
+				if (JsonData)
 				{
-					OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Session terminated!"} });
-					AddHeaders(OutResponse, DefaultHeadersCache);
-				}
-				else
-				{
-					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Can not log out."} });
+					const std::string SessionToken = JsonData["token"].s();
+
+					const bool bSuccessfullyLoggedOut = UserManager->Logout(SessionToken);
+					if (bSuccessfullyLoggedOut)
+					{
+						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Session terminated!"} });
+					}
+					else
+					{
+						OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Can not log out."} });
+					}
 				}
 			}
 

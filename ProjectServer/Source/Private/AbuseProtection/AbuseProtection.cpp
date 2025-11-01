@@ -8,6 +8,8 @@ FAbuseProtection::FAbuseProtection(FBackendSettings* InBackendSettings)
 	std::shared_ptr<FIniObject> BackendSettingsIni = InBackendSettings->GetBackendSettingsIni();
 	if (BackendSettingsIni->DoesIniExist())
 	{
+		LOG_DEBUG("BackendSettingsIni number of fields: '" << BackendSettingsIni->GetNumberOfFields() << "'.");
+
 		FIniField RateLimitNumberPerIPField = BackendSettingsIni->FindFieldByName("RateLimitNumberPerIP");
 		FIniField RateLimitTimeToClearInMinsField = BackendSettingsIni->FindFieldByName("RateLimitTimeToClearInMins");
 

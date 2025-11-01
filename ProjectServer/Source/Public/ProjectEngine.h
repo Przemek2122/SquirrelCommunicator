@@ -12,12 +12,13 @@
 class FAbuseProtection;
 class FUserManager;
 
-struct FHTTPHeader
+/** Crow cpp middleware */
+struct FCrowAppMiddleware
 {
-	FHTTPHeader(const std::string& InHeaderName, const std::string& InHeaderValue);
+	struct context {};
 
-	std::string HeaderName;
-	std::string HeaderValue;
+	void before_handle(crow::request& Req, crow::response& Res, context& Ctx);
+	void after_handle(crow::request& Req, crow::response& Res, context& Ctx);
 };
 
 /**
@@ -41,16 +42,18 @@ public:
 
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 
-	crow::SimpleApp& GetCrowApp() { return CrowApp; }
+	crow::App<FCrowAppMiddleware>& GetCrowApp() { return CrowApp; }
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }
+	FAbuseProtection* GetAbuseProtection() const { return AbuseProtectionPtr.get(); }
 	CUnorderedMap<std::string, std::string> GetDefaultHeaders() const;
+	CUnorderedMap<std::string, std::string> GetDefaultHeadersCache() const { return DefaultHeadersCache; }
 
 protected:
 	crow::response CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const;
 
 protected:
 	/** API Server */
-	crow::SimpleApp CrowApp;
+	crow::App<FCrowAppMiddleware> CrowApp;
 
 	/** Class for managing users */
 	std::unique_ptr<FUserManager> UserManager;

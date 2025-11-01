@@ -24,6 +24,8 @@ public:
 	void AddAttempt(const std::string& InKey);
 	bool IsBlockedKey(const std::string& InKey, const int32 NumberOfAttemptsToBlock);
 
+	void Reset();
+
 	std::unordered_map<std::string, FRateLimit> RateLimitMap;
 	FMutex RateLimitMutex;
 	FMutex ClearMutex;
@@ -36,7 +38,7 @@ public:
 class FRateLimiter
 {
 public:
-	FRateLimiter(const int32 InClearTime, const int32 InNumberOfAttemptsToBlock);
+	FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock);
 	~FRateLimiter();
 
 	/** Check if we have user blocked */
@@ -45,9 +47,21 @@ public:
 	/** Add register or login attempt */
 	void AddProtectedActionAttempt(const std::string& InAddress);
 
+	void AsyncWork();
+	void ResetRateLimits();
+
 protected:
+	/** Object for limiting access */
 	FRateLimitObject IPAddressToLimits;
-	int32 ClearTime;
+
+	/** Time when we clear limits */
+	std::chrono::minutes ClearingTimeInMins;
+
+	/** How many attempts are needed to block */
 	int32 NumberOfAttemptsToBlock;
+
+private:
+	FThreadData* RateLimiterThreadData;
+	std::chrono::time_point<std::chrono::utc_clock> AsyncWorkLastTime;
 
 };

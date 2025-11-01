@@ -22,13 +22,8 @@ FSessionManager::FSessionManager()
 
 FSessionManager::~FSessionManager()
 {
-	// Check if engine is closing or just session is being closed
-	// If engine is closing thread will be closed by threads manager
-	if (FGlobalDefines::GEngine->CanContinueMainLoop())
-	{
-		FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-		ThreadsManager->TryStopThread(SessionManagerThreadData);
-	}
+	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
+	ThreadsManager->TryStopThread(SessionManagerThreadData);
 }
 
 void FSessionManager::Init()

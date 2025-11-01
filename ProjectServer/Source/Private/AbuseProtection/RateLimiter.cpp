@@ -1,6 +1,11 @@
 #include "ProjectEngine.h"
 #include "AbuseProtection/RateLimiter.h"
+
+#include "Threads/Thread.h"
+#include "Threads/ThreadsManager.h"
 #include "Types/Mutex/MutexScopeLock.h"
+
+static const char* RateLimiterThreadName = "RateLimiterThread";
 
 FRateLimit::FRateLimit()
 	: AttemptCount(1)
@@ -47,14 +52,37 @@ bool FRateLimitObject::IsBlockedKey(const std::string& InKey, const int32 Number
 	return bIsBlocked;
 }
 
-FRateLimiter::FRateLimiter(const int32 InClearTime, const int32 InNumberOfAttemptsToBlock)
-	: ClearTime(InClearTime)
+void FRateLimitObject::Reset()
+{
+	FMutexScopeLock ClearMutexScopeLock(ClearMutex);
+	FMutexScopeLock RateLimitMutexScopeLock(RateLimitMutex);
+
+	RateLimitMap.clear();
+}
+
+FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock)
+	: ClearingTimeInMins(std::chrono::minutes(InClearingTimeInMins))
 	, NumberOfAttemptsToBlock(InNumberOfAttemptsToBlock)
 {
+	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
+	RateLimiterThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(RateLimiterThreadName);
+	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(RateLimiterThreadData->GetThread());
+	GenericThread->SetShouldRemoveDoneJobs(false);
+	if (GenericThread != nullptr)
+	{
+		AsyncWorkLastTime = std::chrono::utc_clock::now();
+
+		GenericThread->AddTask([this]()
+		{
+			AsyncWork();
+		});
+	}
 }
 
 FRateLimiter::~FRateLimiter()
 {
+	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
+	ThreadsManager->TryStopThread(RateLimiterThreadData);
 }
 
 bool FRateLimiter::IsAddressBlocked(const std::string& InAddress)
@@ -65,4 +93,25 @@ bool FRateLimiter::IsAddressBlocked(const std::string& InAddress)
 void FRateLimiter::AddProtectedActionAttempt(const std::string& InAddress)
 {
 	IPAddressToLimits.AddAttempt(InAddress);
+}
+
+void FRateLimiter::AsyncWork()
+{
+	const std::chrono::time_point<std::chrono::utc_clock> CurrentTime = std::chrono::utc_clock::now();
+
+	if (AsyncWorkLastTime + ClearingTimeInMins > CurrentTime)
+	{
+		THREAD_WAIT_SHORT_TIME;
+	}
+	else
+	{
+		AsyncWorkLastTime = CurrentTime;
+
+		ResetRateLimits();
+	}
+}
+
+void FRateLimiter::ResetRateLimits()
+{
+	IPAddressToLimits.Reset();
 }
