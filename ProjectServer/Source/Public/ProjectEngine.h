@@ -1,4 +1,4 @@
-// Created by Przemys³aw Wiewióra 2020-2024 https://github.com/Przemek2122/Engine
+// Created by Przemys³aw Wiewióra 2020-2025 https://github.com/Przemek2122/Engine
 #pragma once
 
 #include "CoreMinimal.h"
@@ -6,8 +6,10 @@
 
 // Enable SSL Support in crow library
 #define CROW_ENABLE_SSL
+#include "BackendSettings.h"
 #include "crow/app.h"
 
+class FAbuseProtection;
 class FUserManager;
 
 /**
@@ -30,6 +32,7 @@ public:
 	void PreExit() override;
 
 	crow::SimpleApp& GetCrowApp() { return CrowApp; }
+	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }
 
 protected:
 	crow::response CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const;
@@ -43,5 +46,8 @@ protected:
 
 	/** Async for crow app */
 	std::future<void> CrowAppFutureAsync;
+
+	std::unique_ptr<FBackendSettings> BackendSettings;
+	std::unique_ptr<FAbuseProtection> AbuseProtectionPtr;
 
 };

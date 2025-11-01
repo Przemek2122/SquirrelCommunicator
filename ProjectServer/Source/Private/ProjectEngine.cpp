@@ -1,14 +1,14 @@
 #include "ProjectEngine.h"
 
 #include "PredefinedMessages.h"
+#include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
-#include "Assets/IniReader/IniManager.h"
 #include "Assets/IniReader/IniObject.h"
-#include "Threads/ThreadsManager.h"
 
 FProjectEngine::FProjectEngine()
 	: UserManager(new FUserManager())
 {
+	BackendSettings = std::make_unique<FBackendSettings>();
 }
 
 void FProjectEngine::Init()
@@ -17,12 +17,12 @@ void FProjectEngine::Init()
 
 	LOG_DEBUG("Server init");
 
-	FIniManager* IniManager = FGlobalDefines::GEngine->GetAssetsManager()->GetIniManager();
-	std::shared_ptr<FIniObject> ServerSettingsIni = IniManager->GetIniObject("ServerSettings");
+	BackendSettings->LoadBackendSettings();
+	AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
+
+	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
 	if (ServerSettingsIni->DoesIniExist())
 	{
-		ServerSettingsIni->LoadIni();
-
 		InitBasicSetup();
 
 		LOG_DEBUG("Created api test");
@@ -79,22 +79,34 @@ void FProjectEngine::InitUsersSetup()
 		{
 			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
-			const crow::json::rvalue JsonData = crow::json::load(req.body);
-			if (JsonData)
-			{
-				const std::string UserName = JsonData["username"].s();
-				const std::string UserPassword = JsonData["password"].s();
-				const std::string EMail = JsonData["email"].s();
+			// Get IP address
+			const std::string& ClientIP = req.remote_ip_address;
 
-				const ERegisterUserStatus RegisterStatus = UserManager->RegisterUser(UserName, UserPassword, EMail);
-				if (RegisterStatus == ERegisterUserStatus::Successful)
+			if (!AbuseProtectionPtr->IsAddressBlocked(ClientIP))
+			{
+				const crow::json::rvalue JsonData = crow::json::load(req.body);
+				if (JsonData)
 				{
-					OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
+					const std::string UserName = JsonData["username"].s();
+					const std::string UserPassword = JsonData["password"].s();
+					const std::string EMail = JsonData["email"].s();
+
+					const ERegisterUserStatus RegisterStatus = UserManager->RegisterUser(UserName, UserPassword, EMail);
+					if (RegisterStatus == ERegisterUserStatus::Successful)
+					{
+						AbuseProtectionPtr->AddRateLimitedAttempt(ClientIP);
+
+						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
+					}
+					else
+					{
+						OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
+					}
 				}
-				else
-				{
-					OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
-				}
+			}
+			else
+			{
+				OutResponse = CreateResponse(429, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Too many requests."} });
 			}
 
 			return OutResponse;
@@ -269,10 +281,25 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 	{
 		LOG_INFO("Server will start with SSL");
 
-		CrowAppFutureAsync = CrowApp.port(static_cast<Uint16>(ServerPort))
-			.ssl_file(CertFilePath.c_str(), KeyFilePath.c_str())
-			.multithreaded()
-			.run_async();
+		if (FFileSystem::File::Exists(CertFilePath) && FFileSystem::File::Exists(KeyFilePath))
+		{
+			CrowAppFutureAsync = CrowApp.port(static_cast<Uint16>(ServerPort))
+				.ssl_file(CertFilePath.c_str(), KeyFilePath.c_str())
+				.multithreaded()
+				.run_async();
+		}
+		else
+		{
+			LOG_ERROR("Backend will NOT start.");
+			LOG_ERROR("Attempted to start crow with SSL but Key or Cert files are missing\n.");
+
+
+			LOG_INFO("Expected paths:");
+			LOG_INFO("CertFilePath: " << CertFilePath);
+			LOG_INFO("KeyFilePath: " << KeyFilePath);
+
+			LOG_INFO("\nTo generate for testing use bat script in Assets.");
+		}
 	}
 	else
 	{
