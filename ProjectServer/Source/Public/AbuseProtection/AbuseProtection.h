@@ -17,7 +17,7 @@ public:
 	bool IsAddressBlocked(const std::string& InAddress);
 	void AddRateLimitedAttempt(const std::string& InAddress);
 
-	CMap<std::string, std::string> GetCORHeaders() const;
+	CUnorderedMap<std::string, std::string> GetCORHeaders() const;
 
 protected:
 	std::unique_ptr<FCORPolicy> CORPolicyPtr;

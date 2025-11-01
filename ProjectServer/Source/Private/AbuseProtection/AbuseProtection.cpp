@@ -31,7 +31,7 @@ void FAbuseProtection::AddRateLimitedAttempt(const std::string& InAddress)
 	RateLimiter->AddProtectedActionAttempt(InAddress);
 }
 
-CMap<std::string, std::string> FAbuseProtection::GetCORHeaders() const
+CUnorderedMap<std::string, std::string> FAbuseProtection::GetCORHeaders() const
 {
 	return CORPolicyPtr->GetCORHeaders();
 }

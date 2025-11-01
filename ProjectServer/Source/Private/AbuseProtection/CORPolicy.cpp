@@ -3,7 +3,7 @@
 
 FCORPolicy::FCORPolicy()
 	: CORHeaders({
-		{ "Access-Control-Allow-Origin", "*" } // Allow everything bad but for now it should be ok
+		{ "Access-Control-Allow-Origin", "*" } // Allow everything is bad but for now it should be ok
 	})
 {
 }

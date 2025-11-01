@@ -9,8 +9,8 @@ class FCORPolicy
 public:
 	FCORPolicy();
 
-	CMap<std::string, std::string> GetCORHeaders() const { return CORHeaders; }
+	CUnorderedMap<std::string, std::string> GetCORHeaders() const { return CORHeaders; }
 
 protected:
-	CMap<std::string, std::string> CORHeaders;
+	CUnorderedMap<std::string, std::string> CORHeaders;
 };

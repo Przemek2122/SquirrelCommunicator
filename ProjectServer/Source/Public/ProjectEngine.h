@@ -12,6 +12,14 @@
 class FAbuseProtection;
 class FUserManager;
 
+struct FHTTPHeader
+{
+	FHTTPHeader(const std::string& InHeaderName, const std::string& InHeaderValue);
+
+	std::string HeaderName;
+	std::string HeaderValue;
+};
+
 /**
  * Primary engine class for your project.
  */
@@ -31,8 +39,11 @@ public:
 
 	void PreExit() override;
 
+	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
+
 	crow::SimpleApp& GetCrowApp() { return CrowApp; }
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }
+	CUnorderedMap<std::string, std::string> GetDefaultHeaders() const;
 
 protected:
 	crow::response CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const;
@@ -47,7 +58,13 @@ protected:
 	/** Async for crow app */
 	std::future<void> CrowAppFutureAsync;
 
-	std::unique_ptr<FBackendSettings> BackendSettings;
+	/** Abuse protection, Rate limit, cors */
 	std::unique_ptr<FAbuseProtection> AbuseProtectionPtr;
+
+	/** Backed settings contains ini with settings for backend */
+	std::unique_ptr<FBackendSettings> BackendSettings;
+
+	/** Cached default headers */
+	CUnorderedMap<std::string, std::string> DefaultHeadersCache;
 
 };

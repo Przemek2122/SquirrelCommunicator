@@ -5,6 +5,12 @@
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniObject.h"
 
+FHTTPHeader::FHTTPHeader(const std::string& InHeaderName, const std::string& InHeaderValue)
+	: HeaderName(InHeaderName)
+	, HeaderValue(InHeaderValue)
+{
+}
+
 FProjectEngine::FProjectEngine()
 	: UserManager(new FUserManager())
 {
@@ -19,6 +25,7 @@ void FProjectEngine::Init()
 
 	BackendSettings->LoadBackendSettings();
 	AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
+	DefaultHeadersCache = GetDefaultHeaders();
 
 	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
 	if (ServerSettingsIni->DoesIniExist())
@@ -68,11 +75,6 @@ void FProjectEngine::InitBasicSetup()
 
 void FProjectEngine::InitUsersSetup()
 {
-	CROW_ROUTE(CrowApp, "/api/v1/users")([this]()
-		{
-			return CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Wrong API Request."} });
-		});
-
 	CROW_ROUTE(CrowApp, "/api/v1/users/register")
 		.methods("POST"_method)
 		([this] (const crow::request& req)
@@ -97,6 +99,7 @@ void FProjectEngine::InitUsersSetup()
 						AbuseProtectionPtr->AddRateLimitedAttempt(ClientIP);
 
 						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
+						AddHeaders(OutResponse, DefaultHeadersCache);
 					}
 					else
 					{
@@ -136,6 +139,7 @@ void FProjectEngine::InitUsersSetup()
 					else if (LoginStatus == ELoginStatus::SessionAlreadyExist)
 					{
 						OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Session already exists!"} });
+						AddHeaders(OutResponse, DefaultHeadersCache);
 					}
 				}
 				else
@@ -181,6 +185,7 @@ void FProjectEngine::InitUsersSetup()
 				if (bSuccessfullyLoggedOut)
 				{
 					OutResponse = CreateResponse(200, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Session terminated!"} });
+					AddHeaders(OutResponse, DefaultHeadersCache);
 				}
 				else
 				{
@@ -320,6 +325,21 @@ void FProjectEngine::PreExit()
 	//CrowAppFutureAsync.wait();
 
 	LOG_INFO("Stopped crow");
+}
+
+void FProjectEngine::AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap)
+{
+	for (const std::pair<const std::string, std::string>& Value : HeaderNameToValueMap)
+	{
+		CurrentResponse.add_header(Value.first, Value.second);
+	}
+}
+
+CUnorderedMap<std::string, std::string> FProjectEngine::GetDefaultHeaders() const
+{
+	CUnorderedMap<std::string, std::string> OutDefaultHeaders = AbuseProtectionPtr->GetCORHeaders();
+
+	return OutDefaultHeaders;
 }
 
 crow::response FProjectEngine::CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const
