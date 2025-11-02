@@ -38,7 +38,7 @@ void FCrowAppMiddleware::after_handle(crow::request& Req, crow::response& Res, c
 }
 
 FProjectEngine::FProjectEngine()
-	: UserManager(new FUserManager())
+	: bIsSSLEnabled(false)
 {
 	BackendSettings = std::make_unique<FBackendSettings>();
 }
@@ -52,6 +52,7 @@ void FProjectEngine::Init()
 
 	LOG_DEBUG("Server init");
 
+	UserManager = std::make_unique<FUserManager>();
 	BackendSettings->LoadBackendSettings();
 	AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
 	DefaultHeadersCache = GetDefaultHeaders();
@@ -78,6 +79,10 @@ void FProjectEngine::Init()
 	{
 		LOG_ERROR("Ini is missing, API will not work.");
 	}
+
+	// Test
+	//UserManager->RegisterUser("saf", "asd7ghas89dhga86sga9s8dg!@#", "bober@borownictwo.pospolite");
+	//UserManager->SaveUsersWithBackup();
 }
 
 void FProjectEngine::PostSecondTick()
@@ -287,7 +292,7 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 	int32 ServerPort;
 	std::string KeyFilePath;
 	std::string CertFilePath;
-	bool bShouldEnableSSL = false;
+	bIsSSLEnabled = false;
 	bool bDoesServerSettingsExist = ServerSettingsIni->DoesIniExist();
 	if (bDoesServerSettingsExist)
 	{
@@ -300,10 +305,10 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 		const FIniField EnableSSLField = ServerSettingsIni->FindFieldByName("EnableSSL");
 		if (EnableSSLField.IsValid())
 		{
-			bShouldEnableSSL = EnableSSLField.GetValueAsBool();
+			bIsSSLEnabled = EnableSSLField.GetValueAsBool();
 		}
 
-		if (bShouldEnableSSL)
+		if (bIsSSLEnabled)
 		{
 			const FAssetsManager* AssetsManager = FGlobalDefines::GEngine->GetAssetsManager();
 			const std::string ConfigPathAbsolute = AssetsManager->ConvertRelativeToFullPath(AssetsManager->GetConfigPathRelative());
@@ -326,7 +331,7 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 		ServerPort = ServerPortDefault;
 	}
 
-	if (bDoesServerSettingsExist && bShouldEnableSSL)
+	if (bDoesServerSettingsExist && bIsSSLEnabled)
 	{
 		LOG_INFO("Server will start with SSL");
 
@@ -366,6 +371,8 @@ void FProjectEngine::PreExit()
 
 	CrowApp.stop();
 
+	UserManager->SaveUsersWithBackup();
+
 	//CrowAppFutureAsync.wait();
 
 	LOG_INFO("Stopped crow");
@@ -376,6 +383,20 @@ void FProjectEngine::AddHeaders(crow::response& CurrentResponse, const CUnordere
 	for (const std::pair<const std::string, std::string>& Value : HeaderNameToValueMap)
 	{
 		CurrentResponse.add_header(Value.first, Value.second);
+	}
+}
+
+void FProjectEngine::AddCookies(crow::response& CurrentResponse)
+{
+	if (bIsSSLEnabled)
+	{
+		// HTTP
+		CurrentResponse.add_header("Set-Cookie", "auth_token=TOKEN; HttpOnly; Secure; SameSite=Strict; Max-Age=86400");
+	}
+	else
+	{
+		// HTTPS
+		CurrentResponse.add_header("Set-Cookie", "auth_token=TOKEN; HttpOnly; SameSite=Strict; Max-Age=86400");
 	}
 }
 

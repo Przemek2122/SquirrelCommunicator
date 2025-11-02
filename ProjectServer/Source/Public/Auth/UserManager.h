@@ -25,6 +25,7 @@ class FUserManager
 {
 public:
 	FUserManager();
+	~FUserManager();
 
 	void Init();
 
@@ -55,7 +56,7 @@ public:
 
 	void LoadUsers();
 	void SaveUsers();
-	void SaveUsersBackup();
+	void SaveUsersWithBackup();
 
 protected:
 	Uint64 GenerateNextAvailableId();
@@ -75,5 +76,9 @@ private:
 
 	/** Cache for time, we will use it for each login, message, etc so cache will be faster */
 	Uint64 CurrentTimeCached;
+
+	/** User database backup file path */
+	std::string UserDataBaseFilePath;
+	std::string UserDataBaseBackupFilePath;
 
 };

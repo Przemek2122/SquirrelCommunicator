@@ -42,6 +42,8 @@ public:
 
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 
+	void AddCookies(crow::response& CurrentResponse);
+
 	crow::App<FCrowAppMiddleware>& GetCrowApp() { return CrowApp; }
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }
 	FAbuseProtection* GetAbuseProtection() const { return AbuseProtectionPtr.get(); }
@@ -69,5 +71,7 @@ protected:
 
 	/** Cached default headers */
 	CUnorderedMap<std::string, std::string> DefaultHeadersCache;
+
+	bool bIsSSLEnabled;
 
 };

@@ -1,4 +1,6 @@
 #include "Auth/UserManager.h"
+
+#include "Misc/Serializer.h"
 #include "Types/Mutex/MutexScopeLock.h"
 
 FUserManager::FUserManager()
@@ -6,6 +8,18 @@ FUserManager::FUserManager()
 	, NextAvailableIndex(0)
 	, CurrentTimeCached(0)
 {
+	FAssetsManager* AssetsManager = FGlobalDefines::GEngine->GetAssetsManager();
+
+	const std::string UserDataBaseRelativePath = AssetsManager->GetConfigPathRelative() + "UserDataBase.fser";
+	UserDataBaseFilePath = AssetsManager->ConvertRelativeToFullPath(UserDataBaseRelativePath);
+	UserDataBaseBackupFilePath = AssetsManager->ConvertRelativeToFullPath(UserDataBaseRelativePath + ".backup");
+
+	LoadUsers();
+}
+
+FUserManager::~FUserManager()
+{
+	SaveUsersWithBackup();
 }
 
 void FUserManager::Init()
@@ -120,20 +134,70 @@ bool FUserManager::AreLoginCredentialsCorrect(const std::string& InUserName, con
 
 void FUserManager::LoadUsers()
 {
-	// Remember to load UserDataBase, NextAvailableIndex
+	if (FFileSystem::File::Exists(UserDataBaseFilePath))
+	{
+		// Lock database - nothing exists so we just wait until loaded
+		FMutexScopeLock UserDataBaseMutexScopeLock(UserDataBaseMutex);
 
+		CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBaseCopy;
+		Uint64 NextAvailableIndexCopy = 0;
 
+		size_t Offset = 0;
+		std::vector<char> SerializeData;
+		FSerializer::Load(UserDataBaseFilePath, SerializeData);
+
+		DESERIALIZE_FIELD(SerializeData, Offset, NextAvailableIndexCopy);
+		DESERIALIZE_FIELD(SerializeData, Offset, UserDataBaseCopy.Map);
+
+		NextAvailableIndex = std::move(NextAvailableIndexCopy);
+		UserDataBase.Map = UserDataBaseCopy.Map;
+
+		LOG_INFO("Users loaded");
+	}
 }
 
 void FUserManager::SaveUsers()
 {
-	// Remember to save UserDataBase, NextAvailableIndex
+	CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBaseCopy;
+	Uint64 NextAvailableIndexCopy = 0;
 
+	{
+		// Lock database
+		FMutexScopeLock UserDataBaseMutexScopeLock(UserDataBaseMutex);
 
+		// Perform actuall copy
+		NextAvailableIndexCopy = NextAvailableIndex;
+		UserDataBaseCopy.Map = UserDataBase.Map;
+	}
+
+	std::vector<char> SerializeData;
+
+	// Serialize index
+	SERIALIZE_FIELD(SerializeData, NextAvailableIndexCopy);
+
+	// Serialize users
+	SERIALIZE_FIELD(SerializeData, UserDataBaseCopy.Map);
+
+	FSerializer::Save(UserDataBaseFilePath, SerializeData);
+
+	LOG_INFO("Users saved");
 }
 
-void FUserManager::SaveUsersBackup()
+void FUserManager::SaveUsersWithBackup()
 {
+	// Make backup if exists
+	if (FFileSystem::File::Exists(UserDataBaseFilePath))
+	{
+		// Delete previous copy if exists
+		if (FFileSystem::File::Exists(UserDataBaseBackupFilePath))
+		{
+			FFileSystem::File::Delete(UserDataBaseBackupFilePath);
+		}
+
+		FFileSystem::File::Rename(UserDataBaseFilePath, UserDataBaseBackupFilePath);
+	}
+
+	SaveUsers();
 }
 
 Uint64 FUserManager::GenerateNextAvailableId()
