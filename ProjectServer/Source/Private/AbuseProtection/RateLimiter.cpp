@@ -76,6 +76,8 @@ FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumbe
 		{
 			AsyncWork();
 		});
+
+		GenericThread->BeginAsyncWork();
 	}
 }
 

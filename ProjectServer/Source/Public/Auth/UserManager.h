@@ -9,7 +9,10 @@ enum class ERegisterUserStatus : Uint8
 {
 	Unknown,
 	Successful,
-	LoginTaken
+	MailTaken,
+	PasswordToWeak,
+	DataBaseInsertFailed,
+	DataBaseConnectionFailed
 };
 
 enum class ELoginStatus : Uint8
@@ -17,7 +20,9 @@ enum class ELoginStatus : Uint8
 	Unknown,
 	Successful,
 	SessionAlreadyExist,
-	IncorrectCredentialsOrUserDoesNotExist
+	IncorrectCredentialsOrUserDoesNotExist,
+	DataBaseFetchFailed,
+	DataBaseConnectionFailed
 };
 
 /** Class for managing users */
@@ -42,31 +47,41 @@ public:
 	 * Use for login
 	 * @return Unique session token
 	 */
-	ELoginStatus LoginUser(const std::string& InUserName, const std::string& InUserPassword, std::string& OutSessionToken);
+	ELoginStatus LoginUser(const std::string& InUserEmail, const std::string& InUserPassword, std::string& OutSessionToken);
 
 	/** @return true if successfully logged out */
 	bool Logout(const std::string& InSessionToken);
 
-	bool DoesUserExist(const std::string& InUserName);
 	bool AreLoginCredentialsCorrect(const std::string& InUserName, const std::string& InUserPassword);
+
+	/** Check if provided token is correct */
+	bool VerifyToken(const std::string& InToken) const;
+
+	/** Get user ID from token, 0 means not found */
+	Uint64 GetIdFromToken(const std::string& InToken) const;
 
 	Uint64 GetCurrentTimeCached() const { return CurrentTimeCached; }
 
-	/** @TODO Implement some kind of database for users (for saving / loading) (or use existing one) */
-
-	void LoadUsers();
-	void SaveUsers();
-	void SaveUsersWithBackup();
-
 protected:
 	Uint64 GenerateNextAvailableId();
+	bool VerifyPasswords(const std::string& StringWithHash, const std::string& StringWithoutHash);
+	std::string HashUserPassword(const std::string& RawPassword);
+	FArgonSettings GetArgonSettings() const;
+
+	void OnLoginSuccessful(const std::shared_ptr<FUser>& UserPtr, const bool bWereDownloadedFromDB);
+	void OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr);
+	void AddUserToCache(const std::shared_ptr<FUser>& UserPtr);
 
 private:
 	/** Manager for user sessions */
 	std::unique_ptr<FSessionManager> SessionManager;
 
-	/** Map with all users connected to number */
-	CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBase;
+	/**
+	 * Map with all users connected to number,
+	 * cached version of users in database, on restart it will be rebuilt from database
+	 * @TODO For long runs consider clearing every x time of inactivity
+	 */
+	CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBaseCache;
 
 	/** Tells us which number is available */
 	Uint64 NextAvailableIndex;
@@ -77,8 +92,6 @@ private:
 	/** Cache for time, we will use it for each login, message, etc so cache will be faster */
 	Uint64 CurrentTimeCached;
 
-	/** User database backup file path */
-	std::string UserDataBaseFilePath;
-	std::string UserDataBaseBackupFilePath;
+	FArgonSettings CachedArgonSettings;
 
 };

@@ -1,4 +1,4 @@
-// Created by Przemys³aw Wiewióra 2020-2025
+// Created by https://www.linkedin.com/in/przemek2122/ 2020-2025
 #pragma once
 
 #include "CoreMinimal.h"

@@ -1,0 +1,10 @@
+# List of test users for testing cache of backend
+bob@bobrowniczy.com
+SuperStrong123!
+
+jan.ush@pudzianowski.pl
+MocnyFull320!!
+
+postmanuser@sqrll.net
+postMann12!@
+

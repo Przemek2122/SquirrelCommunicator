@@ -1,6 +1,7 @@
 #include "Auth/UserManager.h"
 
-#include "Misc/Serializer.h"
+#include "DataBase/DataBaseConnect.h"
+#include "Misc/EncryptionManager.h"
 #include "Types/Mutex/MutexScopeLock.h"
 
 FUserManager::FUserManager()
@@ -8,22 +9,16 @@ FUserManager::FUserManager()
 	, NextAvailableIndex(0)
 	, CurrentTimeCached(0)
 {
-	FAssetsManager* AssetsManager = FGlobalDefines::GEngine->GetAssetsManager();
-
-	const std::string UserDataBaseRelativePath = AssetsManager->GetConfigPathRelative() + "UserDataBase.fser";
-	UserDataBaseFilePath = AssetsManager->ConvertRelativeToFullPath(UserDataBaseRelativePath);
-	UserDataBaseBackupFilePath = AssetsManager->ConvertRelativeToFullPath(UserDataBaseRelativePath + ".backup");
-
-	LoadUsers();
 }
 
 FUserManager::~FUserManager()
 {
-	SaveUsersWithBackup();
 }
 
 void FUserManager::Init()
 {
+	CachedArgonSettings = GetArgonSettings();
+
 	SessionManager->Init();
 }
 
@@ -38,53 +33,169 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 {
 	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
 
-	if (!DoesUserExist(InUserName))
-	{
-		const Uint64 Id = GenerateNextAvailableId();
+	bool bCanRegister = false;
 
+	// Verifications
+	if (InUserPassword.length() > 8)
+	{
+		bCanRegister = true;
+	}
+	else
+	{
+		RegisterUserStatus = ERegisterUserStatus::PasswordToWeak;
+	}
+
+	if (bCanRegister)
+	{
 		const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
 		FUser* User = UserPtr.get();
 		User->SetDisplayedName(InUserName);
 		User->SetUserName(InUserName);
-		User->SetPassword(InUserPassword);
+		User->SetPassword(HashUserPassword(InUserPassword));
 		User->SetUserEMail(InUserEMail);
-		User->SetUserId(Id);
 		User->UpdateLastActiveTime();
 
-		RegisterUserStatus = ERegisterUserStatus::Successful;
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
 
-		// Lock as register may come from any thread
-		const FMutexScopeLock ThreadScopeLock(UserDataBaseMutex);
+			// Check if mail is taken // sql << "select name from person where id = 7", into(name, ind);
+			std::string Username;
+			soci::indicator Ind;
 
-		// Create user
-		UserDataBase.Emplace(Id, UserPtr);
+			DataBaseSession << "SELECT username FROM users WHERE email = :email",
+				soci::use(InUserEMail),
+				soci::into(Username, Ind);
+
+			if (Ind != soci::i_ok)
+			{
+				// Create user
+				DataBaseSession.once << "INSERT INTO users(username, password, email, displayedname) VALUES(:un, :ps, :em, :dun)",
+					soci::use(InUserName, "un"),
+					soci::use(User->GetUserPasswordHash(), "ps"),
+					soci::use(InUserEMail, "em"),
+					soci::use(InUserName, "dun");
+
+				// Get id
+				Uint64 Id = 0;
+				DataBaseSession.once << "SELECT LAST_INSERT_ID()",
+					soci::into(Id);
+
+				if (Id > 0)
+				{
+					User->SetUserId(Id);
+
+					RegisterUserStatus = ERegisterUserStatus::Successful;
+
+					OnRegisterSuccessful(UserPtr);
+				}
+				else
+				{
+					RegisterUserStatus = ERegisterUserStatus::DataBaseInsertFailed;
+				}
+			}
+			else
+			{
+				RegisterUserStatus = ERegisterUserStatus::MailTaken;
+			}
+		}
+		else
+		{
+			RegisterUserStatus = ERegisterUserStatus::DataBaseConnectionFailed;
+		}
 	}
 
 	return RegisterUserStatus;
 }
 
-ELoginStatus FUserManager::LoginUser(const std::string& InUserName, const std::string& InUserPassword, std::string& OutSessionToken)
+ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::string& InUserPassword, std::string& OutSessionToken)
 {
 	ELoginStatus LoginStatus = ELoginStatus::IncorrectCredentialsOrUserDoesNotExist;
 
-	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
+	std::shared_ptr<FUser> UserPtr = nullptr;
+	bool bWereDownloadedFromDB = false;
+
+	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBaseCache)
 	{
-		if (UserPair.second->IsUserNameCorrect(InUserName))
+		if (UserPair.second->IsUserMailCorrect(InUserEmail))
 		{
-			const Uint64 Id = UserPair.second->GetUserId();
+			UserPtr = UserPair.second;
+		}
+	}
 
-			if (!SessionManager->DoesUserHaveSession(Id))
+	// User missing check db
+	if (UserPtr == nullptr)
+	{
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			// Get user data and hashed password
+			std::string Username;
+			std::string StoredPasswordHash;
+			std::string Mail;
+			std::string DisplayName;
+			Uint64 UserId;
+			soci::indicator Ind;
+
+			DataBaseSession << "SELECT id, username, password, email, displayedname FROM users WHERE email = :email",
+				soci::use(InUserEmail),
+				soci::into(UserId, Ind),
+				soci::into(Username),
+				soci::into(StoredPasswordHash),
+				soci::into(Mail),
+				soci::into(DisplayName);
+
+			if (Ind == soci::i_ok)
 			{
-				OutSessionToken = SessionManager->CreateSession(Id);
+				UserPtr = std::make_shared<FUser>(this);
+				FUser* User = UserPtr.get();
+				User->SetUserName(Username);
+				User->SetPassword(StoredPasswordHash);
+				User->SetUserEMail(Mail);
+				User->SetDisplayedName(DisplayName);
+				User->SetUserId(UserId);
 
-				// We should never get an empty session
-				ENSURE_VALID(!OutSessionToken.empty());
+				bWereDownloadedFromDB = true;
+			}
+		}
+		else
+		{
+			LoginStatus = ELoginStatus::DataBaseConnectionFailed;
+		}
+	}
+
+	if (UserPtr != nullptr)
+	{
+		// @TODO: Should we support BAN?
+
+		if (VerifyPasswords(UserPtr->GetUserPasswordHash(), InUserPassword))
+		{
+			FDataBaseConnect Connect;
+			if (Connect.IsConnected())
+			{
+				// Get database connection session
+				soci::session& DataBaseSession = Connect.GetSession();
+
+				const Uint64 Id = UserPtr->GetUserId();
+
+				// Update activity time
+				DataBaseSession << "UPDATE users SET LastActive = NOW() WHERE id = :id",
+					soci::use(Id, "id");
+
+				OnLoginSuccessful(UserPtr, bWereDownloadedFromDB);
+
+				OutSessionToken = SessionManager->CreateSession(Id);
 
 				LoginStatus = ELoginStatus::Successful;
 			}
 			else
 			{
-				LoginStatus = ELoginStatus::SessionAlreadyExist;
+				LoginStatus = ELoginStatus::DataBaseConnectionFailed;
 			}
 		}
 	}
@@ -101,26 +212,11 @@ bool FUserManager::Logout(const std::string& InSessionToken)
 	return bLogoutSuccessful;
 }
 
-bool FUserManager::DoesUserExist(const std::string& InUserName)
-{
-	bool bDoesUserExist = false;
-
-	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
-	{
-		if (UserPair.second->IsUserNameCorrect(InUserName))
-		{
-			bDoesUserExist = true;
-		}
-	}
-
-	return bDoesUserExist;
-}
-
 bool FUserManager::AreLoginCredentialsCorrect(const std::string& InUserName, const std::string& InUserPassword)
 {
 	bool bAreLoginCredentialsCorrect = false;
 
-	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBase)
+	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBaseCache)
 	{
 		FUser* User = UserPair.second.get();
 		if (User->IsUserPasswordCorrect(InUserPassword))
@@ -132,88 +228,71 @@ bool FUserManager::AreLoginCredentialsCorrect(const std::string& InUserName, con
 	return bAreLoginCredentialsCorrect;
 }
 
-void FUserManager::LoadUsers()
+bool FUserManager::VerifyToken(const std::string& InToken) const
 {
-	if (FFileSystem::File::Exists(UserDataBaseFilePath))
-	{
-		// Lock database - nothing exists so we just wait until loaded
-		FMutexScopeLock UserDataBaseMutexScopeLock(UserDataBaseMutex);
-
-		CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBaseCopy;
-		Uint64 NextAvailableIndexCopy = 0;
-
-		size_t Offset = 0;
-		std::vector<char> SerializeData;
-		FSerializer::Load(UserDataBaseFilePath, SerializeData);
-
-		DESERIALIZE_FIELD(SerializeData, Offset, NextAvailableIndexCopy);
-		DESERIALIZE_FIELD(SerializeData, Offset, UserDataBaseCopy.Map);
-
-		NextAvailableIndex = std::move(NextAvailableIndexCopy);
-		UserDataBase.Map = UserDataBaseCopy.Map;
-
-		LOG_INFO("Users loaded");
-	}
+	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);
+	return (Id > 0);
 }
 
-void FUserManager::SaveUsers()
+Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 {
-	CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBaseCopy;
-	Uint64 NextAvailableIndexCopy = 0;
-
-	{
-		// Lock database
-		FMutexScopeLock UserDataBaseMutexScopeLock(UserDataBaseMutex);
-
-		// Perform actuall copy
-		NextAvailableIndexCopy = NextAvailableIndex;
-		UserDataBaseCopy.Map = UserDataBase.Map;
-	}
-
-	std::vector<char> SerializeData;
-
-	// Serialize index
-	SERIALIZE_FIELD(SerializeData, NextAvailableIndexCopy);
-
-	// Serialize users
-	SERIALIZE_FIELD(SerializeData, UserDataBaseCopy.Map);
-
-	FSerializer::Save(UserDataBaseFilePath, SerializeData);
-
-	LOG_INFO("Users saved");
-}
-
-void FUserManager::SaveUsersWithBackup()
-{
-	// Make backup if exists
-	if (FFileSystem::File::Exists(UserDataBaseFilePath))
-	{
-		// Delete previous copy if exists
-		if (FFileSystem::File::Exists(UserDataBaseBackupFilePath))
-		{
-			FFileSystem::File::Delete(UserDataBaseBackupFilePath);
-		}
-
-		FFileSystem::File::Rename(UserDataBaseFilePath, UserDataBaseBackupFilePath);
-	}
-
-	SaveUsers();
+	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);
+	return Id;
 }
 
 Uint64 FUserManager::GenerateNextAvailableId()
 {
 	NextAvailableIndex++;
 
-	if (UserDataBase.ContainsKey(NextAvailableIndex))
+	if (UserDataBaseCache.ContainsKey(NextAvailableIndex))
 	{
 		LOG_ERROR("Critical error, NextAvailableIndex already exist and should not!");
 
 		// Find first available index
-		while (UserDataBase.ContainsKey(NextAvailableIndex))
+		while (UserDataBaseCache.ContainsKey(NextAvailableIndex))
 		{
 			NextAvailableIndex++;
 		}
 	}
 
 	return NextAvailableIndex;
+}
+
+bool FUserManager::VerifyPasswords(const std::string& StringWithHash, const std::string& StringWithoutHash)
+{
+	const std::unique_ptr<FPasswordEncryptionArgon> Encryptor = FEncryptionManager::CreateEncryptorForPassword<FPasswordEncryptionArgon>();
+	return Encryptor->VerifyPassword(StringWithHash, StringWithoutHash);
+}
+
+std::string FUserManager::HashUserPassword(const std::string& RawPassword)
+{
+	const std::unique_ptr<FPasswordEncryptionArgon> Encryptor = FEncryptionManager::CreateEncryptorForPassword<FPasswordEncryptionArgon>();
+	return Encryptor->HashPasswordCustom(RawPassword, GetArgonSettings());
+}
+
+FArgonSettings FUserManager::GetArgonSettings() const
+{
+	return FArgonSettings(2, 15 * 1024, 1, 128, 64);
+}
+
+void FUserManager::OnLoginSuccessful(const std::shared_ptr<FUser>& UserPtr, const bool bWereDownloadedFromDB)
+{
+	if (bWereDownloadedFromDB)
+	{
+		AddUserToCache(UserPtr);
+	}
+}
+
+void FUserManager::OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr)
+{
+	AddUserToCache(UserPtr);
+}
+
+void FUserManager::AddUserToCache(const std::shared_ptr<FUser>& UserPtr)
+{
+	// Lock as register may come from any thread
+	const FMutexScopeLock ThreadScopeLock(UserDataBaseMutex);
+
+	// Create user
+	UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);
 }

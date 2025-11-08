@@ -34,10 +34,9 @@ void FUser::SetUserId(const Uint64 InUserId)
 	UserId = InUserId;
 }
 
-void FUser::SetPassword(const std::string& InUserPassword)
+void FUser::SetPassword(const std::string& InUserEncryptedPassword)
 {
-	const std::unique_ptr<FPasswordEncryptionArgon> Encryptor = FEncryptionManager::CreateEncryptorForPassword<FPasswordEncryptionArgon>();
-	UserPassword = Encryptor->HashPasswordCustom(InUserPassword, GetArgonSettings());
+	UserPasswordHash = InUserEncryptedPassword;
 }
 
 bool FUser::IsUserNameCorrect(const std::string& InUserName) const
@@ -45,17 +44,24 @@ bool FUser::IsUserNameCorrect(const std::string& InUserName) const
 	return (UserName == InUserName);
 }
 
-bool FUser::IsUserPasswordCorrect(const std::string& InUserPassword) const
+bool FUser::IsUserMailCorrect(const std::string& InMailName) const
 {
-	const std::unique_ptr<FPasswordEncryptionArgon> Encryptor = FEncryptionManager::CreateEncryptorForPassword<FPasswordEncryptionArgon>();
-	const bool bIsUserPasswordCorrect = Encryptor->VerifyPassword(UserPassword, InUserPassword);
+	return (UserEMail == InMailName);
+}
 
-	return bIsUserPasswordCorrect;
+bool FUser::IsUserPasswordCorrect(const std::string& InUserPasswordHash) const
+{
+	return (UserPasswordHash == InUserPasswordHash);
 }
 
 const std::string& FUser::GetDisplayedName() const
 {
 	return DisplayedName;
+}
+
+const std::string& FUser::GetUserPasswordHash() const
+{
+	return UserPasswordHash;
 }
 
 EUserStatus FUser::GetUserStatus() const
@@ -70,12 +76,14 @@ Uint64 FUser::GetUserId() const
 	return UserId;
 }
 
+FUserData FUser::GetUserData() const
+{
+	FUserData SavableUserData = *this;
+
+	return SavableUserData;
+}
+
 Uint64 FUser::GetCurrentTime() const
 {
 	return UserManager->GetCurrentTimeCached();
-}
-
-FArgonSettings FUser::GetArgonSettings() const
-{
-	return FArgonSettings(2, 15 * 1024, 1, 128, 64);
 }

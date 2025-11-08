@@ -1,4 +1,4 @@
-// Created by Przemys³aw Wiewióra 2020-2025 https://github.com/Przemek2122/Engine
+// Created by https://www.linkedin.com/in/przemek2122/ 2020-2025 https://github.com/Przemek2122/Engine
 #pragma once
 
 #include "CoreMinimal.h"

@@ -1,4 +1,4 @@
-// Created by Przemys³aw Wiewióra 2020-2025
+// Created by https://www.linkedin.com/in/przemek2122/ 2020-2025
 #pragma once
 
 #include "CoreMinimal.h"
@@ -8,6 +8,7 @@
 /**
  * Class used for abuse protection
  * Supports: Rate limiting, blocking address
+ * Currently also used for COR Headers
  */
 class FAbuseProtection
 {

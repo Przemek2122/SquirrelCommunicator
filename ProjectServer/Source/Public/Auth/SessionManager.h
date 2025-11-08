@@ -7,7 +7,12 @@ class FGenericThread;
 
 struct FUserSessionData
 {
+	FUserSessionData();
 	FUserSessionData(const Uint64 InUserId, const Uint64 InSessionStartTime);
+	FUserSessionData(FUserSessionData& UserSessionData);
+	FUserSessionData(FUserSessionData&& UserSessionData) noexcept;
+
+	bool IsValid() const;
 
 	/** User ID which can be used to find correct user */
 	Uint64 UserId;
@@ -32,7 +37,8 @@ public:
 	void CheckForDeadSessions();
 
 	std::string CreateSession(const Uint64 InUserId);
-	std::string CreateTokenFromId(const Uint64 InUserId) const;
+
+	/** Return user ID or 0 on fail */
 	Uint64 GetUserIdFromSessionId(const std::string& InSessionToken);
 
 	bool DoesUserHaveSession(const Uint64 InUserId);
@@ -41,8 +47,8 @@ public:
 	bool DeactivateSession(const std::string& InSessionToken);
 	bool IsSessionTokenAlive(const std::string& InSessionToken);
 
-	void Save();
-	void Load();
+private:
+	std::string CreateTokenFromId(const Uint64 InUserId) const;
 
 private:
 	/** Session to user Id map */

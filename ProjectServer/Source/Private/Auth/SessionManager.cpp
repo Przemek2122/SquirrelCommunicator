@@ -7,10 +7,33 @@
 
 static const char* SessionManagerThreadName = "SessionManagerThread";
 
+FUserSessionData::FUserSessionData()
+	: UserId(0)
+	, SessionStartTime(0)
+{
+}
+
 FUserSessionData::FUserSessionData(const Uint64 InUserId, const Uint64 InSessionStartTime)
 	: UserId(InUserId)
 	, SessionStartTime(InSessionStartTime)
 {
+}
+
+FUserSessionData::FUserSessionData(FUserSessionData& UserSessionData)
+	: UserId(UserSessionData.UserId)
+	, SessionStartTime(UserSessionData.SessionStartTime)
+{
+}
+
+FUserSessionData::FUserSessionData(FUserSessionData&& UserSessionData) noexcept
+	: UserId(UserSessionData.UserId)
+	, SessionStartTime(UserSessionData.SessionStartTime)
+{
+}
+
+bool FUserSessionData::IsValid() const
+{
+	return (UserId != 0 && SessionStartTime != 0);
 }
 
 FSessionManager::FSessionManager()
@@ -45,6 +68,8 @@ void FSessionManager::Init()
 		{
 			AsyncWork();
 		});
+
+		GenericThread->BeginAsyncWork();
 	}
 }
 
@@ -93,34 +118,15 @@ std::string FSessionManager::CreateSession(const Uint64 InUserId)
 	return SessionToken;
 }
 
-std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const 
-{
-	std::string OutSession;
-
-	// Add salt
-	const std::string Salt = FEncryptionUtil::GenerateSecureSalt(128);
-	const std::string SaltAsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt, FPredefinedCharsets::BASE62);
-	OutSession += SaltAsBase62;
-
-	static constexpr uint64_t SessionFlipMask = 0x9E3779B97F4A7C15ULL;
-	const Uint64 FlippedNumber = FBitFlipping::FlipBits(InUserId, SessionFlipMask);
-	const std::string NumberAsBase62 = FEncryptionUtil::ToBaseNNum(FlippedNumber, FPredefinedCharsets::BASE62);
-
-	const std::string Encrypted = FEncryptionUtil::EncryptDataCustom(NumberAsBase62, EncryptionKey);
-
-	// Add id as something that will be potentialy not as easy to read as number
-	OutSession += NumberAsBase62;
-
-	return OutSession;
-}
-
 Uint64 FSessionManager::GetUserIdFromSessionId(const std::string& InSessionToken)
 {
 	Uint64 OutId = 0;
 
-	for (auto& [SessionName, SessionData] : SessionIdToUserIdMap)
+	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
 	{
-		if (SessionName == InSessionToken && !IsSessionTokenAlive(SessionName))
+		FUserSessionData& SessionData = SessionIdToUserIdMap[InSessionToken];
+
+		if (IsSessionTokenAlive(InSessionToken))
 		{
 			OutId = SessionData.UserId;
 		}
@@ -158,20 +164,34 @@ bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)
 
 	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
 	{
-		const FUserSessionData Value = SessionIdToUserIdMap.FindValueByKey(InSessionToken);
-
 		bIsSessionTokenAlive = true;
 	}
 
 	return bIsSessionTokenAlive;
 }
 
-void FSessionManager::Save()
+std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const
 {
-	// Save EncryptionKey
-}
+	std::string OutSession;
+	std::string TemporaryString;
 
-void FSessionManager::Load()
-{
-	// Load EncryptionKey
+	// Add salt
+	const std::string Salt = FEncryptionUtil::GenerateSecureSalt(64);
+	const std::string SaltAsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt, FPredefinedCharsets::BASE62);
+	TemporaryString += SaltAsBase62;
+
+	const std::string Salt2 = FEncryptionUtil::GenerateSecureSalt(64);
+	const std::string Salt2AsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt2, FPredefinedCharsets::BASE62);
+
+	static constexpr uint64_t SessionFlipMask = 0x9E3779B97F4A7C15ULL;
+	const Uint64 FlippedNumber = FBitFlipping::FlipBits(InUserId, SessionFlipMask);
+	const std::string NumberAsBase62 = FEncryptionUtil::ToBaseNNum(FlippedNumber, FPredefinedCharsets::BASE62);
+
+	TemporaryString += NumberAsBase62;
+	TemporaryString += Salt2AsBase62;
+
+	const std::string EncryptedData = FEncryptionUtil::EncryptDataCustom(TemporaryString, EncryptionKey);
+	const std::string SimpleData = FEncryptionUtil::ToBaseN_Irreversible(EncryptedData, FPredefinedCharsets::BASE62);
+
+	return SimpleData;
 }
