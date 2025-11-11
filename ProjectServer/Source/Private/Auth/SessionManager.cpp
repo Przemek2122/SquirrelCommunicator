@@ -85,7 +85,7 @@ void FSessionManager::AsyncWork()
 
 	if (AsyncWorkLastTime + TimeBetweenRuns > CurrentTime)
 	{
-		THREAD_WAIT_SHORT_TIME;
+		THREAD_WAIT_MS(1);
 	}
 	else
 	{

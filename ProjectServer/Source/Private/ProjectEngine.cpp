@@ -103,7 +103,7 @@ void FProjectEngine::Init()
 		const FIniField PortWSField = ServerSettingsIni->FindFieldByName("PortWS");
 		if (PortWSField.IsValid())
 		{
-			SocketManager->CreateSockets(PortWSField.GetValueAsInt(), bIsSSLEnabled, KeyFilePath, CertFilePath);
+			//SocketManager->CreateSockets(PortWSField.GetValueAsInt(), bIsSSLEnabled, KeyFilePath, CertFilePath);
 		}
 
 		LOG_DEBUG("Created socket messages");
