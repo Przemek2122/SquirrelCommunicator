@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Sockets/SocketAppWraper.h"
-
 /** Single web socket */
 class FSocket
 {
@@ -16,8 +14,5 @@ protected:
 	bool bUseSSL;
 	std::string KeyPath;
 	std::string CertPath;
-
-	us_listen_socket_t* AppListenSocket;
-	FSocketAppWrapper SocketAppWrapper;
 
 };

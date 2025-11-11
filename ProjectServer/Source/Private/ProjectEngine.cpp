@@ -6,7 +6,6 @@
 #include "Assets/IniReader/IniObject.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Sockets/SocketManager.h"
-#include "uWebSockets/App.h"
 
 void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, context& Ctx)
 {

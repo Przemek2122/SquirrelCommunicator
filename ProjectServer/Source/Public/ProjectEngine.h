@@ -8,7 +8,6 @@
 #define CROW_ENABLE_SSL
 #include "BackendSettings.h"
 #include "crow/app.h"
-#include "uWebSockets/App.h"
 
 class FSocketManager;
 class FAbuseProtection;
