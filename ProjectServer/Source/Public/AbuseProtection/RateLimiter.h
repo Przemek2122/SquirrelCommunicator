@@ -2,7 +2,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Types/Mutex/Mutex.h"
 
 /** Assume reset is done by removing from map */
 struct FRateLimit
@@ -27,8 +26,9 @@ public:
 	void Reset();
 
 	std::unordered_map<std::string, FRateLimit> RateLimitMap;
-	FMutex RateLimitMutex;
-	FMutex ClearMutex;
+	std::mutex RateLimitMutex;
+	std::mutex ClearMutex;
+	bool bIsClearing;
 };
 
 /**
