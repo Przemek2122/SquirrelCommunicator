@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Types/Mutex/Mutex.h"
 
 class FGenericThread;
 
@@ -58,7 +57,7 @@ private:
 	CUnorderedMap<Uint64, std::string, Uint64> UserIdToSessionTokenMap;
 
 	/** Mutex for UserDataBase */
-	FMutex SessionIdToUserIdMapMutex;
+	std::mutex SessionIdToUserIdMapMutex;
 
 	/** Last updated time in async work */
 	Uint64 AsyncWorkLastTime;

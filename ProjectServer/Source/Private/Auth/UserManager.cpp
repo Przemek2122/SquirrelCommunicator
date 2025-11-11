@@ -2,7 +2,6 @@
 
 #include "DataBase/DataBaseConnect.h"
 #include "Misc/EncryptionManager.h"
-#include "Types/Mutex/MutexScopeLock.h"
 
 FUserManager::FUserManager()
 	: SessionManager(new FSessionManager())
@@ -291,7 +290,7 @@ void FUserManager::OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr)
 void FUserManager::AddUserToCache(const std::shared_ptr<FUser>& UserPtr)
 {
 	// Lock as register may come from any thread
-	const FMutexScopeLock ThreadScopeLock(UserDataBaseMutex);
+	const std::lock_guard<std::mutex> ThreadScopeLock(UserDataBaseMutex);
 
 	// Create user
 	UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);

@@ -3,7 +3,6 @@
 #include "CoreMinimal.h"
 #include "SessionManager.h"
 #include "User.h"
-#include "Types/Mutex/Mutex.h"
 
 enum class ERegisterUserStatus : Uint8
 {
@@ -87,7 +86,7 @@ private:
 	Uint64 NextAvailableIndex;
 
 	/** Mutex for UserDataBase */
-	FMutex UserDataBaseMutex;
+	std::mutex UserDataBaseMutex;
 
 	/** Cache for time, we will use it for each login, message, etc so cache will be faster */
 	Uint64 CurrentTimeCached;

@@ -3,7 +3,6 @@
 #include "Misc/EncryptionUtil.h"
 #include "Threads/Thread.h"
 #include "Threads/ThreadsManager.h"
-#include "Types/Mutex/MutexScopeLock.h"
 
 static const char* SessionManagerThreadName = "SessionManagerThread";
 
@@ -111,7 +110,7 @@ std::string FSessionManager::CreateSession(const Uint64 InUserId)
 	const std::string SessionToken = CreateTokenFromId(InUserId);
 	FUserSessionData UserSessionData(InUserId, CurrentTimeCached);
 
-	FMutexScopeLock MutexScopeLock(SessionIdToUserIdMapMutex);
+	std::lock_guard<std::mutex> MutexScopeLock(SessionIdToUserIdMapMutex);
 	SessionIdToUserIdMap.Emplace(SessionToken, UserSessionData);
 	UserIdToSessionTokenMap.Emplace(InUserId, SessionToken);
 

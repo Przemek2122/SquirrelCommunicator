@@ -3,7 +3,6 @@
 
 #include "Threads/Thread.h"
 #include "Threads/ThreadsManager.h"
-#include "Types/Mutex/MutexScopeLock.h"
 
 static const char* RateLimiterThreadName = "RateLimiterThread";
 
@@ -22,14 +21,14 @@ void FRateLimitObject::AddAttempt(const std::string& InKey)
 	auto It = RateLimitMap.find(InKey);
 	if (It != RateLimitMap.end())
 	{
-		FMutexScopeLock ScopeLock(RateLimitMutex);
+		std::lock_guard<std::mutex> ScopeLock(RateLimitMutex);
 
 		FRateLimit& Data = It->second; 
 		Data.AddAttempt();
 	}
 	else
 	{
-		FMutexScopeLock ScopeLock(RateLimitMutex);
+		std::lock_guard<std::mutex> ScopeLock(RateLimitMutex);
 
 		RateLimitMap[InKey] = FRateLimit();
 	}
@@ -40,7 +39,7 @@ bool FRateLimitObject::IsBlockedKey(const std::string& InKey, const int32 Number
 	bool bIsBlocked = false;
 
 	std::unordered_map<std::string, FRateLimit>::iterator It = RateLimitMap.find(InKey);
-	if (!ClearMutex.IsLocked() && It != RateLimitMap.end())
+	if (!bIsClearing && It != RateLimitMap.end())
 	{
 		FRateLimit& Data = It->second;
 		if (Data.GetAttemptCount() > NumberOfAttemptsToBlock)
@@ -54,10 +53,14 @@ bool FRateLimitObject::IsBlockedKey(const std::string& InKey, const int32 Number
 
 void FRateLimitObject::Reset()
 {
-	FMutexScopeLock ClearMutexScopeLock(ClearMutex);
-	FMutexScopeLock RateLimitMutexScopeLock(RateLimitMutex);
+	std::lock_guard<std::mutex> ClearMutexLock(ClearMutex);
+	std::lock_guard<std::mutex> RateLimitMutexLock(RateLimitMutex);
+
+	bIsClearing = true;
 
 	RateLimitMap.clear();
+
+	bIsClearing = false;
 }
 
 FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock)
