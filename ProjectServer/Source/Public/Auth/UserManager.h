@@ -53,8 +53,11 @@ public:
 
 	bool AreLoginCredentialsCorrect(const std::string& InUserName, const std::string& InUserPassword);
 
-	/** Check if provided token is correct */
+	/** @return true when valid. Check if provided token is correct. */
 	bool VerifyToken(const std::string& InToken) const;
+
+	/** @return true when valid. Will leave old token but with longer time to use. */
+	bool RefreshSessionToken(const std::string& InToken) const;
 
 	/** Get user ID from token, 0 means not found */
 	Uint64 GetIdFromToken(const std::string& InToken) const;

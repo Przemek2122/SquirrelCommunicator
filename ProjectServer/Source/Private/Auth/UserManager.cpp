@@ -233,6 +233,11 @@ bool FUserManager::VerifyToken(const std::string& InToken) const
 	return (Id > 0);
 }
 
+bool FUserManager::RefreshSessionToken(const std::string& InToken) const
+{
+	return SessionManager->IsSessionTokenAlive(InToken);
+}
+
 Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 {
 	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);

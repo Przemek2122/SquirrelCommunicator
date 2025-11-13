@@ -35,6 +35,18 @@ bool FUserSessionData::IsValid() const
 	return (UserId != 0 && SessionStartTime != 0);
 }
 
+void FUserSessionData::SetSessionStartTime(Uint64 InSessionStartTime)
+{
+	std::scoped_lock<std::mutex> MutexScopeLock(SessionUpdateMutex);
+
+	SessionStartTime = InSessionStartTime;
+}
+
+Uint64 FUserSessionData::GetSessionStartTime() const
+{
+	return SessionStartTime;
+}
+
 FSessionManager::FSessionManager()
 	: AsyncWorkLastTime(0)
 	, CurrentTimeCached(0)
@@ -132,6 +144,25 @@ Uint64 FSessionManager::GetUserIdFromSessionId(const std::string& InSessionToken
 	}
 
 	return OutId;
+}
+
+bool FSessionManager::RefreshSessionToken(const std::string& InSessionToken)
+{
+	bool bIsAlive = false;
+
+	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
+	{
+		FUserSessionData& SessionData = SessionIdToUserIdMap[InSessionToken];
+
+		if (IsSessionTokenAlive(InSessionToken))
+		{
+			SessionData.SetSessionStartTime(CurrentTimeCached);
+
+			bIsAlive = true;
+		}
+	}
+
+	return bIsAlive;
 }
 
 bool FSessionManager::DoesUserHaveSession(const Uint64 InUserId)

@@ -13,11 +13,18 @@ struct FUserSessionData
 
 	bool IsValid() const;
 
+	void SetSessionStartTime(Uint64 InSessionStartTime);
+	Uint64 GetSessionStartTime() const;
+
 	/** User ID which can be used to find correct user */
 	Uint64 UserId;
 
+private:
 	/** Session start time to know when session should not be alive anymore */
 	Uint64 SessionStartTime;
+
+	/** Mutex for updating session */
+	std::mutex SessionUpdateMutex;
 
 };
 
@@ -39,6 +46,9 @@ public:
 
 	/** Return user ID or 0 on fail */
 	Uint64 GetUserIdFromSessionId(const std::string& InSessionToken);
+
+	/** Refreshes session token by changing its internal time */
+	bool RefreshSessionToken(const std::string& InSessionToken);
 
 	bool DoesUserHaveSession(const Uint64 InUserId);
 

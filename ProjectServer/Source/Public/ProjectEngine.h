@@ -36,15 +36,14 @@ public:
 	void InitBasicSetup();
 	void InitUsersSetup();
 
-	void CreateSocketListener();
-
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 
 	void PreExit() override;
 
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 	void AddCookies(crow::response& CurrentResponse, const std::string& AuthToken);
-	std::optional<std::string> GetCookie(const crow::request& Req, std::string_view CookieName);
+
+	FUserManager* GetUserManager() const { return UserManager.get(); }
 
 	crow::App<FCrowAppMiddleware>& GetCrowApp() { return CrowApp; }
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }

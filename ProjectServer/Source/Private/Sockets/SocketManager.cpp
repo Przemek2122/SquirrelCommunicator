@@ -18,7 +18,7 @@ FSocketManager::~FSocketManager()
 void FSocketManager::CreateSockets(int32 SocketPort, bool bUseSSL, const std::string& InKeyPath, const std::string& InCertPath)
 {
 	static const std::string SocketThreadName = "SocketThread";
-	const int32 NumberOFSocketsToCreate = 1; //FThreadsManager::GetNumberOfLogicalCPU();
+	const int32 NumberOFSocketsToCreate = FThreadsManager::GetNumberOfLogicalCPU();
 
 	SocketThreadDataArray.SetNum(NumberOFSocketsToCreate);
 
@@ -32,15 +32,14 @@ void FSocketManager::CreateSockets(int32 SocketPort, bool bUseSSL, const std::st
 		SocketThreadDataArray.Push(SocketManagerThreadData);
 
 		FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(SocketManagerThreadData->GetThread());
-		GenericThread->SetShouldRemoveDoneJobs(false);
 		if (GenericThread != nullptr)
 		{
-			GenericThread->AddBeginTask([this, SocketManagerThreadData, SocketPort, bUseSSL, InKeyPath, InCertPath]()
+			GenericThread->AddTask([this, SocketManagerThreadData, SocketPort, bUseSSL, InKeyPath, InCertPath]()
 			{
 				SocketManagerThreadData->SocketPtr = std::make_unique<FSocket>(SocketPort, bUseSSL, InKeyPath, InCertPath);
 				if (SocketManagerThreadData->SocketPtr != nullptr)
 				{
-					SocketManagerThreadData->SocketPtr->InitAsync();
+					SocketManagerThreadData->SocketPtr->Async();
 				}
 			});
 
