@@ -78,6 +78,7 @@ protected:
 	CUnorderedMap<std::string, std::string> DefaultHeadersCache;
 
 	CArray<std::string> OriginWhitelist;
+	std::string DomainName;
 
 	bool bIsSSLEnabled;
 	std::string KeyFilePath;

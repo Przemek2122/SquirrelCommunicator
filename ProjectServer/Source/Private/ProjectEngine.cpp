@@ -80,12 +80,34 @@ void FProjectEngine::Init()
 	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
 	if (ServerSettingsIni->DoesIniExist())
 	{
-		OriginWhitelist.Push("http://localhost");
-		const FIniField BackendAddressField = ServerSettingsIni->FindFieldByName("BackendAddress");
-		if (BackendAddressField.IsValid())
+		// Get domain name from ini
 		{
-			OriginWhitelist.Push(BackendAddressField.GetValueAsString());
+			const FIniField DomainField = ServerSettingsIni->FindFieldByName("Domain");
+			if (DomainField.IsValid())
+			{
+				DomainName = DomainField.GetValueAsString();
+			}
 		}
+
+		// Read all backend addresses from ini
+		{
+			FIniField BackendAddressField = ServerSettingsIni->FindFieldByName("BackendAddress" + std::to_string(1));
+			for (int32 i = 2; i < 128 && BackendAddressField.IsValid(); i++)
+			{
+				OriginWhitelist.Push(BackendAddressField.GetValueAsString());
+				BackendAddressField = ServerSettingsIni->FindFieldByName("BackendAddress" + std::to_string(i));
+			}
+		}
+
+#if DEBUG
+		{
+			// Debug domain
+			FIniField DebugDomainField = ServerSettingsIni->FindFieldByName("DebugDomain");
+
+			OriginWhitelist.InsertAt(0 ,"http://" + DebugDomainField.GetValueAsString());
+			DomainName = DebugDomainField.GetValueAsString();
+		}
+#endif
 
 		InitBasicSetup();
 
@@ -465,12 +487,12 @@ void FProjectEngine::AddCookies(crow::response& CurrentResponse, const std::stri
 	if (bIsSSLEnabled)
 	{
 		// HTTP
-		CurrentResponse.add_header("Set-Cookie", "auth_token=" + AuthToken + "; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400");
+		CurrentResponse.add_header("Set-Cookie", "auth_token=" + AuthToken + "; Domain=" + DomainName + "; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=86400");
 	}
 	else
 	{
 		// HTTPS
-		CurrentResponse.add_header("Set-Cookie", "auth_token=" + AuthToken + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
+		CurrentResponse.add_header("Set-Cookie", "auth_token=" + AuthToken + "; Domain=" + DomainName + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
 	}
 }
 

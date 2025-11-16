@@ -26,7 +26,7 @@ FSocket::~FSocket()
 
 
 template<bool SSL>
-auto CreateSocketBehavior() {
+auto CreateSocketBehavior(FSocket* Socket) {
 	return typename uWS::TemplatedApp<SSL>::template WebSocketBehavior<FWebSocketSession>{
 		/* Settings */
 		.compression = uWS::SHARED_COMPRESSOR,
@@ -112,17 +112,15 @@ auto CreateSocketBehavior() {
 		},
 		.open = [](auto* ws)
 		{
-			std::cout << "Client connected\n";
+			LOG_INFO("Client connected");
 		},
-		.message = [](auto* ws, std::string_view message, uWS::OpCode opCode)
+		.message = [Socket](auto* ws, std::string_view message, uWS::OpCode opCode)
 		{
-			std::cout << "Received: " << message << "\n";
-
-			ws->send(message, opCode); // Echo back
+			Socket->OnMessageReceived(ws, message, opCode);
 		},
 		.close = [](auto* ws, int code, std::string_view message)
 		{
-			std::cout << "Client disconnected\n";
+			LOG_INFO("Client disconnected");
 		}
 	};
 }
@@ -133,11 +131,11 @@ void FSocket::Async()
 
 	if (bUseSSL)
 	{
-		SocketAppWrapper.wsssl<FWebSocketSession>(WebSocketPath, CreateSocketBehavior<true>());
+		SocketAppWrapper.wsssl<FWebSocketSession>(WebSocketPath, CreateSocketBehavior<true>(this));
 	}
 	else
 	{
-		SocketAppWrapper.wssslno<FWebSocketSession>(WebSocketPath, CreateSocketBehavior<false>());
+		SocketAppWrapper.wssslno<FWebSocketSession>(WebSocketPath, CreateSocketBehavior<false>(this));
 	}
 
 	SocketAppWrapper.listen(Port, [&](us_listen_socket_t* listenSocket)
@@ -155,4 +153,11 @@ void FSocket::Async()
 	});
 
 	SocketAppWrapper.Run();
+}
+
+void FSocket::OnMessageReceived(auto* ws, std::string_view message, uWS::OpCode opCode)
+{
+	LOG_INFO("Received: " << message);
+
+	ws->send(message, opCode); // Echo back
 }
