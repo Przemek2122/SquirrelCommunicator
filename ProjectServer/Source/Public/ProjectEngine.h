@@ -35,6 +35,7 @@ public:
 
 	void InitBasicSetup();
 	void InitUsersSetup();
+	void InitCommunicatorSetup();
 
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 

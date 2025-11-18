@@ -14,7 +14,7 @@ namespace FPredefinedMessages
 
 	namespace Message
 	{
-		static const std::string Name = "message";
+		static const std::string Message = "message";
 		
 	}
 };

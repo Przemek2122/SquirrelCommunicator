@@ -4,6 +4,7 @@
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniObject.h"
+#include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Misc/WebSockets/CookieHelper.h"
 #include "Sockets/SocketManager.h"
@@ -358,25 +359,104 @@ void FProjectEngine::InitUsersSetup()
 		{
 			crow::response OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
 
-			// Get IP address
-			const std::string& ClientIP = req.remote_ip_address;
-
-			if (!AbuseProtectionPtr->IsAddressBlocked(ClientIP))
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
 			{
-				const crow::json::rvalue JsonData = crow::json::load(req.body);
-				if (JsonData)
-				{
-					const std::string SessionToken = JsonData["token"].s();
+				const std::string SessionToken = JsonData["token"].s();
 
-					const bool bSuccessfullyLoggedOut = UserManager->Logout(SessionToken);
-					if (bSuccessfullyLoggedOut)
+				const bool bSuccessfullyLoggedOut = UserManager->Logout(SessionToken);
+				if (bSuccessfullyLoggedOut)
+				{
+					OutResponse = CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Session terminated!"} });
+				}
+				else
+				{
+					OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Can not log out."} });
+				}
+			}
+
+			return OutResponse;
+		});
+}
+
+void FProjectEngine::InitCommunicatorSetup()
+{
+	CROW_ROUTE(CrowApp, "/api/v1/comm/addchat")
+		.methods("POST"_method, "OPTIONS"_method)
+		([this](const crow::request& req)
+		{
+			crow::response OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+					{ FPredefinedMessages::Message::Message, "Invalid JSON."} });
+
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
+			{
+				// Get IP address
+				const std::string& ClientIP = req.remote_ip_address;
+
+				const std::string_view CookieHeader = req.get_header_value("Cookie");
+				const std::string Token = FCookieHelper::GetCookieValue(CookieHeader, "auth_token");
+
+				if (!Token.empty())
+				{
+					if (UserManager->VerifyToken(Token))
 					{
-						OutResponse = CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Session terminated!"} });
+						const Uint64 CurrentUserId = UserManager->GetIdFromToken(Token);
+						const Uint64 OtherUserId = static_cast<Uint64>(JsonData["other_user_id"].i());
+
+						if (CurrentUserId > 0 && OtherUserId > 0)
+						{
+							FDataBaseConnect Connect;
+							if (Connect.IsConnected())
+							{
+								// Get database connection session
+								soci::session& DataBaseSession = Connect.GetSession();
+
+								// Check if 1-on-1 conversation exists between two users
+								int64_t conversationId = 0;
+								soci::indicator ind;
+
+								// cp1 and cp2 are table aliases (shortcuts)
+								// cp1 = conversation_participants (first copy)
+								// cp2 = conversation_participants (second copy)
+								DataBaseSession << "SELECT cp1.ConversationId "
+									"FROM conversation_participants cp1 "
+									"JOIN conversation_participants cp2 "
+									"  ON cp1.ConversationId = cp2.ConversationId "
+									"JOIN conversations c "
+									"  ON c.ConversationId = cp1.ConversationId "
+									"WHERE cp1.UserId = :user1 "
+									"  AND cp2.UserId = :user2 "
+									"  AND c.IsGroup = 0 "
+									"LIMIT 1",
+									soci::into(conversationId, ind),
+									soci::use(CurrentUserId),
+									soci::use(OtherUserId);
+
+								// Check result
+								if (ind == soci::i_ok)
+								{
+									// Conversation exists
+									std::cout << "Found conversation: " << conversationId << std::endl;
+								}
+								else
+								{
+									// Conversation doesn't exist
+									std::cout << "No conversation found" << std::endl;
+								}
+							}
+						}
 					}
 					else
 					{
-						OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Can not log out."} });
+						AbuseProtectionPtr->AddRateLimitedAttempt(ClientIP);
+
+						OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error } });
 					}
+				}
+				else
+				{
+					OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error } });
 				}
 			}
 
