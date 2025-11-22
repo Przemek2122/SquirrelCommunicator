@@ -52,7 +52,10 @@ public:
 
 protected:
 	/** Object for limiting access */
-	FRateLimitObject IPAddressToLimits;
+	FRateLimitObject DefaultIPAddressToLimits;
+
+	/** Object for limiting access when using verify */
+	FRateLimitObject VerifyIPAddressToLimits;
 
 	/** Time when we clear limits */
 	std::chrono::minutes ClearingTimeInMins;

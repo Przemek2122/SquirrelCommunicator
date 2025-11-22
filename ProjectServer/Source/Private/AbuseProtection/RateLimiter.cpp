@@ -92,12 +92,12 @@ FRateLimiter::~FRateLimiter()
 
 bool FRateLimiter::IsAddressBlocked(const std::string& InAddress)
 {
-	return IPAddressToLimits.IsBlockedKey(InAddress, NumberOfAttemptsToBlock);
+	return DefaultIPAddressToLimits.IsBlockedKey(InAddress, NumberOfAttemptsToBlock);
 }
 
 void FRateLimiter::AddProtectedActionAttempt(const std::string& InAddress)
 {
-	IPAddressToLimits.AddAttempt(InAddress);
+	DefaultIPAddressToLimits.AddAttempt(InAddress);
 }
 
 void FRateLimiter::AsyncWork()
@@ -118,5 +118,5 @@ void FRateLimiter::AsyncWork()
 
 void FRateLimiter::ResetRateLimits()
 {
-	IPAddressToLimits.Reset();
+	DefaultIPAddressToLimits.Reset();
 }

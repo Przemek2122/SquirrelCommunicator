@@ -2,6 +2,7 @@
 
 #include "DataBase/DataBaseConnect.h"
 #include "Misc/EncryptionManager.h"
+#include "Misc/EncryptionUtil.h"
 
 FUserManager::FUserManager()
 	: SessionManager(new FSessionManager())
@@ -35,7 +36,11 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 	bool bCanRegister = false;
 
 	// Verifications
-	if (InUserPassword.length() > 8)
+	if (InUserPassword.length() > 8
+		&& FStringHelpers::ValidateString(InUserName, FPredefinedCharsets::BASE62)
+		&& FStringHelpers::ValidateString(InUserPassword, FPredefinedCharsets::BASE_SIMPLE_PASSWORD)
+		&& FStringHelpers::ValidateString(InUserEMail, FPredefinedCharsets::BASE_EMAIL)
+	)
 	{
 		bCanRegister = true;
 	}
@@ -242,6 +247,19 @@ Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 {
 	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);
 	return Id;
+}
+FUser* FUserManager::GetUser(const Uint64 UserId) const
+{
+	if (UserDataBaseCache.ContainsKey(UserId))
+	{
+		std::optional<std::shared_ptr<FUser>> UserAsOptional = UserDataBaseCache.FindValueByKey(UserId);
+		if (UserAsOptional.has_value())
+		{
+			return UserAsOptional->get();
+		}
+	}
+
+	return nullptr;
 }
 
 Uint64 FUserManager::GenerateNextAvailableId()

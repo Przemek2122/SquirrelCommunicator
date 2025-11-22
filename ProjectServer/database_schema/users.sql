@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Czas generowania: 14 Lis 2025, 15:14
+-- Czas generowania: 21 Lis 2025, 20:54
 -- Wersja serwera: 10.5.29-MariaDB-0+deb11u1
 -- Wersja PHP: 7.4.33
 
@@ -29,10 +29,10 @@ SET time_zone = "+00:00";
 
 CREATE TABLE `users` (
   `id` bigint(20) UNSIGNED NOT NULL,
-  `username` varchar(256) NOT NULL,
+  `username` varchar(128) NOT NULL,
   `password` varchar(2048) NOT NULL,
-  `email` varchar(256) NOT NULL,
-  `displayedname` varchar(256) NOT NULL,
+  `email` varchar(128) NOT NULL,
+  `displayedname` varchar(128) NOT NULL,
   `lastactive` date DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -42,7 +42,7 @@ CREATE TABLE `users` (
 
 INSERT INTO `users` (`id`, `username`, `password`, `email`, `displayedname`, `lastactive`) VALUES
 (2, 'Przemysław Wiewióra', '$argon2id$v=19$m=16384,t=2,p=1$fdiNx7qY3RfSvBoRxcrEyg$ZS4hufqcxBajNpfuOEQV4VjU8FlCK2ZuiZp6NLj2Al4\0', 'przemek1234wiewiora@gmail.com', 'Przemysław Wiewióra', NULL),
-(3, 'SuperStrong123!', '$argon2id$v=19$m=16384,t=2,p=1$ov/3mXCQpvr45jRhZAauow$gtAQhQ1gjSrX+/SCyWbTK1aUq764ZcWOuvM5BGbZK/E\0', 'bob@bobrowniczy.com', 'SuperStrong123!', '2025-11-14'),
+(3, 'SuperStrong123!', '$argon2id$v=19$m=16384,t=2,p=1$ov/3mXCQpvr45jRhZAauow$gtAQhQ1gjSrX+/SCyWbTK1aUq764ZcWOuvM5BGbZK/E\0', 'bob@bobrowniczy.com', 'SuperStrong123!', '2025-11-21'),
 (4, 'postmanuser', '$argon2id$v=19$m=16384,t=2,p=1$YouU1ASS77+eK9AN0lZDnA$t/lgl2gPfQ7xm/hSVA1tfAN7gkYwm9fLq4QnCRQzhb8\0', 'postmanuser@sqrll.net', 'postmanuser', '2025-11-06');
 
 --

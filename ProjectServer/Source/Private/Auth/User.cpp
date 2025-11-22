@@ -1,11 +1,7 @@
 #include "Auth/UserManager.h"
-#include "Misc/EncryptionManager.h"
-#include "Misc/PasswordEncryptionArgon.h"
 
 FUser::FUser(FUserManager* InUserManager)
-	: UserId(0)
-	, LastActiveTime(0)
-	, UserManager(InUserManager)
+	: UserManager(InUserManager)
 {
 }
 

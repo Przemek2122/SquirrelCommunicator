@@ -1,33 +1,87 @@
 #pragma once
 
-#include "Misc/WebSockets/AppWrapper.h"
+#include <nlohmann/json_fwd.hpp>
 
-/** Message structure for user messages */
-struct Message
+#include "Misc/WebSockets/AppWrapper.h"
+#include "soci/session.h"
+
+class FProjectEngine;
+
+/** Enum for each message sent using socket */
+enum class ESocketMessageType : uint8
 {
-	std::string Type;      // "chat", "status", "typing", "seen"
-	std::string Target;    // User/room ID
-	std::string Content;   // Actual message
-	int64_t Timestamp;
+	Unknown,
+
+	Message,
+	Typing,
+	MarkRead,
+	SearchUser,
+	GetConversation,
+	AddConversation,
+	InitialClientData,
+	InitialConversations,
+	Error
 };
 
-/** Single web socket */
+ESocketMessageType StringToSocketMessageType(const std::string& InTypeString);
+std::string SocketMessageTypeToString(ESocketMessageType InTypeEnum);
+
+struct FConversationInfo
+{
+	long ConversationId;
+	std::string LastMessageAt;
+	long LastReadMessageId;
+};
+
+/**
+ * Single web socket
+ * Currently also integrates as wrapper for uWebSockets template
+ */
 class FSocket
 {
 public:
-	FSocket(int32 InPort, bool bInUseSSL, std::string InKeyPath, std::string InCertPath);
+	FSocket(int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath);
 	~FSocket();
 
 	void Async();
+
+	/** uWS lambdas extensions */
+	void OnClientConnected(auto* ws);
+	void OnClientDisconnected(auto* ws, int code, std::string_view message);
 	void OnMessageReceived(auto* ws, std::string_view message, uWS::OpCode opCode);
 
-protected:
-	int32 Port;
-	bool bUseSSL;
-	std::string KeyPath;
-	std::string CertPath;
+private:
+	/** Default uWS OpCodes */
+	void OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::OpCode opCode);
+	void OnMessageReceived_Ping(auto* ws, std::string_view message, uWS::OpCode opCode);
+	void OnMessageReceived_Pong(auto* ws, std::string_view message, uWS::OpCode opCode);
 
+	/** Custom enums */
+	void OnMessageReceived_SendMessage(auto* ws, uWS::OpCode opCode, Uint64 ReceiverId, const std::string& Content);
+	void OnMessageReceived_Typing(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
+	void OnMessageReceived_MarkRead(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
+	void OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const std::string& Pattern);
+	void OnMessageReceived_GetConversation(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit);
+	void OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, Uint64 OtherUserId);
+
+	nlohmann::json FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames);
+	Uint64 AddConversation(soci::session& DataBaseSession, const std::vector<Uint64>& UserIds);
+	std::vector<FConversationInfo> GetConversationsFromRange(soci::session& Sql, Uint64 UserId, int32 Offset, int32 Limit);
+
+private:
+	/** Socket port */
+	int32 Port;
+
+	/** Is socket using SSL? */
+	bool bUseSSL;
+
+	/** Wrapper for template heavy uWebSocket socket */
 	FSocketAppWrapper SocketAppWrapper;
+
+	/** pointer from opening socket, used to close a socket if needed */
 	us_listen_socket_t* AppListenSocket;
+
+	/** Engine pointer */
+	FProjectEngine* ProjectEngine;
 
 };

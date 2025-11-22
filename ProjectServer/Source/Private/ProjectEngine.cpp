@@ -4,7 +4,6 @@
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniObject.h"
-#include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Misc/WebSockets/CookieHelper.h"
 #include "Sockets/SocketManager.h"
@@ -381,12 +380,13 @@ void FProjectEngine::InitUsersSetup()
 
 void FProjectEngine::InitCommunicatorSetup()
 {
+	/*
 	CROW_ROUTE(CrowApp, "/api/v1/comm/addchat")
 		.methods("POST"_method, "OPTIONS"_method)
 		([this](const crow::request& req)
 		{
 			crow::response OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-					{ FPredefinedMessages::Message::Message, "Invalid JSON."} });
+				{ FPredefinedMessages::Message::Message, "Invalid JSON."} });
 
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
@@ -462,6 +462,21 @@ void FProjectEngine::InitCommunicatorSetup()
 
 			return OutResponse;
 		});
+
+	CROW_ROUTE(CrowApp, "/api/v1/comm/searchusers")
+		.methods("POST"_method, "OPTIONS"_method)
+		([this](const crow::request& req)
+		{
+			crow::response OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+				{ FPredefinedMessages::Message::Message, "Invalid JSON."} });
+
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
+			{
+				
+			}
+		});
+		*/
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)

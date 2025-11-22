@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Czas generowania: 14 Lis 2025, 15:14
+-- Czas generowania: 21 Lis 2025, 20:53
 -- Wersja serwera: 10.5.29-MariaDB-0+deb11u1
 -- Wersja PHP: 7.4.33
 
@@ -29,11 +29,10 @@ SET time_zone = "+00:00";
 
 CREATE TABLE `messages` (
   `id` bigint(20) UNSIGNED NOT NULL,
-  `receiver_id` bigint(20) UNSIGNED NOT NULL,
+  `conversation_id` bigint(20) UNSIGNED NOT NULL,
   `sender_id` bigint(20) UNSIGNED NOT NULL,
   `text` varchar(4096) NOT NULL,
-  `created_at` date NOT NULL DEFAULT current_timestamp(),
-  `read_at` date DEFAULT NULL
+  `created_at` date NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -46,9 +45,7 @@ CREATE TABLE `messages` (
 ALTER TABLE `messages`
   ADD PRIMARY KEY (`id`),
   ADD KEY `sender_id` (`sender_id`),
-  ADD KEY `receiver_id` (`receiver_id`),
-  ADD KEY `idx_sender` (`sender_id`),
-  ADD KEY `idx_receiver` (`receiver_id`);
+  ADD KEY `conversation_id` (`conversation_id`);
 
 --
 -- AUTO_INCREMENT dla zrzuconych tabel
@@ -68,8 +65,8 @@ ALTER TABLE `messages`
 -- Ograniczenia dla tabeli `messages`
 --
 ALTER TABLE `messages`
-  ADD CONSTRAINT `fk_receiver` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`),
-  ADD CONSTRAINT `fk_sender` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`);
+  ADD CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`conversation_id`),
+  ADD CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

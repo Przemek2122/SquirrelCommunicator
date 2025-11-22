@@ -22,6 +22,9 @@ public:
 	{
 	}
 
+	bool IsValid() const { return (UserId > 0); }
+
+protected:
 	/** Displayed name to other users */
 	std::string DisplayedName;
 
@@ -29,7 +32,7 @@ public:
 	std::string UserName;
 
 	/** User password (for log in) */
-	std::string UserPassword;
+	std::string UserPasswordHash;
 
 	/** User E-Mail for password recovery (@TODO in future) */
 	std::string UserEMail;
@@ -76,27 +79,7 @@ public:
 protected:
 	Uint64 GetCurrentTime() const;
 
-	FArgonSettings GetArgonSettings() const;
-
 private:
-	/** Displayed name to other users */
-	std::string DisplayedName;
-
-	/** Username (for log in) */
-	std::string UserName;
-
-	/** User password (for log in) */
-	std::string UserPasswordHash;
-
-	/** User E-Mail for password recovery (@TODO in future) */
-	std::string UserEMail;
-
-	/** Unique user Id */
-	Uint64 UserId;
-
-	/** Timestamp of last activity */
-	Uint64 LastActiveTime;
-
 	/** User manager class */
 	FUserManager* UserManager;
 	

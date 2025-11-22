@@ -62,7 +62,11 @@ public:
 	/** Get user ID from token, 0 means not found */
 	Uint64 GetIdFromToken(const std::string& InToken) const;
 
+	/** Cache for time updated every second */
 	Uint64 GetCurrentTimeCached() const { return CurrentTimeCached; }
+
+	/** Search provided Id for User */
+	FUser* GetUser(Uint64 UserId) const;
 
 protected:
 	Uint64 GenerateNextAvailableId();
