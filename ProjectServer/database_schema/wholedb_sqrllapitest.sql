@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Czas generowania: 21 Lis 2025, 20:54
+-- Czas generowania: 22 Lis 2025, 08:15
 -- Wersja serwera: 10.5.29-MariaDB-0+deb11u1
 -- Wersja PHP: 7.4.33
 
@@ -31,14 +31,6 @@ CREATE TABLE `conversations` (
   `conversation_id` bigint(20) UNSIGNED NOT NULL,
   `last_message_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Zrzut danych tabeli `conversations`
---
-
-INSERT INTO `conversations` (`conversation_id`, `last_message_at`) VALUES
-(4, '2025-11-21 19:47:23'),
-(5, '2025-11-21 19:52:16');
 
 -- --------------------------------------------------------
 
@@ -132,7 +124,13 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT dla tabeli `conversations`
 --
 ALTER TABLE `conversations`
-  MODIFY `conversation_id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `conversation_id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT dla tabeli `conversation_participants`
+--
+ALTER TABLE `conversation_participants`
+  MODIFY `conversation_participant_id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT dla tabeli `messages`

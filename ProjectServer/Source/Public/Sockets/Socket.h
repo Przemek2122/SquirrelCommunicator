@@ -5,6 +5,7 @@
 #include "Misc/WebSockets/AppWrapper.h"
 #include "soci/session.h"
 
+struct FConversationData;
 class FProjectEngine;
 
 /** Enum for each message sent using socket */
@@ -28,9 +29,9 @@ std::string SocketMessageTypeToString(ESocketMessageType InTypeEnum);
 
 struct FConversationInfo
 {
-	long ConversationId;
+	long long ConversationId;
 	std::string LastMessageAt;
-	long LastReadMessageId;
+	long long LastReadMessageId;
 };
 
 /**
@@ -64,8 +65,11 @@ private:
 	void OnMessageReceived_GetConversation(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit);
 	void OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, Uint64 OtherUserId);
 
+	std::string GenerateUserTopic(Uint64 UserId);
+	nlohmann::json FormatConversationIntoJson(std::shared_ptr<FConversationData>& ConversationDataPtr);
 	nlohmann::json FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames);
 	Uint64 AddConversation(soci::session& DataBaseSession, const std::vector<Uint64>& UserIds);
+	Uint64 FindDirectConversation(soci::session& Sql, Uint64 User1Id, Uint64 User2Id);
 	std::vector<FConversationInfo> GetConversationsFromRange(soci::session& Sql, Uint64 UserId, int32 Offset, int32 Limit);
 
 private:
