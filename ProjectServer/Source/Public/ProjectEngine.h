@@ -7,7 +7,7 @@
 #include "BackendSettings.h"
 
 // Enable SSL Support in crow library
-#define CROW_ENABLE_SSL
+//#define CROW_ENABLE_SSL
 #include "crow/app.h"
 
 class FConversationsManager;
@@ -28,7 +28,6 @@ public:
 
 	void InitBasicSetup();
 	void InitUsersSetup();
-	void InitCommunicatorSetup();
 
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 
