@@ -1,5 +1,7 @@
 #include "Auth/UserManager.h"
 
+#include <nlohmann/json.hpp>
+
 #include "DataBase/DataBaseConnect.h"
 #include "Misc/EncryptionManager.h"
 #include "Misc/EncryptionUtil.h"
@@ -121,55 +123,24 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::
 	std::shared_ptr<FUser> UserPtr = nullptr;
 	bool bWereDownloadedFromDB = false;
 
-	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBaseCache)
 	{
-		if (UserPair.second->IsUserMailCorrect(InUserEmail))
+		const std::shared_lock ScopeLock(UserDataBaseMutex);
+		for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBaseCache)
 		{
-			UserPtr = UserPair.second;
+			if (UserPair.second->IsUserMailCorrect(InUserEmail))
+			{
+				UserPtr = UserPair.second;
+			}
 		}
 	}
 
 	// User missing check db
 	if (UserPtr == nullptr)
 	{
-		FDataBaseConnect Connect;
-		if (Connect.IsConnected())
+		EDatabaseDownloadResult Result = DownloadUserFromDBByMail(InUserEmail, UserPtr);
+		if (Result == EDatabaseDownloadResult::Success)
 		{
-			// Get database connection session
-			soci::session& DataBaseSession = Connect.GetSession();
-
-			// Get user data and hashed password
-			std::string Username;
-			std::string StoredPasswordHash;
-			std::string Mail;
-			std::string DisplayName;
-			Uint64 UserId;
-			soci::indicator Ind;
-
-			DataBaseSession << "SELECT id, username, password, email, displayedname FROM users WHERE email = :email",
-				soci::use(InUserEmail),
-				soci::into(UserId, Ind),
-				soci::into(Username),
-				soci::into(StoredPasswordHash),
-				soci::into(Mail),
-				soci::into(DisplayName);
-
-			if (Ind == soci::i_ok)
-			{
-				UserPtr = std::make_shared<FUser>(this);
-				FUser* User = UserPtr.get();
-				User->SetUserName(Username);
-				User->SetPassword(StoredPasswordHash);
-				User->SetUserEMail(Mail);
-				User->SetDisplayedName(DisplayName);
-				User->SetUserId(UserId);
-
-				bWereDownloadedFromDB = true;
-			}
-		}
-		else
-		{
-			LoginStatus = ELoginStatus::DataBaseConnectionFailed;
+			bWereDownloadedFromDB = true;
 		}
 	}
 
@@ -220,6 +191,7 @@ bool FUserManager::AreLoginCredentialsCorrect(const std::string& InUserName, con
 {
 	bool bAreLoginCredentialsCorrect = false;
 
+	const std::shared_lock ScopeLock(UserDataBaseMutex);
 	for (const std::pair<const Uint64, std::shared_ptr<FUser>>& UserPair : UserDataBaseCache)
 	{
 		FUser* User = UserPair.second.get();
@@ -248,8 +220,9 @@ Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);
 	return Id;
 }
-FUser* FUserManager::GetUser(const Uint64 UserId) const
+FUser* FUserManager::GetUser(const Uint64 UserId)
 {
+	const std::shared_lock ScopeLock(UserDataBaseMutex);
 	if (UserDataBaseCache.ContainsKey(UserId))
 	{
 		std::optional<std::shared_ptr<FUser>> UserAsOptional = UserDataBaseCache.FindValueByKey(UserId);
@@ -262,10 +235,184 @@ FUser* FUserManager::GetUser(const Uint64 UserId) const
 	return nullptr;
 }
 
+bool FUserManager::GetUsersByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers)
+{
+	return (DownloadUsersFromDBByIds(UserIds, OutUsers) == EDatabaseDownloadResult::Success);
+}
+
+EDatabaseDownloadResult FUserManager::DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr)
+{
+	EDatabaseDownloadResult DownloadResult = EDatabaseDownloadResult::Unknown;
+
+	FDataBaseConnect Connect;
+	if (Connect.IsConnected())
+	{
+		// Get database connection session
+		soci::session& DataBaseSession = Connect.GetSession();
+
+		try
+		{
+			// Get user data and hashed password
+			std::string Username;
+			std::string StoredPasswordHash;
+			std::string Mail;
+			std::string DisplayName;
+			Uint64 UserId;
+			soci::indicator Ind;
+
+			DataBaseSession << "SELECT id, username, password, email, displayedname FROM users WHERE email = :email",
+				soci::use(InUserEmail),
+				soci::into(UserId, Ind),
+				soci::into(Username),
+				soci::into(StoredPasswordHash),
+				soci::into(Mail),
+				soci::into(DisplayName);
+
+			if (Ind == soci::i_ok)
+			{
+				UserPtr = std::make_shared<FUser>(this);
+				FUser* User = UserPtr.get();
+				User->SetUserName(Username);
+				User->SetPassword(StoredPasswordHash);
+				User->SetUserEMail(Mail);
+				User->SetDisplayedName(DisplayName);
+				User->SetUserId(UserId);
+
+				DownloadResult = EDatabaseDownloadResult::Success;
+			}
+			else
+			{
+				DownloadResult = EDatabaseDownloadResult::DataNotFound;
+			}
+		}
+		catch (const nlohmann::json::exception& e)
+		{
+			LOG_ERROR("Database error: " << e.what());
+
+			DownloadResult = EDatabaseDownloadResult::DatabaseFailed;
+		}
+	}
+	else
+	{
+		DownloadResult = EDatabaseDownloadResult::ConnectionFailed;
+	}
+
+	return DownloadResult;
+}
+
+EDatabaseDownloadResult FUserManager::DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers)
+{
+	if (UserIds.empty())
+	{
+		return EDatabaseDownloadResult::DataNotFound;
+	}
+
+	// 1. Prepare containers
+	OutUsers.clear();
+	OutUsers.reserve(UserIds.size());
+
+	std::vector<Uint64> MissingIds;
+	MissingIds.reserve(UserIds.size());
+
+	// 2. CACHE PASS: Check what we already have
+	for (Uint64 TargetId : UserIds)
+	{
+		const std::shared_lock ScopeLock(UserDataBaseMutex);
+		std::optional<std::shared_ptr<FUser>> ExistingUserCache = UserDataBaseCache.FindValueByKey(TargetId);
+
+		if (ExistingUserCache.has_value())
+		{
+			OutUsers.push_back(ExistingUserCache.value());
+		}
+		else
+		{
+			MissingIds.push_back(TargetId);
+		}
+	}
+
+	// If we found everyone in the cache, we are done!
+	if (MissingIds.empty())
+	{
+		return EDatabaseDownloadResult::Success;
+	}
+
+	// 3. DATABASE PASS: Download only missing IDs
+	EDatabaseDownloadResult DownloadResult = EDatabaseDownloadResult::Unknown;
+	FDataBaseConnect Connect;
+
+	if (Connect.IsConnected())
+	{
+		soci::session& DataBaseSession = Connect.GetSession();
+
+		try
+		{
+			// Build string for SQL "IN" clause: "1, 5, 99"
+			std::string IdList;
+			for (size_t i = 0; i < MissingIds.size(); ++i) {
+				IdList += std::to_string(MissingIds[i]);
+				if (i < MissingIds.size() - 1) IdList += ",";
+			}
+
+			// Prepare fetch variables
+			std::string Username, StoredPasswordHash, Mail, DisplayName;
+			Uint64 UserIdVal;
+			soci::indicator Ind;
+
+			// Execute Single Query
+			soci::statement St = (DataBaseSession.prepare <<
+				"SELECT id, username, password, email, displayedname FROM users WHERE id IN (" + IdList + ")",
+				soci::into(UserIdVal, Ind),
+				soci::into(Username),
+				soci::into(StoredPasswordHash),
+				soci::into(Mail),
+				soci::into(DisplayName)
+				);
+
+			St.execute();
+
+			while (St.fetch())
+			{
+				if (Ind == soci::i_ok)
+				{
+					// Create User
+					std::shared_ptr<FUser> NewUser = std::make_shared<FUser>(this);
+					NewUser->SetUserName(Username);
+					NewUser->SetPassword(StoredPasswordHash);
+					NewUser->SetUserEMail(Mail);
+					NewUser->SetDisplayedName(DisplayName);
+					NewUser->SetUserId(UserIdVal);
+
+					// Update CACHE
+					const std::unique_lock ScopeLock(UserDataBaseMutex);
+					UserDataBaseCache.Emplace(UserIdVal, NewUser);
+
+					// Add to Output
+					OutUsers.push_back(NewUser);
+				}
+			}
+
+			// If we have any users (from cache OR db), consider it a success
+			DownloadResult = (OutUsers.empty()) ? EDatabaseDownloadResult::DataNotFound : EDatabaseDownloadResult::Success;
+		}
+		catch (const std::exception& e)
+		{
+			LOG_ERROR("Database error (Bulk User Resolve): " << e.what());
+			DownloadResult = EDatabaseDownloadResult::DatabaseFailed;
+		}
+	}
+	else
+	{
+		DownloadResult = EDatabaseDownloadResult::ConnectionFailed;
+	}
+
+	return DownloadResult;
+}
+
 Uint64 FUserManager::GenerateNextAvailableId()
 {
 	NextAvailableIndex++;
 
+	const std::shared_lock ScopeLock(UserDataBaseMutex);
 	if (UserDataBaseCache.ContainsKey(NextAvailableIndex))
 	{
 		LOG_ERROR("Critical error, NextAvailableIndex already exist and should not!");
@@ -313,7 +460,7 @@ void FUserManager::OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr)
 void FUserManager::AddUserToCache(const std::shared_ptr<FUser>& UserPtr)
 {
 	// Lock as register may come from any thread
-	const std::lock_guard<std::mutex> ThreadScopeLock(UserDataBaseMutex);
+	const std::unique_lock ScopeLock(UserDataBaseMutex);
 
 	// Create user
 	UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);

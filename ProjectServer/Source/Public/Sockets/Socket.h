@@ -5,6 +5,7 @@
 #include "Misc/WebSockets/AppWrapper.h"
 #include "soci/session.h"
 
+class FUser;
 struct FConversationData;
 class FProjectEngine;
 
@@ -17,7 +18,7 @@ enum class ESocketMessageType : uint8
 	Typing,
 	MarkRead,
 	SearchUser,
-	GetConversation,
+	GetConversations,
 	AddConversation,
 	InitialClientData,
 	InitialConversations,
@@ -26,13 +27,6 @@ enum class ESocketMessageType : uint8
 
 ESocketMessageType StringToSocketMessageType(const std::string& InTypeString);
 std::string SocketMessageTypeToString(ESocketMessageType InTypeEnum);
-
-struct FConversationInfo
-{
-	long long ConversationId;
-	std::string LastMessageAt;
-	long long LastReadMessageId;
-};
 
 /**
  * Single web socket
@@ -66,11 +60,10 @@ private:
 	void OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, Uint64 OtherUserId);
 
 	std::string GenerateUserTopic(Uint64 UserId);
-	nlohmann::json FormatConversationIntoJson(std::shared_ptr<FConversationData>& ConversationDataPtr);
+
+	/** returns conversation json aray */
+	nlohmann::json FormatConversationIntoJson(const CArray<Uint64>& ConversationIds);
 	nlohmann::json FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames);
-	Uint64 AddConversation(soci::session& DataBaseSession, const std::vector<Uint64>& UserIds);
-	Uint64 FindDirectConversation(soci::session& Sql, Uint64 User1Id, Uint64 User2Id);
-	std::vector<FConversationInfo> GetConversationsFromRange(soci::session& Sql, Uint64 UserId, int32 Offset, int32 Limit);
 
 private:
 	/** Socket port */

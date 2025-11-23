@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shared_mutex>
+
 #include "CoreMinimal.h"
 #include "SessionManager.h"
 #include "User.h"
@@ -24,7 +26,19 @@ enum class ELoginStatus : Uint8
 	DataBaseConnectionFailed
 };
 
-/** Class for managing users */
+enum class EDatabaseDownloadResult : Uint8
+{
+	Unknown,
+	Success,
+	ConnectionFailed,
+	DatabaseFailed,
+	DataNotFound
+};
+
+/**
+ * Class for managing users
+ * ALL downloading and managing users should be done using this class
+ */
 class FUserManager
 {
 public:
@@ -66,9 +80,14 @@ public:
 	Uint64 GetCurrentTimeCached() const { return CurrentTimeCached; }
 
 	/** Search provided Id for User */
-	FUser* GetUser(Uint64 UserId) const;
+	FUser* GetUser(Uint64 UserId);
 
-protected:
+	bool GetUsersByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers);
+
+private:
+	EDatabaseDownloadResult DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr);
+	EDatabaseDownloadResult DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers);
+
 	Uint64 GenerateNextAvailableId();
 	bool VerifyPasswords(const std::string& StringWithHash, const std::string& StringWithoutHash);
 	std::string HashUserPassword(const std::string& RawPassword);
@@ -93,7 +112,7 @@ private:
 	Uint64 NextAvailableIndex;
 
 	/** Mutex for UserDataBase */
-	std::mutex UserDataBaseMutex;
+	std::shared_mutex UserDataBaseMutex;
 
 	/** Cache for time, we will use it for each login, message, etc so cache will be faster */
 	Uint64 CurrentTimeCached;

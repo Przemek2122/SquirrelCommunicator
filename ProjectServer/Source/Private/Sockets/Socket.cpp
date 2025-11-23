@@ -17,7 +17,7 @@ ESocketMessageType StringToSocketMessageType(const std::string& InTypeString)
 	if (InTypeString == "typing")					return ESocketMessageType::Typing;
 	if (InTypeString == "mark_read")				return ESocketMessageType::MarkRead;
 	if (InTypeString == "search_user")				return ESocketMessageType::SearchUser;
-	if (InTypeString == "get_conversation")			return ESocketMessageType::GetConversation;
+	if (InTypeString == "get_conversations")		return ESocketMessageType::GetConversations;
 	if (InTypeString == "add_conversation")			return ESocketMessageType::AddConversation;
 	if (InTypeString == "initial_client_data")		return ESocketMessageType::InitialClientData;
 	if (InTypeString == "initial_conversations")	return ESocketMessageType::InitialConversations;
@@ -34,7 +34,7 @@ std::string SocketMessageTypeToString(const ESocketMessageType InTypeEnum)
 		case ESocketMessageType::Typing:				return "typing";
 		case ESocketMessageType::MarkRead:				return "mark_read";
 		case ESocketMessageType::SearchUser:			return "search_user";
-		case ESocketMessageType::GetConversation:		return "get_conversation";
+		case ESocketMessageType::GetConversations:		return "get_conversations";
 		case ESocketMessageType::AddConversation:		return "add_conversation";
 		case ESocketMessageType::InitialClientData:		return "initial_client_data";
 		case ESocketMessageType::InitialConversations:	return "initial_conversations";
@@ -371,7 +371,7 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 				break;
 			}
 
-			case ESocketMessageType::GetConversation:
+			case ESocketMessageType::GetConversations:
 			{
 				FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
 				if (WebSocketSessionData != nullptr)
@@ -514,23 +514,19 @@ void FSocket::OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const s
 
 void FSocket::OnMessageReceived_GetConversation(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit)
 {
-	nlohmann::json JsonData;
+	FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
 
-	FDataBaseConnect Connect;
-	if (Connect.IsConnected())
-	{
-		// Get database connection session
-		soci::session& DataBaseSession = Connect.GetSession();
+	CArray<Uint64> ConversationIds;
+	ConversationsManager->GetLastConversationByUserId(CurrentUserId, Offset, Limit, ConversationIds);
 
-		const std::vector<FConversationInfo> RecentConversations = GetConversationsFromRange(DataBaseSession, CurrentUserId, Offset, Limit);
+	nlohmann::json ConversationsJsonArray = FormatConversationIntoJson(ConversationIds);
 
-		nlohmann::json JsonRoot;
-		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::InitialConversations);
-		JsonRoot["data"] = JsonData;
+	nlohmann::json JsonRoot;
+	JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::GetConversations);
+	JsonRoot["message"] = ConversationsJsonArray;
 
-		// Send initial client data
-		ws->send(JsonRoot.dump(), uWS::TEXT);
-	}
+	// Send initial client data
+	ws->send(JsonRoot.dump(), uWS::TEXT);
 }
 
 void FSocket::OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, const Uint64 OtherUserId)
@@ -538,29 +534,21 @@ void FSocket::OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, co
 	FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
 	if (WebSocketSessionData != nullptr && OtherUserId > 0)
 	{
-		FDataBaseConnect Connect;
-		if (Connect.IsConnected())
-		{
-			// Get database connection session
-			soci::session& DataBaseSession = Connect.GetSession();
+		CArray<Uint64> UserIdArray;
+		UserIdArray.Push(WebSocketSessionData->UserId);
+		UserIdArray.Push(OtherUserId);
 
-			CArray<Uint64> UserIdArray;
-			UserIdArray.Push(WebSocketSessionData->UserId);
-			UserIdArray.Push(OtherUserId);
+		FConversationsManager* ConversationManager = ProjectEngine->GetConversationsManager();
 
-			const Uint64 ConversationId = AddConversation(DataBaseSession, UserIdArray.Vector);
+		// Find or create conversation
+		const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray.Vector);
 
-			// Get conversation
-			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
-			std::shared_ptr<FConversationData> ConversationDataPtr = ConversationsManager->GetConversation(ConversationId);
+		const nlohmann::json MessageJson = FormatConversationIntoJson({ ConversationId });
 
-			const nlohmann::json MessageJson = FormatConversationIntoJson(ConversationDataPtr);
-
-			nlohmann::json ReturnJson;
-			ReturnJson["type"] = SocketMessageTypeToString(ESocketMessageType::AddConversation);
-			ReturnJson["message"] = MessageJson;
-			ws->send(ReturnJson.dump(), opCode);
-		}
+		nlohmann::json ReturnJson;
+		ReturnJson["type"] = SocketMessageTypeToString(ESocketMessageType::AddConversation);
+		ReturnJson["message"] = MessageJson;
+		ws->send(ReturnJson.dump(), opCode);
 	}
 }
 
@@ -569,50 +557,63 @@ std::string FSocket::GenerateUserTopic(const Uint64 UserId)
 	return "user_" + std::to_string(UserId);
 }
 
-nlohmann::json FSocket::FormatConversationIntoJson(std::shared_ptr<FConversationData>& ConversationDataPtr)
+nlohmann::json FSocket::FormatConversationIntoJson(const CArray<Uint64>& ConversationIds)
 {
-	nlohmann::json OutJson;
+	FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
+	FUserManager* UserManager = ProjectEngine->GetUserManager();
 
-	FConversationData* ConversationData = ConversationDataPtr.get();
-	OutJson["conversation_id"] = ConversationData->ConversationId;
+	nlohmann::json ConversationsJsonArray = nlohmann::json::array();
 
-	// Create participants json array
+	for (Uint64 ConversationId : ConversationIds)
 	{
-		nlohmann::json ParticipantsJsonArray = nlohmann::json::array();
-
-		for (const Uint64& UsersId : ConversationData->UsersIds)
+		std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
+		if (Conversation != nullptr)
 		{
-			nlohmann::json NewParticipant;
+			nlohmann::json NewConversation;
 
-			NewParticipant["id"] = UsersId;
+			// Add users
+			{
+				nlohmann::json UsersJsonArray = nlohmann::json::array();
 
-			ParticipantsJsonArray.push_back(NewParticipant);
+				for (const Uint64 UsersId : Conversation->UsersIds)
+				{
+					FUser* User = UserManager->GetUser(UsersId);
+					if (User != nullptr)
+					{
+						nlohmann::json NewUser;
+
+						NewUser["id"] = UsersId;
+						NewUser["name"] = User->GetDisplayedName();
+
+						UsersJsonArray.push_back(NewUser);
+					}
+				}
+
+				NewConversation["users"] = UsersJsonArray;
+			}
+
+			// Add messages
+			{
+				std::vector<FConversationMessageData> LastMessages = Conversation->MessagesMap.PeekLast(10);
+				nlohmann::json MessagesJsonArray = nlohmann::json::array();
+
+				for (FConversationMessageData& Message : LastMessages | std::views::reverse)
+				{
+					nlohmann::json NewMessage;
+					NewMessage["message"] = Message.Message;
+					NewMessage["sender_id"] = Message.SenderId;
+
+					MessagesJsonArray.push_back(NewMessage);
+				}
+
+				NewConversation["messages"] = MessagesJsonArray;
+			}
+
+			ConversationsJsonArray.push_back(NewConversation);
 		}
-
-		OutJson["participants"] = ParticipantsJsonArray;
 	}
 
-	// Create messages array
-	{
-		nlohmann::json MessagesJsonArray = nlohmann::json::array();
-
-		// @TODO get rid of magic '20'
-		std::vector<FConversationMessageData> FrontMessages = ConversationData->MessagesMap.PeekFirst(20);
-		for (const FConversationMessageData& FrontMessage : FrontMessages)
-		{
-			nlohmann::json NewMessage;
-
-			NewMessage["id"] = FrontMessage.MessageId;
-			NewMessage["sender_id"] = FrontMessage.SenderId;
-			NewMessage["message"] = FrontMessage.Message;
-
-			MessagesJsonArray.push_back(NewMessage);
-		}
-
-		OutJson["messages"] = MessagesJsonArray;
-	}
-
-	return OutJson;
+	return ConversationsJsonArray;
 }
 
 nlohmann::json FSocket::FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames)
@@ -634,133 +635,4 @@ nlohmann::json FSocket::FormatUsersToJson(const std::vector<uint64_t>& UserIds, 
 	nlohmann::json JsonRoot;
 	JsonRoot["data"] = DataUserArray;
 	return JsonRoot;
-}
-
-Uint64 FSocket::AddConversation(soci::session& DataBaseSession, const std::vector<Uint64>& UserIds)
-{
-	// Declare ConversationId properly
-	long long ConversationId = 0;
-
-	// Special case for 2 users direct message which we do not want to duplicate
-	if (UserIds.size() == 2)
-	{
-		const Uint64 FoundId = FindDirectConversation(DataBaseSession, UserIds[0], UserIds[1]);
-		if (FoundId > 0)
-		{
-			// Skip search
-			return FoundId;
-		}
-	}
-
-	try
-	{
-		DataBaseSession << "INSERT INTO conversations (last_message_at) "
-			"VALUES (CURRENT_TIMESTAMP)";
-	}
-	catch (const soci::soci_error& e)
-	{
-		LOG_ERROR("Database error: " << e.what());
-	}
-
-	try
-	{
-		// Get auto-generated ID - check if this actually works
-		DataBaseSession.get_last_insert_id("conversations", ConversationId);
-	}
-	catch (const soci::soci_error& e)
-	{
-		LOG_ERROR("Database error: " << e.what());
-	}
-
-	try
-	{
-		// Add participants - make sure types match
-		for (Uint64 UserId : UserIds)
-		{
-			long UserIdLong = static_cast<long>(UserId);
-			DataBaseSession << "INSERT INTO conversation_participants "
-				"(conversation_id, user_id) "
-				"VALUES (:convId, :userId)",
-				soci::use(ConversationId), soci::use(UserIdLong);
-		}
-	}
-	catch (const soci::soci_error& e)
-	{
-		LOG_ERROR("Database error: " << e.what());
-	}
-
-	if (ConversationId > 0)
-	{
-		FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
-		ConversationsManager->AddConversation(ConversationId, UserIds);
-	}
-
-	return ConversationId;
-}
-
-Uint64 FSocket::FindDirectConversation(soci::session& Sql, Uint64 User1Id, Uint64 User2Id)
-{
-	long long ConversationId = 0;
-
-	try
-	{
-		Sql << "SELECT cp1.conversation_id "
-			"FROM conversation_participants cp1 "
-			"INNER JOIN conversation_participants cp2 "
-			"    ON cp1.conversation_id = cp2.conversation_id "
-			"WHERE cp1.user_id = :user1 "
-			"AND cp2.user_id = :user2 "
-			"AND cp1.conversation_id IN ("
-			"    SELECT conversation_id "
-			"    FROM conversation_participants "
-			"    GROUP BY conversation_id "
-			"    HAVING COUNT(*) = 2"
-			")",
-			soci::use(User1Id, "user1"),
-			soci::use(User2Id, "user2"),
-			soci::into(ConversationId);
-	}
-	catch (const soci::soci_error& e)
-	{
-		LOG_ERROR("Database error: " << e.what());
-	}
-
-	return static_cast<Uint64>(ConversationId);
-}
-
-std::vector<FConversationInfo> FSocket::GetConversationsFromRange(soci::session& Sql, Uint64 UserId, int32 Offset, int32 Limit)
-{
-	std::vector<FConversationInfo> Conversations;
-
-	try
-	{
-		FConversationInfo Info;
-
-		soci::statement St = (Sql.prepare <<
-			"SELECT c.conversation_id, c.last_message_at, cp.last_read_message_id "
-			"FROM conversations c "
-			"JOIN conversation_participants cp ON c.conversation_id = cp.conversation_id "
-			"WHERE cp.user_id = :userId "
-			"ORDER BY c.last_message_at DESC "
-			"LIMIT :limit OFFSET :offset",
-			soci::use(UserId),
-			soci::use(Limit),
-			soci::use(Offset),
-			soci::into(Info.ConversationId),
-			soci::into(Info.LastMessageAt),
-			soci::into(Info.LastReadMessageId));
-
-		St.execute();
-
-		while (St.fetch())
-		{
-			Conversations.push_back(Info);
-		}
-	}
-	catch (const soci::soci_error& e)
-	{
-		LOG_ERROR("Database error: " << e.what());
-	}
-
-	return Conversations;
 }
