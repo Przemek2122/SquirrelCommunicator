@@ -35,23 +35,21 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 {
 	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
 
-	bool bCanRegister = false;
-
-	// Verifications
-	if (InUserPassword.length() > 8
-		&& FStringHelpers::ValidateString(InUserName, FPredefinedCharsets::BASE62)
-		&& FStringHelpers::ValidateString(InUserPassword, FPredefinedCharsets::BASE_SIMPLE_PASSWORD)
-		&& FStringHelpers::ValidateString(InUserEMail, FPredefinedCharsets::BASE_EMAIL)
-	)
-	{
-		bCanRegister = true;
-	}
-	else
+	// Check password
+	if (InUserPassword.length() <= 10)
 	{
 		RegisterUserStatus = ERegisterUserStatus::PasswordToWeak;
 	}
 
-	if (bCanRegister)
+	// Check mail
+	if (!FStringHelpers::ValidateString(InUserEMail, FPredefinedCharsets::BASE_EMAIL))
+	{
+		RegisterUserStatus = ERegisterUserStatus::MailIncorrect;
+	}
+
+	// @TODO Check UserName, check password better
+	
+	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
 	{
 		const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
 		FUser* User = UserPtr.get();
@@ -137,8 +135,8 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::
 	// User missing check db
 	if (UserPtr == nullptr)
 	{
-		EDatabaseDownloadResult Result = DownloadUserFromDBByMail(InUserEmail, UserPtr);
-		if (Result == EDatabaseDownloadResult::Success)
+		EDatabaseOperationResult Result = DownloadUserFromDBByMail(InUserEmail, UserPtr);
+		if (Result == EDatabaseOperationResult::Success)
 		{
 			bWereDownloadedFromDB = true;
 		}
@@ -220,29 +218,15 @@ Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);
 	return Id;
 }
-FUser* FUserManager::GetUser(const Uint64 UserId)
-{
-	const std::shared_lock ScopeLock(UserDataBaseMutex);
-	if (UserDataBaseCache.ContainsKey(UserId))
-	{
-		std::optional<std::shared_ptr<FUser>> UserAsOptional = UserDataBaseCache.FindValueByKey(UserId);
-		if (UserAsOptional.has_value())
-		{
-			return UserAsOptional->get();
-		}
-	}
-
-	return nullptr;
-}
 
 bool FUserManager::GetUsersByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers)
 {
-	return (DownloadUsersFromDBByIds(UserIds, OutUsers) == EDatabaseDownloadResult::Success);
+	return (DownloadUsersFromDBByIds(UserIds, OutUsers, true) == EDatabaseOperationResult::Success);
 }
 
-EDatabaseDownloadResult FUserManager::DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr)
+EDatabaseOperationResult FUserManager::DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr)
 {
-	EDatabaseDownloadResult DownloadResult = EDatabaseDownloadResult::Unknown;
+	EDatabaseOperationResult DownloadResult = EDatabaseOperationResult::Unknown;
 
 	FDataBaseConnect Connect;
 	if (Connect.IsConnected())
@@ -278,33 +262,33 @@ EDatabaseDownloadResult FUserManager::DownloadUserFromDBByMail(const std::string
 				User->SetDisplayedName(DisplayName);
 				User->SetUserId(UserId);
 
-				DownloadResult = EDatabaseDownloadResult::Success;
+				DownloadResult = EDatabaseOperationResult::Success;
 			}
 			else
 			{
-				DownloadResult = EDatabaseDownloadResult::DataNotFound;
+				DownloadResult = EDatabaseOperationResult::DataNotFound;
 			}
 		}
 		catch (const nlohmann::json::exception& e)
 		{
 			LOG_ERROR("Database error: " << e.what());
 
-			DownloadResult = EDatabaseDownloadResult::DatabaseFailed;
+			DownloadResult = EDatabaseOperationResult::DatabaseFailed;
 		}
 	}
 	else
 	{
-		DownloadResult = EDatabaseDownloadResult::ConnectionFailed;
+		DownloadResult = EDatabaseOperationResult::ConnectionFailed;
 	}
 
 	return DownloadResult;
 }
 
-EDatabaseDownloadResult FUserManager::DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers)
+EDatabaseOperationResult FUserManager::DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers, const bool bAutoAddToCache)
 {
 	if (UserIds.empty())
 	{
-		return EDatabaseDownloadResult::DataNotFound;
+		return EDatabaseOperationResult::DataNotFound;
 	}
 
 	// 1. Prepare containers
@@ -333,11 +317,11 @@ EDatabaseDownloadResult FUserManager::DownloadUsersFromDBByIds(const std::vector
 	// If we found everyone in the cache, we are done!
 	if (MissingIds.empty())
 	{
-		return EDatabaseDownloadResult::Success;
+		return EDatabaseOperationResult::Success;
 	}
 
 	// 3. DATABASE PASS: Download only missing IDs
-	EDatabaseDownloadResult DownloadResult = EDatabaseDownloadResult::Unknown;
+	EDatabaseOperationResult DownloadResult = EDatabaseOperationResult::Unknown;
 	FDataBaseConnect Connect;
 
 	if (Connect.IsConnected())
@@ -383,8 +367,11 @@ EDatabaseDownloadResult FUserManager::DownloadUsersFromDBByIds(const std::vector
 					NewUser->SetUserId(UserIdVal);
 
 					// Update CACHE
-					const std::unique_lock ScopeLock(UserDataBaseMutex);
-					UserDataBaseCache.Emplace(UserIdVal, NewUser);
+					if (bAutoAddToCache)
+					{
+						const std::unique_lock ScopeLock(UserDataBaseMutex);
+						UserDataBaseCache.Emplace(UserIdVal, NewUser);
+					}
 
 					// Add to Output
 					OutUsers.push_back(NewUser);
@@ -392,17 +379,17 @@ EDatabaseDownloadResult FUserManager::DownloadUsersFromDBByIds(const std::vector
 			}
 
 			// If we have any users (from cache OR db), consider it a success
-			DownloadResult = (OutUsers.empty()) ? EDatabaseDownloadResult::DataNotFound : EDatabaseDownloadResult::Success;
+			DownloadResult = (OutUsers.empty()) ? EDatabaseOperationResult::DataNotFound : EDatabaseOperationResult::Success;
 		}
 		catch (const std::exception& e)
 		{
 			LOG_ERROR("Database error (Bulk User Resolve): " << e.what());
-			DownloadResult = EDatabaseDownloadResult::DatabaseFailed;
+			DownloadResult = EDatabaseOperationResult::DatabaseFailed;
 		}
 	}
 	else
 	{
-		DownloadResult = EDatabaseDownloadResult::ConnectionFailed;
+		DownloadResult = EDatabaseOperationResult::ConnectionFailed;
 	}
 
 	return DownloadResult;

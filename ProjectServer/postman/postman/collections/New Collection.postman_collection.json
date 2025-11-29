@@ -1,0 +1,108 @@
+{
+  "info": {
+    "_postman_id": "5d8760d2-dbc3-4937-8f1c-172caffac644",
+    "name": "http_rest",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"username\": \"postmanuser\",\r\n    \"password\": \"postMann12!@\",\r\n    \"email\": \"postmanuser@sqrll.net\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{HOST}}/api/v1/users/register",
+          "host": [
+            "{{HOST}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "register"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"email\": \"postmanuser@sqrll.net\",\r\n    \"password\": \"postMann12!@\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{HOST}}/api/v1/users/login",
+          "host": [
+            "{{HOST}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"token\": \"{{CURRENT_TOKEN}}\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": ""
+        }
+      }
+    },
+    {
+      "name": "Refresh",
+      "request": {
+        "method": "POST",
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"token\": \"your_token\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": ""
+        }
+      }
+    },
+    {
+      "name": "Verify",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": ""
+        }
+      }
+    }
+  ]
+}

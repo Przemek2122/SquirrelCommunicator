@@ -1,9 +1,9 @@
 #pragma once
 
+#include <shared_mutex>
 #include <nlohmann/json_fwd.hpp>
 
 #include "Misc/WebSockets/AppWrapper.h"
-#include "soci/session.h"
 
 class FUser;
 struct FConversationData;
@@ -35,15 +35,24 @@ std::string SocketMessageTypeToString(ESocketMessageType InTypeEnum);
 class FSocket
 {
 public:
-	FSocket(int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath);
+	FSocket(int32 InSocketIndex, int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath);
 	~FSocket();
 
+	/** Add task to be executed on this socket */
+	void AddDeferTaskForConnectionId(Uint64 UserId, FFunctorLambda<void, void* /* ws */>& FunctionToCallOnSocket);
+
+	/** Function called before entering socket loop */
+	void BeforeRunAsync();
+
+	/** Called from thread */
 	void Async();
 
 	/** uWS lambdas extensions */
 	void OnClientConnected(auto* ws);
 	void OnClientDisconnected(auto* ws, int code, std::string_view message);
 	void OnMessageReceived(auto* ws, std::string_view message, uWS::OpCode opCode);
+	void OnPing(auto* ws);
+	void OnPong(auto* ws);
 
 private:
 	/** Default uWS OpCodes */
@@ -52,7 +61,7 @@ private:
 	void OnMessageReceived_Pong(auto* ws, std::string_view message, uWS::OpCode opCode);
 
 	/** Custom enums */
-	void OnMessageReceived_SendMessage(auto* ws, uWS::OpCode opCode, Uint64 ReceiverId, const std::string& Content);
+	void OnMessageReceived_Message(auto* ws, uWS::OpCode opCode, Uint64 ConversationId, const std::string& Content);
 	void OnMessageReceived_Typing(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
 	void OnMessageReceived_MarkRead(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
 	void OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const std::string& Pattern);
@@ -66,6 +75,9 @@ private:
 	nlohmann::json FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames);
 
 private:
+	/** per socket index to find which socket is user connected to */
+	int32 SocketIndex;
+
 	/** Socket port */
 	int32 Port;
 
@@ -81,4 +93,9 @@ private:
 	/** Engine pointer */
 	FProjectEngine* ProjectEngine;
 
+	/** User id to socket ptr */
+	CUnorderedMap<Uint64, void*> UserIdToWebSocketPtrMap;
+
+	/** Mutex for UserIdToWebSocketPtrMap */
+	std::shared_mutex UserIdToWebSocketPtrMapMutex;
 };

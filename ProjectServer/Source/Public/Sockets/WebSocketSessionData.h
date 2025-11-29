@@ -1,8 +1,8 @@
 #pragma once
+#include <uWebSockets/WebSocket.h>
 
-class FWebSocketSessionData
+struct FWebSocketSessionData
 {
-public:
 	/** Session user Id */
 	Uint64 UserId;
 

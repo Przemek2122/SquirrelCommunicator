@@ -2,6 +2,7 @@
 
 FUser::FUser(FUserManager* InUserManager)
 	: UserManager(InUserManager)
+	, SocketId(-1)
 {
 }
 
@@ -50,6 +51,11 @@ bool FUser::IsUserPasswordCorrect(const std::string& InUserPasswordHash) const
 	return (UserPasswordHash == InUserPasswordHash);
 }
 
+void FUser::SetSocketId(int32 InSocketId)
+{
+	SocketId = InSocketId;
+}
+
 const std::string& FUser::GetDisplayedName() const
 {
 	return DisplayedName;
@@ -77,6 +83,11 @@ FUserData FUser::GetUserData() const
 	FUserData SavableUserData = *this;
 
 	return SavableUserData;
+}
+
+int32 FUser::GetSocketId() const
+{
+	return SocketId;
 }
 
 Uint64 FUser::GetCurrentTime() const

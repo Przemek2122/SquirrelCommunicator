@@ -38,6 +38,7 @@ public:
 
 	FUserManager* GetUserManager() const { return UserManager.get(); }
 	FConversationsManager* GetConversationsManager() const { return ConversationsManager.get(); }
+	FSocketManager* GetSocketManager() const { return SocketManager.get(); }
 
 	crow::App<FCrowAppMiddleware>& GetCrowApp() { return CrowApp; }
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }

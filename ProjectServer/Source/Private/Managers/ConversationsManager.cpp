@@ -1,5 +1,6 @@
 #include "Managers/ConversationsManager.h"
 #include "DataBase/DataBaseConnect.h"
+#include "soci/rowset.h"
 
 Uint64 FConversationsManager::GetOrCreateConversation(const CArray<Uint64>& InUserIds)
 {
@@ -8,7 +9,7 @@ Uint64 FConversationsManager::GetOrCreateConversation(const CArray<Uint64>& InUs
 
 std::shared_ptr<FConversationData> FConversationsManager::GetConversation(const Uint64 InConversationId)
 {
-	std::shared_ptr<FConversationData> ConversationDataSharedPtr;
+	std::shared_ptr<FConversationData> ConversationDataSharedPtr = nullptr;
 	std::shared_lock Lock(ConversationIdToConversationDataMutex);
 
 	if (ConversationIdToConversationData.ContainsKey(InConversationId))
@@ -24,6 +25,27 @@ bool FConversationsManager::HasConversation(const Uint64 InConversationId)
 	std::shared_lock Lock(ConversationIdToConversationDataMutex);
 
 	return (ConversationIdToConversationData.ContainsKey(InConversationId));
+}
+
+void FConversationsManager::AddMessage(const Uint64 InConversationId, const Uint64 InSenderId, const std::string& InMessage)
+{
+	std::shared_ptr<FConversationData> ConversationPtr = GetConversation(InConversationId);
+
+	Uint64 OutId = 0;
+	const EDatabaseOperationResult Result = UploadMessage(InConversationId, InSenderId, InMessage, OutId);
+	if (Result == EDatabaseOperationResult::Success)
+	{
+		FConversationMessageData ConversationMessageData;
+		ConversationMessageData.MessageId = OutId;
+		ConversationMessageData.SenderId = InSenderId;
+		ConversationMessageData.Message = InMessage;
+
+		// Lock conversation for adding message
+		std::unique_lock Lock(ConversationIdToConversationDataMutex);
+
+		// Add message at begging of table as it's newest
+		ConversationPtr->MessagesMap.PushFront(ConversationMessageData);
+	}
 }
 
 void FConversationsManager::GetLastConversationByUserId(const Uint64 InUserId, const int32 Offset, const int32 Limit, CArray<Uint64>& OutConversationIds)
@@ -101,6 +123,8 @@ void FConversationsManager::DownloadConversationsFromRange(const Uint64 UserId, 
 		DownloadConversationParticipants(Conversation.ConversationId, Participants);
 
 		AddConversationToCache(Conversation.ConversationId, Participants);
+
+		DownloadConversationMessages(Conversation.ConversationId, 0, 50);
 	}
 }
 
@@ -146,6 +170,57 @@ void FConversationsManager::DownloadConversationParticipants(Uint64 InConversati
     {
         LOG_ERROR("Database connection failed in DownloadConversationParticipants");
     }
+}
+
+void FConversationsManager::DownloadConversationMessages(const Uint64 InConversationId, const int InOffset, const int InLimit)
+{
+	FDataBaseConnect Connect;
+	if (Connect.IsConnected())
+	{
+		try
+		{
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			Uint64 MessageId;
+			Uint64 SenderId;
+			std::string MessageText;
+			std::string CreatedAt;
+
+			soci::statement Stmt = (DataBaseSession.prepare <<
+				"SELECT id, sender_id, text, created_at FROM messages WHERE conversation_id = :conv_id ORDER BY id DESC LIMIT :limit OFFSET :offset",
+				soci::into(MessageId),
+				soci::into(SenderId),
+				soci::into(MessageText),
+				soci::into(CreatedAt),
+				soci::use(InConversationId),
+				soci::use(InLimit),
+				soci::use(InOffset));
+
+			Stmt.execute();
+
+			std::unique_lock Lock(ConversationIdToConversationDataMutex);
+
+			std::shared_ptr<FConversationData> ConversationPtr = ConversationIdToConversationData[InConversationId];
+			if (ConversationPtr != nullptr)
+			{
+				ConversationPtr->MessagesMap.Clear();
+
+				while (Stmt.fetch())
+				{
+					FConversationMessageData MessageData;
+					MessageData.MessageId = MessageId;
+					MessageData.SenderId = SenderId;
+					MessageData.Message = MessageText;
+
+					ConversationPtr->MessagesMap.PushBack(MessageData);
+				}
+			}
+		}
+		catch (const soci::soci_error& Error)
+		{
+			LOG_ERROR("Database error: " << Error.what());
+		}
+	}
 }
 
 Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>& UserIds)
@@ -288,6 +363,10 @@ void FConversationsManager::AddConversationToCache(const Uint64 InConversationId
 
 		AddConversationsForUserToCache(InConversationId, InUserIds);
 	}
+	else
+	{
+		ConversationIdToConversationDataMutex.unlock();
+	}
 }
 
 void FConversationsManager::AddConversationsForUserToCache(const Uint64 InConversationId, const CArray<Uint64>& InUserIds)
@@ -295,13 +374,64 @@ void FConversationsManager::AddConversationsForUserToCache(const Uint64 InConver
 	const std::unique_lock UniqueLock(UserIdToConversationMutex);
 	for (const Uint64& InUserId : InUserIds)
 	{
-		if (!UserIdToConversation.ContainsKey(InUserId))
+		// Get or create
+		FUserConversations& User = UserIdToConversation[InUserId];
+
+		// Add if missing
+		if (!User.Conversations.Contains(InConversationId))
 		{
-			FUserConversations& User = UserIdToConversation[InUserId];
-			if (!User.Conversations.Contains(InConversationId))
-			{
-				User.Conversations.Push(InConversationId);
-			}
+			User.Conversations.Push(InConversationId);
 		}
 	}
+}
+
+EDatabaseOperationResult FConversationsManager::UploadMessage(const Uint64 InConversationId, const Uint64 SenderId, const std::string& InMessage, Uint64& OutId)
+{
+	EDatabaseOperationResult DatabaseOperationResult = EDatabaseOperationResult::Unknown;
+
+	FDataBaseConnect Connect;
+	if (Connect.IsConnected())
+	{
+		try
+		{
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
+			soci::indicator Ind;
+
+			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text) VALUES (:conv_id, :sender_id, :text)",
+				soci::use(InConversationId),
+				soci::use(SenderId),
+				soci::use(InMessage, Ind);
+
+			// Get last inserted ID
+			long long LastInsertId;
+			DataBaseSession << "SELECT LAST_INSERT_ID()", soci::into(LastInsertId);
+			OutId = static_cast<Uint64>(LastInsertId);
+
+			DataBaseSession << "UPDATE conversations SET last_message_at = NOW() WHERE conversation_id = :conv_id",
+				soci::use(InConversationId);
+
+			if (OutId > 0)
+			{
+				DatabaseOperationResult = EDatabaseOperationResult::Success;
+			}
+			else
+			{
+				DatabaseOperationResult = EDatabaseOperationResult::OperationFailed;
+			}
+		}
+		catch (const soci::soci_error& Error)
+		{
+			// Handle SOCI error
+			LOG_ERROR("Database error: " << Error.what());
+
+			DatabaseOperationResult = EDatabaseOperationResult::DatabaseFailed;
+		}
+	}
+	else
+	{
+		DatabaseOperationResult = EDatabaseOperationResult::ConnectionFailed;
+	}
+
+	return DatabaseOperationResult;
 }

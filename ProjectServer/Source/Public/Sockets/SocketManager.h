@@ -20,6 +20,10 @@ public:
 
 	void CreateSockets(int32 SocketPort, bool bUseSSL, const std::string& InKeyPath = "", const std::string& InCertPath = "");
 
+	void EnqueueTaskForUserAtSocket(int32 InSocketId, Uint64 UserId, FFunctorLambda<void, void* /* ws */>& FunctionToCallOnSocket);
+
+	FSocket* GetSocketById(int32 InSocketId);
+
 protected:
 	CArray<FSocketThreadData*> SocketThreadDataArray;
 };

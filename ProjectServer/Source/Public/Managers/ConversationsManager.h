@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include <shared_mutex>
 
+enum class EDatabaseOperationResult : Uint8;
+
 namespace soci
 {
 	class session;
@@ -62,6 +64,8 @@ public:
 	std::shared_ptr<FConversationData> GetConversation(Uint64 InConversationId);
 	bool HasConversation(Uint64 InConversationId);
 
+	void AddMessage(Uint64 InConversationId, Uint64 InSenderId, const std::string& InMessage);
+
 	void GetLastConversationByUserId(Uint64 InUserId, int32 Offset, int32 Limit, CArray<Uint64>& OutConversationIds);
 
 private:
@@ -70,6 +74,8 @@ private:
 
 	/** Query DB for participants */
 	void DownloadConversationParticipants(Uint64 InConversationId, CArray<Uint64>& OutUserIds);
+
+	void DownloadConversationMessages(Uint64 InConversationId, int32 InOffset, int32 InLimit);
 
 	/**
 	 * Conditional add conversation to DB
@@ -80,7 +86,7 @@ private:
 	/** UploadConversation helper for conversation between two people */
 	Uint64 FindConversation2Ids(soci::session& Sql, Uint64 User1Id, Uint64 User2Id);
 
-	/**  */
+	/** Search for conversation with any amount of usersids */
 	Uint64 FindConversationNIds(soci::session& Sql, const std::vector<Uint64>& UserIds);
 
 	/** Add conversation to cache */
@@ -91,6 +97,9 @@ private:
 	 * @Note: called by AddConversationToCache
 	 */
 	void AddConversationsForUserToCache(const Uint64 InConversationId, const CArray<Uint64>& InUserIds);
+
+	/** Send message to DB */
+	EDatabaseOperationResult UploadMessage(Uint64 InConversationId, Uint64 SenderId, const std::string& InMessage, Uint64& OutId);
 
 protected:
 	/** Map with conversations mapped into their data structs */

@@ -37,7 +37,7 @@ bool FUserSessionData::IsValid() const
 
 void FUserSessionData::SetSessionStartTime(Uint64 InSessionStartTime)
 {
-	std::scoped_lock<std::mutex> MutexScopeLock(SessionUpdateMutex);
+	std::unique_lock MutexScopeLock(SessionUpdateMutex);
 
 	SessionStartTime = InSessionStartTime;
 }

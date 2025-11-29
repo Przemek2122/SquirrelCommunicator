@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shared_mutex>
+
 #include "CoreMinimal.h"
 
 class FGenericThread;
@@ -24,7 +26,7 @@ private:
 	Uint64 SessionStartTime;
 
 	/** Mutex for updating session */
-	std::mutex SessionUpdateMutex;
+	std::shared_mutex SessionUpdateMutex;
 
 };
 

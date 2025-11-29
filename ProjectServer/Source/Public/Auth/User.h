@@ -63,6 +63,8 @@ public:
 	bool IsUserMailCorrect(const std::string& InMailName) const;
 	bool IsUserPasswordCorrect(const std::string& InUserPasswordHash) const;
 
+	void SetSocketId(int32 InSocketId);
+
 	/** @return Name displayed for other users */
 	const std::string& GetDisplayedName() const;
 
@@ -73,8 +75,8 @@ public:
 
 	/** Get unique user id */
 	Uint64 GetUserId() const;
-
 	FUserData GetUserData() const;
+	int32 GetSocketId() const;
 
 protected:
 	Uint64 GetCurrentTime() const;
@@ -82,5 +84,11 @@ protected:
 private:
 	/** User manager class */
 	FUserManager* UserManager;
+
+	/** Socket Id pointer */
+	int32 SocketId;
+
+	/**  */
+	//bool bIsConnected;
 	
 };

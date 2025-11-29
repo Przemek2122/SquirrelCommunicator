@@ -1,10 +1,10 @@
 #pragma once
 
 #include <shared_mutex>
-
-#include "CoreMinimal.h"
 #include "SessionManager.h"
 #include "User.h"
+
+enum class EDatabaseOperationResult : Uint8;
 
 enum class ERegisterUserStatus : Uint8
 {
@@ -12,6 +12,7 @@ enum class ERegisterUserStatus : Uint8
 	Successful,
 	MailTaken,
 	PasswordToWeak,
+	MailIncorrect,
 	DataBaseInsertFailed,
 	DataBaseConnectionFailed
 };
@@ -24,15 +25,6 @@ enum class ELoginStatus : Uint8
 	IncorrectCredentialsOrUserDoesNotExist,
 	DataBaseFetchFailed,
 	DataBaseConnectionFailed
-};
-
-enum class EDatabaseDownloadResult : Uint8
-{
-	Unknown,
-	Success,
-	ConnectionFailed,
-	DatabaseFailed,
-	DataNotFound
 };
 
 /**
@@ -79,14 +71,11 @@ public:
 	/** Cache for time updated every second */
 	Uint64 GetCurrentTimeCached() const { return CurrentTimeCached; }
 
-	/** Search provided Id for User */
-	FUser* GetUser(Uint64 UserId);
-
 	bool GetUsersByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers);
 
 private:
-	EDatabaseDownloadResult DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr);
-	EDatabaseDownloadResult DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers);
+	EDatabaseOperationResult DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr);
+	EDatabaseOperationResult DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers, bool bAutoAddToCache);
 
 	Uint64 GenerateNextAvailableId();
 	bool VerifyPasswords(const std::string& StringWithHash, const std::string& StringWithoutHash);
