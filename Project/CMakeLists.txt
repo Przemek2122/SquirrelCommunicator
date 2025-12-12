@@ -13,7 +13,12 @@ option(USE_CUSTOM_ENGINE "Should we use custom engine?" ON)
 set(PROJECT_NAME "communicator")
 set(PROJECT_VERSION 0.0.1)
 set(ENGINE_PATH_DEFAULT "../Engine/Engine")
-set(ENGINE_PATH_CUSTOM "C:/Repos/Engine/Engine")
+
+if(WIN32)
+    set(ENGINE_PATH_CUSTOM "C:/Repos/Engine/Engine")
+elseif(UNIX)
+    set(ENGINE_PATH_CUSTOM "/home/user/repos/Engine//Engine")
+endif()
 
 # Define project
 project("${PROJECT_NAME}" LANGUAGES CXX VERSION ${PROJECT_VERSION})
