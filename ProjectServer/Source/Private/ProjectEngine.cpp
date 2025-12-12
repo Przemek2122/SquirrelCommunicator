@@ -361,16 +361,37 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 			const FAssetsManager* AssetsManager = FGlobalDefines::GEngine->GetAssetsManager();
 			const std::string ConfigPathAbsolute = AssetsManager->ConvertRelativeToFullPath(AssetsManager->GetConfigPathRelative());
 
+			bool bIsPathAbsolute = false;
+			const FIniField SSLPathsAbsoluteField = ServerSettingsIni->FindFieldByName("SSLPathsAbsolute");
+			if (SSLPathsAbsoluteField.IsValid())
+			{
+				bIsPathAbsolute = SSLPathsAbsoluteField.GetValueAsBool();
+			}
+
 			const FIniField SSLKeyField = ServerSettingsIni->FindFieldByName("SSLKey");
 			if (SSLKeyField.IsValid())
 			{
-				KeyFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLKeyField.GetValueAsString();
+				if (bIsPathAbsolute)
+				{
+					KeyFilePath = SSLKeyField.GetValueAsString();
+				}
+				else
+				{
+					KeyFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLKeyField.GetValueAsString();
+				}
 			}
 
 			const FIniField SSLCertField = ServerSettingsIni->FindFieldByName("SSLCert");
 			if (SSLCertField.IsValid())
 			{
-				CertFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLCertField.GetValueAsString();
+				if (bIsPathAbsolute)
+				{
+					CertFilePath = SSLCertField.GetValueAsString();
+				}
+				else
+				{
+					CertFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLCertField.GetValueAsString();
+				}
 			}
 		}
 	}
