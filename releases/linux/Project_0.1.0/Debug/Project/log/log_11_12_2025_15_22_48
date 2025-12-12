@@ -1,0 +1,23 @@
+11-12-2025 15:22:48 (Info): SQRLL_COMM_DB_HOST empty, defaulting to localhost.
+11-12-2025 15:22:48 (Error): SQRLL_COMM_DB_PASSWORD not set
+ in /home/user/repos/SquirrelCommunicator/ProjectServer/Source/Private/DataBase/DataBaseSettings.cpp@80
+11-12-2025 15:22:48 (Info): GEngine init start compiled: Dec 11 2025 14:53:52
+11-12-2025 15:22:48 (Info): Found launch exe path [0] = ./communicatorsrv
+11-12-2025 15:22:49 (Info): SDL Subsystems Initialised!
+11-12-2025 15:22:49 (Error): Missing asset at relative path: ./communicatorsrv/Assets/Config/EngineInput.ini
+ in /home/user/repos/Engine/Engine/Sources/Public/Assets/AssetsManager.h@71
+11-12-2025 15:22:49 (Error): Asset does not exists with name 'OpenSans' and path: 'Fonts/OpenSans/OpenSans-Regular.ttf'.
+ in /home/user/repos/Engine/Engine/Sources/Public/Assets/AssetsManager.h@108
+11-12-2025 15:22:49 (Error): Missing asset at relative path: ./communicatorsrv/Assets/Config/ProjectSettings.ini
+ in /home/user/repos/Engine/Engine/Sources/Public/Assets/AssetsManager.h@71
+11-12-2025 15:22:49 (Info): GEngine init End
+11-12-2025 15:22:49 (Error): Missing asset at relative path: ./communicatorsrv/Assets/Config/BackendSettings.ini
+ in /home/user/repos/Engine/Engine/Sources/Public/Assets/AssetsManager.h@71
+11-12-2025 15:22:49 (Error): Backend settings are missing!
+ in /home/user/repos/SquirrelCommunicator/ProjectServer/Source/Private/BackendSettings.cpp@16
+11-12-2025 15:22:49 (Error): FAbuseProtection missing BackendSettingsIni
+ in /home/user/repos/SquirrelCommunicator/ProjectServer/Source/Private/AbuseProtection/AbuseProtection.cpp@22
+11-12-2025 15:22:49 (Error): Ini is missing, API will not work.
+ in /home/user/repos/SquirrelCommunicator/ProjectServer/Source/Private/ProjectEngine.cpp@90
+11-12-2025 15:22:49 (Error): ProjectIni is nullptr or does not exist.
+ in /home/user/repos/Engine/Engine/Sources/Private/Core/Engine.cpp@236

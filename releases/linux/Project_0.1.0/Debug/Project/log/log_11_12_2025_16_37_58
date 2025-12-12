@@ -1,0 +1,10 @@
+11-12-2025 16:37:58 (Info): GEngine init start compiled: Dec 11 2025 16:35:04
+11-12-2025 16:37:58 (Info): Found launch exe path [0] = ./communicatorsrv
+11-12-2025 16:37:58 (Info): Linux launch path: /home/user/repos/SquirrelCommunicator/buildsrv/linux-x64/bin/Debug/Project/communicatorsrv
+11-12-2025 16:37:58 (Info): SDL Subsystems Initialised!
+11-12-2025 16:37:58 (Info): GEngine init End
+11-12-2025 16:37:58 (Info): Server will start without SSL
+11-12-2025 16:37:58 (Info): Server, id: '0', listening on port: 8081
+11-12-2025 16:37:58 (Info): Server, id: '2', listening on port: 8081
+11-12-2025 16:37:58 (Info): Server, id: '1', listening on port: 8081
+11-12-2025 16:37:58 (Info): Server, id: '3', listening on port: 8081
