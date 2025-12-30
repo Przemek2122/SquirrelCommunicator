@@ -1,6 +1,6 @@
 ﻿# CMakeList.txt : Top-level CMake project file, do global configuration
 # and include sub-projects here.
-cmake_minimum_required (VERSION 3.1.1)
+cmake_minimum_required (VERSION 3.1.1...4.1.1)
 
 #==============================================================================
 # Config
@@ -28,6 +28,8 @@ project("${PROJECT_NAME}" LANGUAGES CXX VERSION ${PROJECT_VERSION})
 # Set the C++ standard to 20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+option(ENGINE_USING_VIDEO "Is this app using any video features? (liek SDL Video)" OFF)
 
 # Generated config
 set(ENGINE_BUILD_PATH "${CMAKE_BINARY_DIR}/Engine_build")
@@ -240,6 +242,7 @@ if(PROJECT_TESTS_ENABLED)
 	target_compile_definitions(ProjectTests PRIVATE
 		FLAGS_TESTING_PROJECT
 	)
+
 
 	CopyAssetsPostBuild(ProjectTests "${ASSETS_ENGINE_TARGET_PATH}")
 
