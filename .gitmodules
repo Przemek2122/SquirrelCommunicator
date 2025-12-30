@@ -1,3 +1,4 @@
 [submodule "Engine"]
 	path = Engine
 	url = https://github.com/Przemek2122/Engine
+	branch = communicator
