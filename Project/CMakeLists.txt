@@ -1,6 +1,6 @@
 ﻿# CMakeList.txt : Top-level CMake project file, do global configuration
 # and include sub-projects here.
-cmake_minimum_required (VERSION 4.1.2)
+cmake_minimum_required (VERSION 3.1.1...4.1.1)
 
 #==============================================================================
 # Config
