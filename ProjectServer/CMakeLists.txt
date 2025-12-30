@@ -1,6 +1,6 @@
 ﻿# CMakeList.txt : Top-level CMake project file, do global configuration
 # and include sub-projects here.
-cmake_minimum_required (VERSION 4.1.2)
+cmake_minimum_required (VERSION 3.1.1)
 
 #==============================================================================
 # Config
@@ -19,7 +19,7 @@ set(ENGINE_PATH_DEFAULT "../Engine/Engine")
 if(WIN32)
     set(ENGINE_PATH_CUSTOM "C:/Repos/Engine/Engine")
 elseif(UNIX)
-    set(ENGINE_PATH_CUSTOM "/home/user/repos/Engine//Engine")
+    set(ENGINE_PATH_CUSTOM "/var/repos/Engine/Engine")
 endif()
 
 # Define project
