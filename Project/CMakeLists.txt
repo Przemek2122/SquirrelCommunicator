@@ -9,9 +9,6 @@ cmake_minimum_required (VERSION 3.1.1...4.1.1)
 # Options setup
 option(USE_CUSTOM_ENGINE "Should we use custom engine?" OFF)
 
-set(ENGINE_USING_VIDEO OFF CACHE BOOL "Disable video" FORCE)
-set(ENGINE_USING_AUDIO OFF CACHE BOOL "Disable audio" FORCE)
-
 # Note: for android build 'main' library as it expect library libmain.so
 set(PROJECT_NAME "communicator")
 set(PROJECT_VERSION 0.0.1)
