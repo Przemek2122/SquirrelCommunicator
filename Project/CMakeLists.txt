@@ -9,8 +9,6 @@ cmake_minimum_required (VERSION 3.1.1...4.1.1)
 # Options setup
 option(USE_CUSTOM_ENGINE "Should we use custom engine?" OFF)
 
-#option(ENGINE_USING_VIDEO "Is this app using any video features? (like SDL Video)" OFF)
-#option(ENGINE_USING_AUDIO "Is this app using any audio features? (liek SDL Audio)" OFF)
 set(ENGINE_USING_VIDEO OFF CACHE BOOL "Disable video" FORCE)
 set(ENGINE_USING_AUDIO OFF CACHE BOOL "Disable audio" FORCE)
 
