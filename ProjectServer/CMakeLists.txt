@@ -16,7 +16,6 @@ set(ENGINE_USING_AUDIO OFF CACHE BOOL "Disable audio" FORCE)
 set(PROJECT_NAME "communicatorsrv")
 set(PROJECT_VERSION 0.0.1)
 
-option(USE_CUSTOM_ENGINE "Should we use custom engine?" ON)
 set(ENGINE_PATH_DEFAULT "../../Engine/Engine")
 
 if(WIN32)
