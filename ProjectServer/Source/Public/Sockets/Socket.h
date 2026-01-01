@@ -35,7 +35,7 @@ std::string SocketMessageTypeToString(ESocketMessageType InTypeEnum);
 class FSocket
 {
 public:
-	FSocket(int32 InSocketIndex, int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath);
+	FSocket(int32 InSocketIndex, std::string InHost, int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath);
 	~FSocket();
 
 	/** Add task to be executed on this socket */
@@ -77,6 +77,9 @@ private:
 private:
 	/** per socket index to find which socket is user connected to */
 	int32 SocketIndex;
+
+	/** Socket listen host */
+	std::string Host;
 
 	/** Socket port */
 	int32 Port;

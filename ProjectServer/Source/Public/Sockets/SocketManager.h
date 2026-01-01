@@ -18,7 +18,7 @@ class FSocketManager
 public:
 	~FSocketManager();
 
-	void CreateSockets(int32 SocketPort, bool bUseSSL, const std::string& InKeyPath = "", const std::string& InCertPath = "");
+	void CreateSockets(std::string Host, int32 SocketPort, bool bUseSSL, const std::string& InKeyPath = "", const std::string& InCertPath = "");
 
 	void EnqueueTaskForUserAtSocket(int32 InSocketId, Uint64 UserId, FFunctorLambda<void, void* /* ws */>& FunctionToCallOnSocket);
 

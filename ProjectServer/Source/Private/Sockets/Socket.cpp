@@ -46,8 +46,9 @@ std::string SocketMessageTypeToString(const ESocketMessageType InTypeEnum)
 	}
 }
 
-FSocket::FSocket(int32 InSocketIndex, const int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath)
+FSocket::FSocket(int32 InSocketIndex, std::string InHost, const int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath)
 	: SocketIndex(InSocketIndex)
+	, Host(InHost)
 	, Port(InPort)
 	, bUseSSL(bInUseSSL)
 	, SocketAppWrapper(bInUseSSL, InKeyPath, InCertPath)
@@ -209,7 +210,7 @@ void FSocket::Async()
 		SocketAppWrapper.wssslno<FWebSocketSessionData>(WebSocketPath, CreateSocketBehavior<false>(this));
 	}
 
-	SocketAppWrapper.listen(Port, [&](us_listen_socket_t* listenSocket)
+	SocketAppWrapper.listen(Host, Port, [&](us_listen_socket_t* listenSocket)
 	{
 		if (listenSocket != nullptr)
 		{

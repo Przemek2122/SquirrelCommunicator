@@ -80,9 +80,14 @@ void FProjectEngine::Init()
 
 		// Socket
 		const FIniField PortWSField = ServerSettingsIni->FindFieldByName("PortWS");
-		if (PortWSField.IsValid())
+		const FIniField SocketListenHostField = ServerSettingsIni->FindFieldByName("SocketListenPort");
+		if (PortWSField.IsValid() && SocketListenHostField.IsValid())
 		{
-			SocketManager->CreateSockets(PortWSField.GetValueAsInt(), bIsSSLEnabled, KeyFilePath, CertFilePath);
+			SocketManager->CreateSockets(SocketListenHostField.GetValueAsString(), PortWSField.GetValueAsInt(), bIsSSLEnabled, KeyFilePath, CertFilePath);
+		}
+		else
+		{
+			LOG_WARN("Missing PortWSField or SocketListenHostField. Sockets will not work.");
 		}
 	}
 	else
