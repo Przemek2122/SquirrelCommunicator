@@ -111,7 +111,7 @@ TEST_F(FBackendTest, CrowValidate)
 	EXPECT_TRUE(ProjectEngine != nullptr);
 	if (ProjectEngine != nullptr)
 	{
-		crow::SimpleApp& CrowApp = ProjectEngine->GetCrowApp();
+		auto& CrowApp = ProjectEngine->GetCrowApp();
 
 		CrowApp.validate();
 	}
