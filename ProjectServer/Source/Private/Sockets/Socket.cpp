@@ -216,11 +216,11 @@ void FSocket::Async()
 		{
 			AppListenSocket = listenSocket;
 
-			LOG_INFO("Server, id: '" << SocketIndex << "', listening on port: " << Port);
+			LOG_INFO("Server, id: '" << SocketIndex << "', listening host: '" << Host << "', on port: '" << Port << "'.");
 		}
 		else
 		{
-			LOG_ERROR("Failed to listen on port: " << Port << ", id: '" << SocketIndex << "'.");
+			LOG_ERROR("Failed to listen on: " << Host << "@" << Port << ", id: '" << SocketIndex << "'.");
 		}
 	});
 

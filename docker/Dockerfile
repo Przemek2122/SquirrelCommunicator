@@ -4,7 +4,7 @@ FROM fedora:latest
 # Basic packages
 RUN dnf update -y && \
     dnf install -y git wget curl tar zip unzip gdb glibc-devel zlib-devel gcc gcc-c++ cmake make ninja-build pkgconf kernel-headers kernel-devel xz patch sed openssl openssl-devel && \
-    dnf install -y nano ps ping htop
+    dnf install -y nano ps ping htop netstat ss
 
 # Packages for project
 RUN dnf install -y alsa-lib-devel perl perl-IPC-Cmd perl-generators perl-devel nasm pkgconfig flex bison binutils elfutils-libelf-devel && \
@@ -24,10 +24,10 @@ RUN ln -s /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
 WORKDIR /var/repos
 
 # Projects
-RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
-RUN git clone https://github.com/Przemek2122/Engine.git
+#RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
+#RUN git clone https://github.com/Przemek2122/Engine.git
 
 # Engine submodules
-RUN cd Engine && \
-    git submodule update --init --recursive
+#RUN cd Engine && \
+#    git submodule update --init --recursive
 	

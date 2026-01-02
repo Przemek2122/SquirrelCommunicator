@@ -213,6 +213,29 @@ bool FUserManager::RefreshSessionToken(const std::string& InToken) const
 	return SessionManager->IsSessionTokenAlive(InToken);
 }
 
+void FUserManager::UpdateUserActivity(const Uint64 UsedId)
+{
+	FDataBaseConnect Connect;
+	if (Connect.IsConnected())
+	{
+		// Get database connection session
+		soci::session& DataBaseSession = Connect.GetSession();
+
+		// Update activity time
+		DataBaseSession << "UPDATE users SET LastActive = NOW() WHERE id = :id",
+			soci::use(UsedId, "id");
+
+		// Update cache
+		std::vector<std::shared_ptr<FUser>> Users;
+		const bool bGetUsers = GetUsersByIds({ UsedId }, Users);
+		if (bGetUsers)
+		{
+			std::shared_ptr<FUser>& FirstUser = Users[0];
+			FirstUser->UpdateLastActiveTime();
+		}
+	}
+}
+
 Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 {
 	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);
@@ -436,6 +459,8 @@ void FUserManager::OnLoginSuccessful(const std::shared_ptr<FUser>& UserPtr, cons
 	if (bWereDownloadedFromDB)
 	{
 		AddUserToCache(UserPtr);
+
+		UpdateUserActivity(UserPtr->GetUserId());
 	}
 }
 

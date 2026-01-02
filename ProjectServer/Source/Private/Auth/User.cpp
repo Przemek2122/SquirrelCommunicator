@@ -68,7 +68,7 @@ const std::string& FUser::GetUserPasswordHash() const
 
 EUserStatus FUser::GetUserStatus() const
 {
-	static constexpr Uint64 TimeWhileActive = 180;
+	static constexpr Uint64 TimeWhileActive = 120;
 
 	return ( ((LastActiveTime + TimeWhileActive) > GetCurrentTime()) ? EUserStatus::Online : EUserStatus::Offline );
 }

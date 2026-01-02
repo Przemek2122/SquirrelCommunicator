@@ -65,6 +65,8 @@ public:
 	/** @return true when valid. Will leave old token but with longer time to use. */
 	bool RefreshSessionToken(const std::string& InToken) const;
 
+	void UpdateUserActivity(const Uint64 UsedId);
+
 	/** Get user ID from token, 0 means not found */
 	Uint64 GetIdFromToken(const std::string& InToken) const;
 
