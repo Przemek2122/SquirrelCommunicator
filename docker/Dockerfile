@@ -24,10 +24,10 @@ RUN ln -s /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
 WORKDIR /var/repos
 
 # Projects
-RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
-RUN git clone https://github.com/Przemek2122/Engine.git
+#RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
+#RUN git clone https://github.com/Przemek2122/Engine.git
 
 # Engine submodules
-RUN cd Engine && \
-    git submodule update --init --recursive
+#RUN cd Engine && \
+#    git submodule update --init --recursive
 	
