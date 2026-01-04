@@ -44,6 +44,8 @@ protected:
 	Uint64 LastActiveTime;
 };
 
+std::string UserStatusToString(EUserStatus UserStatus);
+
 /** Class for single user */
 class FUser : public FUserData
 {
@@ -64,6 +66,7 @@ public:
 	bool IsUserPasswordCorrect(const std::string& InUserPasswordHash) const;
 
 	void SetSocketId(int32 InSocketId);
+	void SetUserStatus(EUserStatus NewUserStatus);
 
 	/** @return Name displayed for other users */
 	const std::string& GetDisplayedName() const;
@@ -87,6 +90,8 @@ private:
 
 	/** Socket Id pointer */
 	int32 SocketId;
+
+	EUserStatus UserStatus;
 
 	/**  */
 	//bool bIsConnected;

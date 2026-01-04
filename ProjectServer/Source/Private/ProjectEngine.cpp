@@ -78,6 +78,11 @@ void FProjectEngine::Init()
 		// HTTP/REST crow server
 		StartServer(ServerSettingsIni);
 
+#if !defined(DEBUG) || !DEBUG
+		// Set proper log level in non debug builds for performance
+		CrowApp.loglevel(crow::LogLevel::Warning);
+#endif
+
 		// Socket
 		const FIniField PortWSField = ServerSettingsIni->FindFieldByName("PortWS");
 		const FIniField SocketListenHostField = ServerSettingsIni->FindFieldByName("SocketListenHost");

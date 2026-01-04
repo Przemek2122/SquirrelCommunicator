@@ -17,7 +17,9 @@ enum class ESocketMessageType : uint8
 	Message,
 	Typing,
 	MarkRead,
+	UserStatus,
 	SearchUser,
+	LoadMoreMessages,
 	GetConversations,
 	AddConversation,
 	InitialClientData,
@@ -55,18 +57,34 @@ public:
 	void OnPong(auto* ws);
 
 private:
-	/** Default uWS OpCodes */
+	/** Begin Default uWS OpCodes */
 	void OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::OpCode opCode);
 	void OnMessageReceived_Ping(auto* ws, std::string_view message, uWS::OpCode opCode);
 	void OnMessageReceived_Pong(auto* ws, std::string_view message, uWS::OpCode opCode);
+	/** EndDefault uWS OpCodes */
 
-	/** Custom enums */
+	/** Begin custom enum values */
+
+	/** Called when user is sending a message */
 	void OnMessageReceived_Message(auto* ws, uWS::OpCode opCode, Uint64 ConversationId, const std::string& Content);
+
 	void OnMessageReceived_Typing(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
 	void OnMessageReceived_MarkRead(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
+	void OnMessageReceived_UserStatus(auto* ws, uWS::OpCode opCode, Uint64 UserId);
+
+	/** Called when user is searching for another user */
 	void OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const std::string& Pattern);
-	void OnMessageReceived_GetConversation(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit);
+
+	/** Used by frontend when user wants more messages, Offset and Limit are used to define if we want conversations 0-5, 5-10, etc... */
+	void OnMessageReceived_LoadMoreMessages(auto* ws, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count);
+
+	/** Used to get conversations list with offset and limit */
+	void OnMessageReceived_GetConversations(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit);
+
+	/** Used to create a new conversation */
 	void OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, Uint64 OtherUserId);
+
+	/** End custom enum values */
 
 	std::string GenerateUserTopic(Uint64 UserId);
 

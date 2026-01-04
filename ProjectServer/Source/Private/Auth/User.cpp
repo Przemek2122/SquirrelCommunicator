@@ -1,8 +1,38 @@
 #include "Auth/UserManager.h"
 
+std::string UserStatusToString(EUserStatus UserStatus)
+{
+	std::string Out;
+
+	switch (UserStatus)
+	{
+		case EUserStatus::Unknown:
+		{
+			Out = "unknown";
+
+			break;
+		}
+		case EUserStatus::Online:
+		{
+			Out = "online";
+
+			break;
+		}
+		case EUserStatus::Offline:
+		{
+			Out = "offline";
+
+			break;
+		}
+	}
+
+	return Out;
+}
+
 FUser::FUser(FUserManager* InUserManager)
 	: UserManager(InUserManager)
 	, SocketId(-1)
+	, UserStatus(EUserStatus::Offline)
 {
 }
 
@@ -56,6 +86,11 @@ void FUser::SetSocketId(int32 InSocketId)
 	SocketId = InSocketId;
 }
 
+void FUser::SetUserStatus(EUserStatus NewUserStatus)
+{
+	UserStatus = NewUserStatus;
+}
+
 const std::string& FUser::GetDisplayedName() const
 {
 	return DisplayedName;
@@ -68,9 +103,7 @@ const std::string& FUser::GetUserPasswordHash() const
 
 EUserStatus FUser::GetUserStatus() const
 {
-	static constexpr Uint64 TimeWhileActive = 120;
-
-	return ( ((LastActiveTime + TimeWhileActive) > GetCurrentTime()) ? EUserStatus::Online : EUserStatus::Offline );
+	return UserStatus;
 }
 
 Uint64 FUser::GetUserId() const

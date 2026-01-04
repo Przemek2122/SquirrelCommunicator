@@ -66,9 +66,48 @@ void FConversationsManager::GetLastConversationByUserId(const Uint64 InUserId, c
 	}
 }
 
+std::vector<FConversationMessageData> FConversationsManager::GetConversationMessagesForRange(std::shared_ptr<FConversationData>& Conversation, int32 Offset, int32 Count)
+{
+	std::vector<FConversationMessageData> ConversationMessage;
+
+	const int32 CurrentMessagesCount = Conversation->MessagesMap.Size();
+	const int32 TargetMessagesCount = Offset + Count;
+	if (CurrentMessagesCount < TargetMessagesCount)
+	{
+		const int32 TargetOffset = CurrentMessagesCount;
+		const int32 TargetLimit = TargetMessagesCount - CurrentMessagesCount;
+
+		// If missing try query DB
+		ConversationMessage = DownloadConversationMessages(Conversation->ConversationId, TargetOffset, TargetLimit);
+
+		// Add messages to cache
+		for (const FConversationMessageData& Message : ConversationMessage)
+		{
+			Conversation->MessagesMap.PushBack(Message);
+		}
+
+		// Add any present in memory but skipped in download
+		if (TargetOffset != Offset)
+		{
+			std::vector<FConversationMessageData> ConversationMessageInMemoryPart = Conversation->MessagesMap.GetRange(Offset, TargetOffset);
+
+			for (FConversationMessageData& MessageInMemoryPart : ConversationMessageInMemoryPart)
+			{
+				ConversationMessage.push_back(MessageInMemoryPart);
+			}
+		}
+	}
+	else
+	{
+		ConversationMessage = Conversation->MessagesMap.GetRange(Offset, Count);
+	}
+
+	return ConversationMessage;
+}
+
 void FConversationsManager::DownloadConversationsFromRange(const Uint64 UserId, const int32 Offset, const int32 Limit)
 {
-	std::vector<FConversationInfo> Conversations;
+	CArray<FConversationInfo> ConversationArray;
 
 	try
 	{
@@ -102,12 +141,7 @@ void FConversationsManager::DownloadConversationsFromRange(const Uint64 UserId, 
 
 			while (St.fetch())
 			{
-				// Check if the value was NULL
-				if (ReadMsgInd == soci::i_null) {
-					Info.LastReadMessageId = 0; // Set a default value (e.g. 0 or -1)
-				}
-
-				Conversations.push_back(Info);
+				ConversationArray.Push(Info);
 			}
 		}
 	}
@@ -116,22 +150,44 @@ void FConversationsManager::DownloadConversationsFromRange(const Uint64 UserId, 
 		LOG_ERROR("Database error in GetConversations: " << e.what());
 	}
 
-	for (FConversationInfo& Conversation : Conversations)
+	// Remove already existing conversations
+	{
+		std::shared_lock<std::shared_mutex> MutexSharedScopedLock(ConversationIdToConversationDataMutex);
+
+		for (uint32 i = 0; i < ConversationArray.Size(); i++)
+		{
+			const FConversationInfo& Conversation = ConversationArray[i];
+			if (ConversationIdToConversationData.ContainsKey(Conversation.ConversationId))
+			{
+				ConversationArray.RemoveAt(i);
+				i--;
+			}
+		}
+	}
+
+	for (FConversationInfo& Conversation : ConversationArray)
 	{
 		// @TODO: Field of optimization query, instead of per conversation request could be one big.
 		CArray<Uint64> Participants;
-		DownloadConversationParticipants(Conversation.ConversationId, Participants);
+		CArray<Uint64> LastReadMessageIds;
+		DownloadConversationParticipants(Conversation.ConversationId, Participants, LastReadMessageIds);
 
-		AddConversationToCache(Conversation.ConversationId, Participants);
+		AddConversationToCache(Conversation.ConversationId, Participants, LastReadMessageIds);
 
-		DownloadConversationMessages(Conversation.ConversationId, 0, 50);
+		const std::shared_ptr<FConversationData> ConversationPtr = GetConversation(Conversation.ConversationId);
+		const std::vector<FConversationMessageData> Messages = DownloadConversationMessages(Conversation.ConversationId, 0, 40);
+		for (const FConversationMessageData& Message : Messages)
+		{
+			ConversationPtr->MessagesMap.PushBack(Message);
+		}
 	}
 }
 
-void FConversationsManager::DownloadConversationParticipants(Uint64 InConversationId, CArray<Uint64>& OutUserIds)
+void FConversationsManager::DownloadConversationParticipants(Uint64 InConversationId, CArray<Uint64>& OutUserIds, CArray<Uint64>& OutLastReadMessageIds)
 {
     // 1. Clear previous data
-    OutUserIds.Clear();
+	OutUserIds.Clear();
+	OutLastReadMessageIds.Clear();
 
     FDataBaseConnect Connect;
     if (Connect.IsConnected())
@@ -140,17 +196,20 @@ void FConversationsManager::DownloadConversationParticipants(Uint64 InConversati
 
         try
         {
-            Uint64 FetchedUserId;
+			Uint64 FetchedUserId;
+			Uint64 FetchedLastReadMessageId;
+			soci::indicator FetchedLastReadMessageIdInd;
 
             // 2. Prepare Statement
             // We only need user_id from the join table
             soci::statement St = (DataBaseSession.prepare <<
-                "SELECT user_id "
+                "SELECT user_id, last_read_message_id  "
                 "FROM conversation_participants "
                 "WHERE conversation_id = :convId",
                 soci::use(InConversationId),
-                soci::into(FetchedUserId)
-                );
+				soci::into(FetchedUserId),
+				soci::into(FetchedLastReadMessageId, FetchedLastReadMessageIdInd)
+            );
 
             // 3. Execute
             St.execute();
@@ -158,7 +217,13 @@ void FConversationsManager::DownloadConversationParticipants(Uint64 InConversati
             // 4. Fetch Loop
             while (St.fetch())
             {
-                OutUserIds.Push(FetchedUserId);
+				if (FetchedLastReadMessageIdInd == soci::i_null)
+				{
+					FetchedLastReadMessageId = 0;
+				}
+
+				OutUserIds.Push(FetchedUserId);
+				OutLastReadMessageIds.Push(FetchedLastReadMessageId);
             }
         }
         catch (const std::exception& e)
@@ -172,8 +237,10 @@ void FConversationsManager::DownloadConversationParticipants(Uint64 InConversati
     }
 }
 
-void FConversationsManager::DownloadConversationMessages(const Uint64 InConversationId, const int InOffset, const int InLimit)
+std::vector<FConversationMessageData> FConversationsManager::DownloadConversationMessages(const Uint64 InConversationId, const int32 InOffset, const int32 InLimit)
 {
+	std::vector<FConversationMessageData> ConversationData;
+
 	FDataBaseConnect Connect;
 	if (Connect.IsConnected())
 	{
@@ -200,20 +267,15 @@ void FConversationsManager::DownloadConversationMessages(const Uint64 InConversa
 
 			std::unique_lock Lock(ConversationIdToConversationDataMutex);
 
-			std::shared_ptr<FConversationData> ConversationPtr = ConversationIdToConversationData[InConversationId];
-			if (ConversationPtr != nullptr)
+			while (Stmt.fetch())
 			{
-				ConversationPtr->MessagesMap.Clear();
+				FConversationMessageData MessageData;
+				MessageData.MessageId = MessageId;
+				MessageData.SenderId = SenderId;
+				MessageData.Message = MessageText;
+				MessageData.CreatedAt = CreatedAt;
 
-				while (Stmt.fetch())
-				{
-					FConversationMessageData MessageData;
-					MessageData.MessageId = MessageId;
-					MessageData.SenderId = SenderId;
-					MessageData.Message = MessageText;
-
-					ConversationPtr->MessagesMap.PushBack(MessageData);
-				}
+				ConversationData.push_back(MessageData);
 			}
 		}
 		catch (const soci::soci_error& Error)
@@ -221,6 +283,8 @@ void FConversationsManager::DownloadConversationMessages(const Uint64 InConversa
 			LOG_ERROR("Database error: " << Error.what());
 		}
 	}
+
+	return ConversationData;
 }
 
 Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>& UserIds)
@@ -295,7 +359,9 @@ Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>&
 				LOG_ERROR("Database error: " << e.what());
 			}
 
-			AddConversationToCache(ConversationId, UserIds);
+			std::vector<Uint64> Ids;
+			Ids.resize(UserIds.size());
+			AddConversationToCache(ConversationId, UserIds, Ids);
 		}
 		else
 		{
@@ -334,7 +400,7 @@ Uint64 FConversationsManager::FindConversation2Ids(soci::session& Sql, Uint64 Us
 	}
 
 	// Add to cache if missing
-	AddConversationToCache(ConversationId, { User1Id, User2Id });
+	AddConversationToCache(ConversationId, { User1Id, User2Id }, { 0, 0 });
 
 	return static_cast<Uint64>(ConversationId);
 }
@@ -349,7 +415,7 @@ Uint64 FConversationsManager::FindConversationNIds(soci::session& Sql, const std
 	return OutId;
 }
 
-void FConversationsManager::AddConversationToCache(const Uint64 InConversationId, const CArray<Uint64>& InUserIds)
+void FConversationsManager::AddConversationToCache(const Uint64 InConversationId, const CArray<Uint64>& InUserIds, const CArray<Uint64>& LastReadMessageIds)
 {
 	ConversationIdToConversationDataMutex.lock();
 	if (!ConversationIdToConversationData.ContainsKey(InConversationId))
@@ -357,6 +423,11 @@ void FConversationsManager::AddConversationToCache(const Uint64 InConversationId
 		std::shared_ptr<FConversationData> ConversationDataSharedPtr = std::make_shared<FConversationData>();
 		ConversationDataSharedPtr->ConversationId = InConversationId;
 		ConversationDataSharedPtr->UsersIds = InUserIds;
+
+		for (int32 i = 0; i < InUserIds.Size(); i++)
+		{
+			ConversationDataSharedPtr->UserIdToMessageLastRead[InUserIds[i]] = LastReadMessageIds[i];
+		}
 
 		ConversationIdToConversationData.InsertOrAssign(InConversationId, ConversationDataSharedPtr);
 		ConversationIdToConversationDataMutex.unlock();

@@ -20,6 +20,9 @@ struct FConversationMessageData
 	/** Actual message */
 	std::string Message;
 
+	/** Creation time */
+	std::string CreatedAt;
+
 };
 
 /** Struct for each conversation */
@@ -30,8 +33,11 @@ struct FConversationData
 	/** Users */
 	CArray<Uint64> UsersIds;
 
+	/** Map with user mapped to last read message id */
+	CUnorderedMap<Uint64, Uint64> UserIdToMessageLastRead;
+
 	/** Messages map. */
-	CDeque<FConversationMessageData, Uint64> MessagesMap;
+	CDeque<FConversationMessageData> MessagesMap;
 
 };
 
@@ -68,14 +74,21 @@ public:
 
 	void GetLastConversationByUserId(Uint64 InUserId, int32 Offset, int32 Limit, CArray<Uint64>& OutConversationIds);
 
+	/**
+	 * If messages are missing, it will attempt to download from DB
+	 * @returns conversations
+	 */
+	std::vector<FConversationMessageData> GetConversationMessagesForRange(std::shared_ptr<FConversationData>& Conversation, int32 Offset, int32 Count);
+
 private:
 	/** Query DB for conversations of user */
 	void DownloadConversationsFromRange(Uint64 UserId, int32 Offset, int32 Limit);
 
 	/** Query DB for participants */
-	void DownloadConversationParticipants(Uint64 InConversationId, CArray<Uint64>& OutUserIds);
+	void DownloadConversationParticipants(Uint64 InConversationId, CArray<Uint64>& OutUserIds, CArray<Uint64>& OutLastReadMessageIds);
 
-	void DownloadConversationMessages(Uint64 InConversationId, int32 InOffset, int32 InLimit);
+	/** Query DB for messages */
+	std::vector<FConversationMessageData> DownloadConversationMessages(Uint64 InConversationId, int32 InOffset, int32 InLimit);
 
 	/**
 	 * Conditional add conversation to DB
@@ -90,7 +103,7 @@ private:
 	Uint64 FindConversationNIds(soci::session& Sql, const std::vector<Uint64>& UserIds);
 
 	/** Add conversation to cache */
-	void AddConversationToCache(Uint64 InConversationId, const CArray<Uint64>& InUserIds);
+	void AddConversationToCache(Uint64 InConversationId, const CArray<Uint64>& InUserIds, const CArray<Uint64>& LastReadMessageIds);
 
 	/**
 	 * Add conversation to cache for specified user,
