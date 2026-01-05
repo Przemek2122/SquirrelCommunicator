@@ -2,9 +2,9 @@
 #include "DataBase/DataBaseConnect.h"
 #include "soci/rowset.h"
 
-Uint64 FConversationsManager::GetOrCreateConversation(const CArray<Uint64>& InUserIds)
+Uint64 FConversationsManager::GetOrCreateConversation(const CArray<Uint64>& InUserIds, bool& bIsNewConversation)
 {
-	return UploadOrGetConversation(InUserIds.Vector);
+	return UploadOrGetConversation(InUserIds.Vector, bIsNewConversation);
 }
 
 std::shared_ptr<FConversationData> FConversationsManager::GetConversation(const Uint64 InConversationId)
@@ -287,10 +287,11 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 	return ConversationData;
 }
 
-Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>& UserIds)
+Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>& UserIds, bool& bIsNewConversation)
 {
 	// Declare ConversationId properly
 	long long ConversationId = 0;
+	bIsNewConversation = false;
 
 	FDataBaseConnect Connect;
 	if (Connect.IsConnected())
@@ -323,6 +324,8 @@ Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>&
 		{
 			DataBaseSession << "INSERT INTO conversations (last_message_at) "
 				"VALUES (CURRENT_TIMESTAMP)";
+
+			bIsNewConversation = true;
 		}
 		catch (const soci::soci_error& e)
 		{

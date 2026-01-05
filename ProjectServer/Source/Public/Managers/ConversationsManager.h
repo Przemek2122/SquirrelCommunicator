@@ -65,7 +65,7 @@ class FConversationsManager
 {
 public:
 	/** Create new conversation */
-	Uint64 GetOrCreateConversation(const CArray<Uint64>& InUserIds);
+	Uint64 GetOrCreateConversation(const CArray<Uint64>& InUserIds, bool& bIsNewConversation);
 
 	std::shared_ptr<FConversationData> GetConversation(Uint64 InConversationId);
 	bool HasConversation(Uint64 InConversationId);
@@ -94,7 +94,7 @@ private:
 	 * Conditional add conversation to DB
 	 * If exists, we will not add another conversation, we will return previous one matching
 	 */
-	Uint64 UploadOrGetConversation(const std::vector<Uint64>& UserIds);
+	Uint64 UploadOrGetConversation(const std::vector<Uint64>& UserIds, bool& bIsNewConversation);
 
 	/** UploadConversation helper for conversation between two people */
 	Uint64 FindConversation2Ids(soci::session& Sql, Uint64 User1Id, Uint64 User2Id);

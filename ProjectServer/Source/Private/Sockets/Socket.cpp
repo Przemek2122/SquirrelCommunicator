@@ -699,13 +699,7 @@ void FSocket::OnMessageReceived_Typing(auto* ws, uWS::OpCode opCode, const Uint6
 					const std::string UserTopic = GenerateUserTopic(User->GetUserId());
 					if (WebSocket->isSubscribed(UserTopic))
 					{
-						const bool bSentPublish = WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
-
-#if DEBUG
-						LOG_INFO("Backpressure: " << WebSocket->getBufferedAmount());
-						LOG_INFO("Topic: '" << UserTopic << "', subscribed: '" << WebSocket->isSubscribed(UserTopic) << "'");
-						LOG_INFO("Topic: '" << UserTopic << "', sent publish: '" << bSentPublish << "'");
-#endif
+						WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
 					}
 				};
 				SocketManager->EnqueueTaskForUserAtSocket(User->GetSocketId(), User->GetUserId(), SocketAccessFunctor);
@@ -740,7 +734,7 @@ void FSocket::OnMessageReceived_UserStatus(auto* ws, uWS::OpCode opCode, Uint64 
 		MessageJson["status"] = UserStatusToString(UserPtr->GetUserStatus());
 
 		nlohmann::json JsonRoot;
-		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::UserStatus);;
+		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::UserStatus);
 		JsonRoot["message"] = MessageJson;
 
 		// Publish does not work for self, so we need special case
@@ -888,14 +882,49 @@ void FSocket::OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, co
 		FConversationsManager* ConversationManager = ProjectEngine->GetConversationsManager();
 
 		// Find or create conversation
-		const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray.Vector);
+		bool bIsNewConversation = false;
+		const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray.Vector, bIsNewConversation);
 
 		const nlohmann::json MessageJson = FormatConversationIntoJson({ ConversationId });
 
-		nlohmann::json ReturnJson;
-		ReturnJson["type"] = SocketMessageTypeToString(ESocketMessageType::AddConversation);
-		ReturnJson["message"] = MessageJson;
-		ws->send(ReturnJson.dump(), opCode);
+		nlohmann::json JsonRoot;
+		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::AddConversation);
+		JsonRoot["message"] = MessageJson;
+		ws->send(JsonRoot.dump(), opCode);
+
+		if (bIsNewConversation)
+		{
+			FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+			FUserManager* UserManager = ProjectEngine->GetUserManager();
+
+			std::shared_ptr<FConversationData> ConversationPtr = ConversationManager->GetConversation(ConversationId);
+			for (Uint64 Id : ConversationPtr->UsersIds)
+			{
+				// Can't send publish to self
+				if (Id != WebSocketSessionData->UserId)
+				{
+					std::vector<std::shared_ptr<FUser>> UserPtrArray;
+					UserManager->GetUsersByIds({ Id }, UserPtrArray);
+					if (UserPtrArray.size() == 1)
+					{
+						FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, Id](void* ws)
+						{
+							auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+
+							// To send message to a specific user
+							const std::string UserTopic = GenerateUserTopic(Id);
+							if (WebSocket->isSubscribed(UserTopic))
+							{
+								WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+							}
+						};
+
+						std::shared_ptr<FUser> UserPtr = UserPtrArray[0];
+						SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), Id, SocketAccessFunctor);
+					}
+				}
+			}
+		}
 	}
 }
 
