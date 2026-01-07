@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Remove build dir from linguist
+build/** linguist-vendored
+buildsrv/** linguist-vendored
