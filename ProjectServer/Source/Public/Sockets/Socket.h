@@ -19,6 +19,7 @@ enum class ESocketMessageType : uint8
 	MarkRead,
 	UserStatus,
 	SearchUser,
+	RequestAddUser,
 	LoadMoreMessages,
 	GetConversations,
 	AddConversation,
@@ -74,6 +75,9 @@ private:
 
 	/** Called when user is searching for another user */
 	void OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const std::string& Pattern);
+
+	/** Used to send request to add user as friend */
+	void OnMessageReceived_RequestAddUser(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId);
 
 	/** Used by frontend when user wants more messages, Offset and Limit are used to define if we want conversations 0-5, 5-10, etc... */
 	void OnMessageReceived_LoadMoreMessages(auto* ws, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count);
