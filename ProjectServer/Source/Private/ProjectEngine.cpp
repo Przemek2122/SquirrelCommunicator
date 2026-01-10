@@ -1,6 +1,5 @@
 #include "ProjectEngine.h"
 
-#include "PredefinedMessages.h"
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniObject.h"
@@ -12,6 +11,8 @@
 #include "Rest/UserEndpoint.h"
 #include "Sockets/SocketManager.h"
 
+#define ENDPOINT_CLASS(EndpointName) FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<EndpointName>()
+
 FProjectEngine::FProjectEngine()
 	: BackendSettings(std::make_unique<FBackendSettings>())
 	, SocketManager(std::make_unique<FSocketManager>())
@@ -21,9 +22,9 @@ FProjectEngine::FProjectEngine()
 	// Collect Database settings
 	FDataBaseSettings::Initialize();
 
-	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FTestEndpoint>());
-	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FUserEndpoint>());
-	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FIntegrationEndpoint>());
+	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTestEndpoint));
+	RestEndpointsClasses.Push(ENDPOINT_CLASS(FUserEndpoint));
+	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
 }
 
 void FProjectEngine::Init()
