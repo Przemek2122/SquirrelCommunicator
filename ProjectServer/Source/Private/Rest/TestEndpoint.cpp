@@ -21,6 +21,5 @@ void FTestEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 			return FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "API is working."} });
 		});
 
-
-	LOG_DEBUG("Created API - Test.");
+	FCrowAppEndpoint::RegisterRoutes(App);
 }

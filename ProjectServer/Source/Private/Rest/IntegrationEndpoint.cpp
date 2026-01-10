@@ -7,5 +7,7 @@ FIntegrationEndpoint::FIntegrationEndpoint(FProjectEngine* InProjectEngine)
 
 void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 {
-	
+
+
+	FCrowAppEndpoint::RegisterRoutes(App);
 }

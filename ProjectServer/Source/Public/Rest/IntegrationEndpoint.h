@@ -2,10 +2,10 @@
 
 #include "CrowAppEndpoint.h"
 
-class FTestEndpoint : public FCrowAppEndpoint
+class FIntegrationEndpoint : public FCrowAppEndpoint
 {
 public:
-	FTestEndpoint(FProjectEngine* InProjectEngine = nullptr);
+	FIntegrationEndpoint(FProjectEngine* InProjectEngine = nullptr);
 
 	void RegisterRoutes(crow::App<FCrowAppMiddleware>& App) override;
 

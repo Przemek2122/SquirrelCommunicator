@@ -7,6 +7,7 @@
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
 #include "Rest/CrowUtils.h"
+#include "Rest/IntegrationEndpoint.h"
 #include "Rest/TestEndpoint.h"
 #include "Rest/UserEndpoint.h"
 #include "Sockets/SocketManager.h"
@@ -22,6 +23,7 @@ FProjectEngine::FProjectEngine()
 
 	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FTestEndpoint>());
 	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FUserEndpoint>());
+	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FIntegrationEndpoint>());
 }
 
 void FProjectEngine::Init()
