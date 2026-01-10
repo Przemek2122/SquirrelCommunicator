@@ -4,10 +4,8 @@
 #include "CoreMinimal.h"
 #include "Engine.h"
 #include "Rest/CrowAppMiddleware.h"
+#include "Rest/CrowAppEndpoint.h"
 #include "BackendSettings.h"
-
-// Enable SSL Support in crow library
-//#define CROW_ENABLE_SSL
 #include "crow/app.h"
 
 class FConversationsManager;
@@ -26,7 +24,6 @@ public:
 	void Init() override;
 	void PostSecondTick() override;
 
-	void InitBasicSetup();
 	void InitUsersSetup();
 
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
@@ -46,9 +43,6 @@ public:
 	CUnorderedMap<std::string, std::string> GetDefaultHeaders() const;
 	CUnorderedMap<std::string, std::string> GetDefaultHeadersCache() const { return DefaultHeadersCache; }
 	const CArray<std::string>& GetOriginWhitelist() const { return OriginWhitelist; }
-
-protected:
-	crow::response CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const;
 
 protected:
 	/** API Server */
@@ -71,6 +65,12 @@ protected:
 
 	/** Conversations manager */
 	std::unique_ptr<FConversationsManager> ConversationsManager;
+
+	/** Array of rest endpoint classes */
+	CArray<FClassStorage<FCrowAppEndpoint, FProjectEngine*>> RestEndpointsClasses;
+
+	/** Array with rest endpoints instances */
+	CArray<std::shared_ptr<FCrowAppEndpoint>> RestEndpointInstances;
 
 	/** Cached default headers */
 	CUnorderedMap<std::string, std::string> DefaultHeadersCache;

@@ -6,7 +6,9 @@
 #include "Assets/IniReader/IniObject.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
-#include "Misc/WebSockets/CookieHelper.h"
+#include "Rest/CrowUtils.h"
+#include "Rest/TestEndpoint.h"
+#include "Rest/UserEndpoint.h"
 #include "Sockets/SocketManager.h"
 
 FProjectEngine::FProjectEngine()
@@ -17,6 +19,9 @@ FProjectEngine::FProjectEngine()
 {
 	// Collect Database settings
 	FDataBaseSettings::Initialize();
+
+	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FTestEndpoint>());
+	RestEndpointsClasses.Push(FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<FUserEndpoint>());
 }
 
 void FProjectEngine::Init()
@@ -65,13 +70,14 @@ void FProjectEngine::Init()
 		}
 #endif
 
-		InitBasicSetup();
-
-		LOG_DEBUG("Created api test");
-
-		InitUsersSetup();
-
-		LOG_DEBUG("Created api user");
+		// Create endpoints
+		for (auto& RestEndpointsClass : RestEndpointsClasses)
+		{
+			FCrowAppEndpoint* CrowAppEndpoint = RestEndpointsClass.Allocate(this);
+			std::shared_ptr<FCrowAppEndpoint> SharedPtr = std::make_shared<FCrowAppEndpoint>(*CrowAppEndpoint);
+			CrowAppEndpoint->RegisterRoutes(CrowApp);
+			RestEndpointInstances.Push(SharedPtr);
+		}
 
 		UserManager->Init();
 
@@ -108,240 +114,9 @@ void FProjectEngine::PostSecondTick()
 	UserManager->PostSecondTick();
 }
 
-void FProjectEngine::InitBasicSetup()
-{
-	// Most common address to check if it works
-	CROW_ROUTE(CrowApp, "/")([this]()
-		{
-			return CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Crow C++ API Server is running."} });
-		});
-
-	// Route for testing if api works
-	CROW_ROUTE(CrowApp, "/api/v1/test")([this]()
-		{
-			return CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "API is working."} });
-		});
-}
-
 void FProjectEngine::InitUsersSetup()
 {
-	CROW_ROUTE(CrowApp, "/api/v1/users/register")
-		.methods("POST"_method, "OPTIONS"_method)
-		([this] (const crow::request& req)
-		{
-			crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
-
-			// Get IP address
-			const std::string& ClientIP = req.remote_ip_address;
-
-			const crow::json::rvalue JsonData = crow::json::load(req.body);
-			if (JsonData)
-			{
-				const std::string UserName = JsonData["username"].s();
-				const std::string UserPassword = JsonData["password"].s();
-				const std::string EMail = JsonData["email"].s();
-
-				const ERegisterUserStatus RegisterStatus = UserManager->RegisterUser(UserName, UserPassword, EMail);
-
-				switch (RegisterStatus)
-				{
-					case ERegisterUserStatus::Unknown:
-					{
-						OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
-
-						break;
-					}
-					case ERegisterUserStatus::Successful:
-					{
-						AbuseProtectionPtr->AddRateLimitedAttempt(ClientIP);
-
-						OutResponse = CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
-
-						break;
-					}
-					case ERegisterUserStatus::MailTaken:
-					{
-						OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
-
-						break;
-					}
-					case ERegisterUserStatus::PasswordToWeak:
-					{
-						OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password too weak."} });
-
-						break;
-					}
-					case ERegisterUserStatus::DataBaseInsertFailed:
-					{
-						LOG_ERROR("ERegisterUserStatus::DataBaseInsertFailed:");
-
-						OutResponse = CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
-
-						break;
-					}
-					case ERegisterUserStatus::DataBaseConnectionFailed:
-					{
-						LOG_ERROR("ERegisterUserStatus::DataBaseConnectionFailed:");
-
-						OutResponse = CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
-
-						break;
-					}
-					default:
-					{
-						LOG_ERROR("RegisterStatus unknown case");
-					}
-				}
-			}
-			else
-			{
-				OutResponse = CreateResponse(429, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Too many requests."} });
-			}
-
-			return OutResponse;
-		});
-
-	CROW_ROUTE(CrowApp, "/api/v1/users/login")
-		.methods("POST"_method, "OPTIONS"_method)
-		([this](const crow::request& req)
-		{
-			crow::response OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
-
-			// Get IP address
-			const std::string& ClientIP = req.remote_ip_address;
-
-			const crow::json::rvalue JsonData = crow::json::load(req.body);
-			if (JsonData)
-			{
-				const std::string UserEmail = JsonData["email"].s();
-				const std::string UserPassword = JsonData["password"].s();
-
-				std::string OutSessionToken;
-				const ELoginStatus LoginStatus = UserManager->LoginUser(UserEmail, UserPassword, OutSessionToken);
-
-				if (!OutSessionToken.empty())
-				{
-					switch (LoginStatus)
-					{
-						case ELoginStatus::Unknown:
-						{
-							OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "User login successful!"}, { "message", "unknown issue" } });
-
-							break;
-						}
-						case ELoginStatus::Successful:
-						{
-							OutResponse = CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
-							AddCookies(OutResponse, OutSessionToken);
-
-							break;
-						}
-						case ELoginStatus::SessionAlreadyExist:
-						{
-							OutResponse = CreateResponse(crow::status::NO_CONTENT, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Session already exists!"} });
-
-							break;
-						}
-						case ELoginStatus::IncorrectCredentialsOrUserDoesNotExist:
-						{
-							OutResponse = CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Wrong credentials!"} });
-
-							break;
-						}
-						default:
-						{
-							LOG_ERROR("LoginStatus unknown value!");
-						}
-					}
-				}
-				else
-				{
-					OutResponse = CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Unable to generate session."} });
-				}
-			}
-
-			return OutResponse;
-		});
-
-	CROW_ROUTE(CrowApp, "/api/v1/users/verify")
-		.methods("POST"_method, "OPTIONS"_method)
-		([this](const crow::request& req)
-			{
-				crow::response OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
-
-				const std::string_view CookieHeader = req.get_header_value("Cookie");
-				const std::string Token = FCookieHelper::GetCookieValue(CookieHeader, "auth_token");
-
-				// Get IP address
-				const std::string& ClientIP = req.remote_ip_address;
-
-				if (UserManager->VerifyToken(Token))
-				{
-					OutResponse = CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Token correct."} });
-				}
-				else
-				{
-					OutResponse = CreateResponse(crow::status::UNAUTHORIZED, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Token incorrect."} });
-
-					AbuseProtectionPtr->AddRateLimitedAttempt(ClientIP);
-				}
-
-				return OutResponse;
-			});
-
-	CROW_ROUTE(CrowApp, "/api/v1/users/refresh")
-		.methods("POST"_method, "OPTIONS"_method)
-		([this](const crow::request& req)
-			{
-				crow::response OutResponse = CreateResponse(400, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
-
-				const std::string_view CookieHeader = req.get_header_value("Cookie");
-				const std::string Token = FCookieHelper::GetCookieValue(CookieHeader, "auth_token");
-
-				if (!Token.empty())
-				{
-					if (UserManager->RefreshSessionToken(Token))
-					{
-						OutResponse = CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Token has new refreshed."} });
-					}
-					else
-					{
-						OutResponse = CreateResponse(crow::status::UNAUTHORIZED, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Token not found."} });
-					}
-
-					// Get IP address
-					const std::string& ClientIP = req.remote_ip_address;
-
-					AbuseProtectionPtr->AddRateLimitedAttempt(ClientIP);
-				}
-
-				return OutResponse;
-			});
-
-	CROW_ROUTE(CrowApp, "/api/v1/users/logout")
-		.methods("POST"_method, "OPTIONS"_method)
-		([this](const crow::request& req)
-		{
-			crow::response OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
-
-			const crow::json::rvalue JsonData = crow::json::load(req.body);
-			if (JsonData)
-			{
-				const std::string SessionToken = JsonData["token"].s();
-
-				const bool bSuccessfullyLoggedOut = UserManager->Logout(SessionToken);
-				if (bSuccessfullyLoggedOut)
-				{
-					OutResponse = CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Session terminated!"} });
-				}
-				else
-				{
-					OutResponse = CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Can not log out."} });
-				}
-			}
-
-			return OutResponse;
-		});
+	
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)
@@ -482,16 +257,4 @@ CUnorderedMap<std::string, std::string> FProjectEngine::GetDefaultHeaders() cons
 	CUnorderedMap<std::string, std::string> OutDefaultHeaders = AbuseProtectionPtr->GetCORHeaders();
 
 	return OutDefaultHeaders;
-}
-
-crow::response FProjectEngine::CreateResponse(const int ResponseCode, const CMap<std::string, std::string>& JsonFields) const
-{
-	crow::json::wvalue response;
-
-	for (const std::pair<const std::string, std::string>& JsonField : JsonFields)
-	{
-		response[JsonField.first] = JsonField.second;
-	}
-
-	return crow::response(ResponseCode, response);
 }
