@@ -111,35 +111,35 @@ void FUserEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 				{
 					switch (LoginStatus)
 					{
-					case ELoginStatus::Unknown:
-					{
-						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "User login successful!"}, { "message", "unknown issue" } });
+						case ELoginStatus::Unknown:
+						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "User login successful!"}, { "message", "unknown issue" } });
 
-						break;
-					}
-					case ELoginStatus::Successful:
-					{
-						OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
-						ProjectEngine->AddCookies(OutResponse, OutSessionToken);
+							break;
+						}
+						case ELoginStatus::Successful:
+						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
+							ProjectEngine->AddCookies(OutResponse, OutSessionToken);
 
-						break;
-					}
-					case ELoginStatus::SessionAlreadyExist:
-					{
-						OutResponse = FCrowUtils::CreateResponse(crow::status::NO_CONTENT, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Session already exists!"} });
+							break;
+						}
+						case ELoginStatus::SessionAlreadyExist:
+						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::NO_CONTENT, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Session already exists!"} });
 
-						break;
-					}
-					case ELoginStatus::IncorrectCredentialsOrUserDoesNotExist:
-					{
-						OutResponse = FCrowUtils::CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Wrong credentials!"} });
+							break;
+						}
+						case ELoginStatus::IncorrectCredentialsOrUserDoesNotExist:
+						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Wrong credentials!"} });
 
-						break;
-					}
-					default:
-					{
-						LOG_ERROR("LoginStatus unknown value!");
-					}
+							break;
+						}
+						default:
+						{
+							LOG_ERROR("LoginStatus unknown value!");
+						}
 					}
 				}
 				else
