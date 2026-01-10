@@ -230,4 +230,6 @@ void FUserEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 			return OutResponse;
 		});
+
+	FCrowAppEndpoint::RegisterRoutes(App);
 }

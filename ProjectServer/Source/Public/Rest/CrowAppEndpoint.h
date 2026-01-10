@@ -12,7 +12,7 @@ public:
 	FCrowAppEndpoint(FProjectEngine* InProjectEngine = nullptr);
 	virtual ~FCrowAppEndpoint() { }
 
-	virtual void RegisterRoutes(crow::App<FCrowAppMiddleware>& App) { }
+	virtual void RegisterRoutes(crow::App<FCrowAppMiddleware>& App);
 
 protected:
 	FProjectEngine* ProjectEngine;
