@@ -36,15 +36,32 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
 
 	// Check password
-	if (InUserPassword.length() <= 10)
+	if (!ValidatePasswordLength(InUserPassword))
 	{
-		RegisterUserStatus = ERegisterUserStatus::PasswordToWeak;
+		RegisterUserStatus = ERegisterUserStatus::PasswordLengthIncorrect;
 	}
 
 	// Check mail
-	if (!FStringHelpers::ValidateString(InUserEMail, FPredefinedCharsets::BASE_EMAIL))
+	if (!ValidateEMailLength(InUserEMail))
+	{
+		RegisterUserStatus = ERegisterUserStatus::MailLengthIncorrect;
+	}
+
+	// Check User name
+	if (!ValidateUserNameLength(InUserName))
+	{
+		RegisterUserStatus = ERegisterUserStatus::UserNameLengthIncorrect;
+	}
+
+	// Check mail
+	if (!FStringHelpers::ValidateMail(InUserEMail))
 	{
 		RegisterUserStatus = ERegisterUserStatus::MailIncorrect;
+	}
+
+	if (!FStringHelpers::ValidateString(InUserPassword, FPredefinedCharsets::BASE_SIMPLE_PASSWORD))
+	{
+		RegisterUserStatus = ERegisterUserStatus::PasswordIncorrect;
 	}
 
 	// @TODO Check UserName, check password better
@@ -117,6 +134,18 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::string& InUserPassword, std::string& OutSessionToken)
 {
 	ELoginStatus LoginStatus = ELoginStatus::IncorrectCredentialsOrUserDoesNotExist;
+
+	// Basic email check
+	if (!ValidateEMailLength(InUserEmail))
+	{
+		return ELoginStatus::IncorrectInputLength;
+	}
+
+	// Basic password check
+	if (!ValidatePasswordLength(InUserPassword))
+	{
+		return ELoginStatus::IncorrectInputLength;
+	}
 
 	std::shared_ptr<FUser> UserPtr = nullptr;
 	bool bWereDownloadedFromDB = false;
@@ -234,6 +263,22 @@ void FUserManager::UpdateUserActivity(const Uint64 UsedId)
 			FirstUser->UpdateLastActiveTime();
 		}
 	}
+}
+
+std::shared_ptr<FUser> FUserManager::FindUserByMail(const std::string& InMail)
+{
+	const std::shared_lock<std::shared_mutex> UserMailMapMutexScopeLock(UserMailMapMutex);
+
+	std::shared_ptr<FUser> Out;
+
+	if (MailToUserIdMap.ContainsKey(InMail))
+	{
+		const std::shared_lock<std::shared_mutex> UserDataBaseCacheScopeLock(UserDataBaseMutex);
+
+		Out = UserDataBaseCache[MailToUserIdMap[InMail]];
+	}
+
+	return Out;
 }
 
 Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
@@ -472,8 +517,29 @@ void FUserManager::OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr)
 void FUserManager::AddUserToCache(const std::shared_ptr<FUser>& UserPtr)
 {
 	// Lock as register may come from any thread
-	const std::unique_lock ScopeLock(UserDataBaseMutex);
+	const std::unique_lock UserDataBaseMutexScopeLock(UserDataBaseMutex);
 
 	// Create user
 	UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);
+
+	// Another lock for map
+	const std::unique_lock UserMailMapMutexScopeLock(UserMailMapMutex);
+
+	// Add mail to cache
+	MailToUserIdMap.Emplace(UserPtr->GetUserMail(), UserPtr->GetUserId());
+}
+
+bool FUserManager::ValidateUserNameLength(const std::string& InUserName)
+{
+	return (InUserName.size() > 4 && InUserName.size() < 110);
+}
+
+bool FUserManager::ValidatePasswordLength(const std::string& InPassword)
+{
+	return (InPassword.length() > 7) && (InPassword.size() < 270);
+}
+
+bool FUserManager::ValidateEMailLength(const std::string& InEMail)
+{
+	return InEMail.length() > 4 && (InEMail.size() < 530);
 }

@@ -11,8 +11,11 @@ enum class ERegisterUserStatus : Uint8
 	Unknown,
 	Successful,
 	MailTaken,
-	PasswordToWeak,
+	PasswordLengthIncorrect,
+	MailLengthIncorrect,
+	UserNameLengthIncorrect,
 	MailIncorrect,
+	PasswordIncorrect,
 	DataBaseInsertFailed,
 	DataBaseConnectionFailed
 };
@@ -22,6 +25,8 @@ enum class ELoginStatus : Uint8
 	Unknown,
 	Successful,
 	SessionAlreadyExist,
+	IncorrectInputLength,
+	IncorrectEMailContent,
 	IncorrectCredentialsOrUserDoesNotExist,
 	DataBaseFetchFailed,
 	DataBaseConnectionFailed
@@ -67,6 +72,9 @@ public:
 
 	void UpdateUserActivity(const Uint64 UsedId);
 
+	/** Search all users to find this with mail specified */
+	std::shared_ptr<FUser> FindUserByMail(const std::string& InMail);
+
 	/** Get user ID from token, 0 means not found */
 	Uint64 GetIdFromToken(const std::string& InToken) const;
 
@@ -88,6 +96,10 @@ private:
 	void OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr);
 	void AddUserToCache(const std::shared_ptr<FUser>& UserPtr);
 
+	bool ValidateUserNameLength(const std::string& InUserName);
+	bool ValidatePasswordLength(const std::string& InPassword);
+	bool ValidateEMailLength(const std::string& InEMail);
+
 private:
 	/** Manager for user sessions */
 	std::unique_ptr<FSessionManager> SessionManager;
@@ -99,11 +111,20 @@ private:
 	 */
 	CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBaseCache;
 
+	/**
+	 * Map with all users mails to number,
+	 * @TODO For long runs consider clearing every x time of inactivity
+	 */
+	CUnorderedMap<std::string, Uint64> MailToUserIdMap;
+
 	/** Tells us which number is available */
 	Uint64 NextAvailableIndex;
 
 	/** Mutex for UserDataBase */
 	std::shared_mutex UserDataBaseMutex;
+
+	/** Mutex for UserDataBase */
+	std::shared_mutex UserMailMapMutex;
 
 	/** Cache for time, we will use it for each login, message, etc so cache will be faster */
 	Uint64 CurrentTimeCached;

@@ -1,10 +1,13 @@
 #include "Rest/IntegrationEndpoint.h"
 #include "PredefinedMessages.h"
 #include "Rest/CrowUtils.h"
-#include <cpr/cpr.h>
-
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
+#include <cpr/cpr.h>
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
+
+#include "Auth/UserManager.h"
 
 FIntegrationEndpoint::FIntegrationEndpoint(FProjectEngine* InProjectEngine)
 	: FCrowAppEndpoint(InProjectEngine)
@@ -39,12 +42,56 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 					{
 						LOG_INFO("Google integration success: " << response.text);
 
-						// Add user (if missing)
+						try
+						{
+							auto json = nlohmann::json::parse(response.text);
 
+							// Verify
+							if (json.contains("error"))
+							{
+								// Token invalid
+								std::string error = json["error"];
+								return false;
+							}
 
-						// Create session
+							bool emailVerified = json["email_verified"];
+							if (emailVerified)
+							{
+								std::string email = json["email"];
+								std::string sub = json["sub"]; // Google user ID
 
+								std::string name = json.value("name", "");
+								//std::string picture = json.value("picture", "");
 
+								// Add user (if missing)
+								FUserManager* UserManager = ProjectEngine->GetUserManager();
+								std::shared_ptr<FUser> UserPtr = UserManager->FindUserByMail();
+								if (UserPtr != nullptr)
+								{
+
+								}
+								else
+								{
+									// Register
+									ERegisterUserStatus RegisterResult = UserManager->RegisterUser(name, "", email);
+									if (RegisterResult == ERegisterUserStatus::Successful)
+									{
+										UserManager->FindUserByMail()
+									}
+								}
+
+								if (UserPtr != nullptr)
+								{
+									// Create session
+
+								}
+							}
+						}
+						catch (const nlohmann::json::exception& e)
+						{
+							// Parse error
+							return false;
+						}
 					}
 					else
 					{

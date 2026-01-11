@@ -53,7 +53,7 @@ void FUserEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 					break;
 				}
-				case ERegisterUserStatus::PasswordToWeak:
+				case ERegisterUserStatus::PasswordLengthIncorrect:
 				{
 					OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password too weak."} });
 
@@ -133,6 +133,8 @@ void FUserEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 						case ELoginStatus::IncorrectCredentialsOrUserDoesNotExist:
 						{
 							OutResponse = FCrowUtils::CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Wrong credentials!"} });
+
+							ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
 
 							break;
 						}

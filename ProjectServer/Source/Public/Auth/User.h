@@ -71,7 +71,11 @@ public:
 	/** @return Name displayed for other users */
 	const std::string& GetDisplayedName() const;
 
+	/** Get user password in hash form */
 	const std::string& GetUserPasswordHash() const;
+
+	/** Get user mail */
+	const std::string& GetUserMail() const { return UserEMail; }
 
 	/** @return User status depending on last time active */
 	EUserStatus GetUserStatus() const;
