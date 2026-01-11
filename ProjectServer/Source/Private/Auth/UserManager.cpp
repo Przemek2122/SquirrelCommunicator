@@ -63,8 +63,6 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 	{
 		RegisterUserStatus = ERegisterUserStatus::PasswordIncorrect;
 	}
-
-	// @TODO Check UserName, check password better
 	
 	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
 	{
@@ -126,6 +124,30 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 		{
 			RegisterUserStatus = ERegisterUserStatus::DataBaseConnectionFailed;
 		}
+	}
+
+	return RegisterUserStatus;
+}
+
+ERegisterUserStatus FUserManager::RegisterIntegration(const std::string& InUserName, const std::string& InUserEMail)
+{
+	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
+
+	// Check mail
+	if (!ValidateEMailLength(InUserEMail))
+	{
+		RegisterUserStatus = ERegisterUserStatus::MailLengthIncorrect;
+	}
+
+	// Check User name
+	if (!ValidateUserNameLength(InUserName))
+	{
+		RegisterUserStatus = ERegisterUserStatus::UserNameLengthIncorrect;
+	}
+
+	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
+	{
+		
 	}
 
 	return RegisterUserStatus;
@@ -201,6 +223,21 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::
 			}
 		}
 	}
+
+	return LoginStatus;
+}
+
+ELoginStatus FUserManager::LoginIntegration(const std::string& InUserEmail, std::string& OutSessionToken)
+{
+	ELoginStatus LoginStatus = ELoginStatus::IncorrectCredentialsOrUserDoesNotExist;
+
+	// Basic email check
+	if (!ValidateEMailLength(InUserEmail))
+	{
+		return ELoginStatus::IncorrectInputLength;
+	}
+
+
 
 	return LoginStatus;
 }

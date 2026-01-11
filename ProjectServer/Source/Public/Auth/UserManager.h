@@ -53,11 +53,17 @@ public:
 	 */
 	ERegisterUserStatus RegisterUser(const std::string& InUserName, const std::string& InUserPassword, const std::string& InUserEMail);
 
+	/** Integration user creation */
+	ERegisterUserStatus RegisterIntegration(const std::string& InUserName, const std::string& InUserEMail);
+
 	/**
 	 * Use for login
 	 * @return Unique session token
 	 */
 	ELoginStatus LoginUser(const std::string& InUserEmail, const std::string& InUserPassword, std::string& OutSessionToken);
+
+	/** Internal login use - Make sure to check if integration is valid as this just logins without any checks. */
+	ELoginStatus LoginIntegration(const std::string& InUserEmail, std::string& OutSessionToken);
 
 	/** @return true if successfully logged out */
 	bool Logout(const std::string& InSessionToken);
