@@ -27,30 +27,37 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 			{
 				const std::string GoogleToken = JsonData["google_token"].s();
 
-				// Verify frontend
-				// Make request to https://oauth2.googleapis.com/tokeninfo?id_token=TOKEN
-
-				auto response = cpr::Get(
-					cpr::Url{ "https://oauth2.googleapis.com/tokeninfo" },
-					cpr::Parameters{ {"id_token", GoogleToken} }
-				);
-
-				if (response.status_code == 200)
+				// Verify google token
+				try
 				{
-					LOG_INFO("Google integration success: " << response.text);
+					auto response = cpr::Get(
+						cpr::Url{ "https://oauth2.googleapis.com/tokeninfo" },
+						cpr::Parameters{ {"id_token", GoogleToken} }
+					);
 
-					// Add user (if missing)
+					if (response.status_code == 200)
+					{
+						LOG_INFO("Google integration success: " << response.text);
+
+						// Add user (if missing)
 
 
-					// Create session
+						// Create session
 
 
+					}
+					else
+					{
+						LOG_WARN("Google responded with error: " << response.status_code << ": " << response.text);
+
+						ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+					}
+
+					std::cout << "Success" << std::endl;
 				}
-				else
+				catch (const std::exception& e)
 				{
-					LOG_WARN("Google responded with error: " << response.status_code << ": " << response.text);
-
-					ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+					std::cout << "Google login exception, error: " << e.what() << std::endl;
 				}
 			}
 			else
