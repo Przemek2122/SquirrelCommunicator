@@ -125,7 +125,7 @@ private:
 	 * Map with all users mails to number,
 	 * @TODO For long runs consider clearing every x time of inactivity
 	 */
-	CUnorderedMap<std::string, Uint64> MailToUserIdMap;
+	CUnorderedMap<std::string, Uint64> UserMailToUserIdMap;
 
 	/** Tells us which number is available */
 	Uint64 NextAvailableIndex;

@@ -199,28 +199,15 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::
 
 		if (VerifyPasswords(UserPtr->GetUserPasswordHash(), InUserPassword))
 		{
-			FDataBaseConnect Connect;
-			if (Connect.IsConnected())
-			{
-				// Get database connection session
-				soci::session& DataBaseSession = Connect.GetSession();
+			const Uint64 Id = UserPtr->GetUserId();
 
-				const Uint64 Id = UserPtr->GetUserId();
+			UpdateUserActivity(Id);
 
-				// Update activity time
-				DataBaseSession << "UPDATE users SET LastActive = NOW() WHERE id = :id",
-					soci::use(Id, "id");
+			OnLoginSuccessful(UserPtr, bWereDownloadedFromDB);
 
-				OnLoginSuccessful(UserPtr, bWereDownloadedFromDB);
+			OutSessionToken = SessionManager->CreateSession(Id);
 
-				OutSessionToken = SessionManager->CreateSession(Id);
-
-				LoginStatus = ELoginStatus::Successful;
-			}
-			else
-			{
-				LoginStatus = ELoginStatus::DataBaseConnectionFailed;
-			}
+			LoginStatus = ELoginStatus::Successful;
 		}
 	}
 
@@ -237,7 +224,33 @@ ELoginStatus FUserManager::LoginIntegration(const std::string& InUserEmail, std:
 		return ELoginStatus::IncorrectInputLength;
 	}
 
+	bool bHasEMail;
+	Uint64 Id = 0;
+	{
+		// Shared Lock for map
+		const std::shared_lock<std::shared_mutex> UserMailMapMutexScopeLock(UserMailMapMutex);
+		bHasEMail = UserMailToUserIdMap.ContainsKey(InUserEmail);
+		if (bHasEMail)
+		{
+			Id = UserMailToUserIdMap[InUserEmail];
+		}
+	}
 
+	if (bHasEMail)
+	{
+		std::shared_ptr<FUser> UserPtr;
+		{
+			// Shared Lock for map
+			const std::shared_lock<std::shared_mutex> UserDataBaseMutexScopeLock(UserDataBaseMutex);
+			UserPtr = UserDataBaseCache[Id];
+		}
+
+		OnLoginSuccessful(UserPtr, false);
+
+		OutSessionToken = SessionManager->CreateSession(Id);
+
+		LoginStatus = ELoginStatus::Successful;
+	}
 
 	return LoginStatus;
 }
@@ -304,15 +317,17 @@ void FUserManager::UpdateUserActivity(const Uint64 UsedId)
 
 std::shared_ptr<FUser> FUserManager::FindUserByMail(const std::string& InMail)
 {
-	const std::shared_lock<std::shared_mutex> UserMailMapMutexScopeLock(UserMailMapMutex);
-
 	std::shared_ptr<FUser> Out;
 
-	if (MailToUserIdMap.ContainsKey(InMail))
+	bool bContainsMailInMap;
 	{
-		const std::shared_lock<std::shared_mutex> UserDataBaseCacheScopeLock(UserDataBaseMutex);
+		const std::shared_lock<std::shared_mutex> UserMailMapMutexScopeLock(UserMailMapMutex);
+		bContainsMailInMap = UserMailToUserIdMap.ContainsKey(InMail);
+	}
 
-		Out = UserDataBaseCache[MailToUserIdMap[InMail]];
+	if (bContainsMailInMap)
+	{
+		Out = UserDataBaseCache[UserMailToUserIdMap[InMail]];
 	}
 	else
 	{
@@ -630,17 +645,21 @@ void FUserManager::OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr)
 
 void FUserManager::AddUserToCache(const std::shared_ptr<FUser>& UserPtr)
 {
-	// Lock as register may come from any thread
-	const std::unique_lock UserDataBaseMutexScopeLock(UserDataBaseMutex);
+	{
+		// Lock as register may come from any thread
+		const std::unique_lock UserDataBaseMutexScopeLock(UserDataBaseMutex);
 
-	// Create user
-	UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);
+		// Create user
+		UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);
+	}
 
-	// Another lock for map
-	const std::unique_lock UserMailMapMutexScopeLock(UserMailMapMutex);
+	{
+		// Another lock for map
+		const std::unique_lock UserMailMapMutexScopeLock(UserMailMapMutex);
 
-	// Add mail to cache
-	MailToUserIdMap.Emplace(UserPtr->GetUserMail(), UserPtr->GetUserId());
+		// Add mail to cache
+		UserMailToUserIdMap.Emplace(UserPtr->GetUserMail(), UserPtr->GetUserId());
+	}
 }
 
 bool FUserManager::ValidateUserNameLength(const std::string& InUserName)

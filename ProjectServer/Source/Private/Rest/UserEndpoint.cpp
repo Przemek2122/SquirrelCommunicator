@@ -33,52 +33,52 @@ void FUserEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 				switch (RegisterStatus)
 				{
-				case ERegisterUserStatus::Unknown:
-				{
-					OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
+					case ERegisterUserStatus::Unknown:
+					{
+						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
 
-					break;
-				}
-				case ERegisterUserStatus::Successful:
-				{
-					ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+						break;
+					}
+					case ERegisterUserStatus::Successful:
+					{
+						ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
 
-					OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
+						OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
 
-					break;
-				}
-				case ERegisterUserStatus::MailTaken:
-				{
-					OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
+						break;
+					}
+					case ERegisterUserStatus::MailTaken:
+					{
+						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
 
-					break;
-				}
-				case ERegisterUserStatus::PasswordLengthIncorrect:
-				{
-					OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password too weak."} });
+						break;
+					}
+					case ERegisterUserStatus::PasswordLengthIncorrect:
+					{
+						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password too weak."} });
 
-					break;
-				}
-				case ERegisterUserStatus::DataBaseInsertFailed:
-				{
-					LOG_ERROR("ERegisterUserStatus::DataBaseInsertFailed:");
+						break;
+					}
+					case ERegisterUserStatus::DataBaseInsertFailed:
+					{
+						LOG_ERROR("ERegisterUserStatus::DataBaseInsertFailed:");
 
-					OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
+						OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
 
-					break;
-				}
-				case ERegisterUserStatus::DataBaseConnectionFailed:
-				{
-					LOG_ERROR("ERegisterUserStatus::DataBaseConnectionFailed:");
+						break;
+					}
+					case ERegisterUserStatus::DataBaseConnectionFailed:
+					{
+						LOG_ERROR("ERegisterUserStatus::DataBaseConnectionFailed:");
 
-					OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
+						OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
 
-					break;
-				}
-				default:
-				{
-					LOG_ERROR("RegisterStatus unknown case");
-				}
+						break;
+					}
+					default:
+					{
+						LOG_ERROR("RegisterStatus unknown case");
+					}
 				}
 			}
 			else
@@ -138,8 +138,15 @@ void FUserEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 							break;
 						}
+						case ELoginStatus::IncorrectInputLength:
+						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "IncorrectInputLength"} });
+
+							ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+						}
 						default:
 						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Login: INTERNAL_SERVER_ERROR"} });
 							LOG_ERROR("LoginStatus unknown value!");
 						}
 					}

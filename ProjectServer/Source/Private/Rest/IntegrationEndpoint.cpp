@@ -102,8 +102,43 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 							if (UserPtr != nullptr)
 							{
 								// Create session
-								std::string OutToken;
-								UserManager->LoginIntegration(Email, OutToken);
+								std::string OutSessionToken;
+								const ELoginStatus LoginResult = UserManager->LoginIntegration(Email, OutSessionToken);
+								switch (LoginResult)
+								{
+									case ELoginStatus::Successful:
+									{
+										OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
+
+										ProjectEngine->AddCookies(OutResponse, OutSessionToken);
+
+										break;
+									}
+
+									case ELoginStatus::IncorrectCredentialsOrUserDoesNotExist:
+									{
+										OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Incorrect Credentials Or User Does Not Exist"} });
+
+										ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+
+										break;
+									}
+
+									case ELoginStatus::IncorrectInputLength:
+									{
+										OutResponse = FCrowUtils::CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Incorrect Input Length"} });
+
+										ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+
+										break;
+									}
+
+									default:
+									{
+										OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Login: INTERNAL_SERVER_ERROR"} });
+										LOG_ERROR("Login Integration Status unknown value!");
+									}
+								}
 							}
 						}
 						else
