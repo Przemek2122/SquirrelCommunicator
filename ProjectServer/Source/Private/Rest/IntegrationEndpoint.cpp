@@ -3,11 +3,10 @@
 #include "Rest/CrowUtils.h"
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
+#include "Auth/UserManager.h"
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <nlohmann/json_fwd.hpp>
-
-#include "Auth/UserManager.h"
 
 FIntegrationEndpoint::FIntegrationEndpoint(FProjectEngine* InProjectEngine)
 	: FCrowAppEndpoint(InProjectEngine)

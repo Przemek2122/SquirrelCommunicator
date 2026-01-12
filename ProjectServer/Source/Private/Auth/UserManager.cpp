@@ -321,6 +321,8 @@ std::shared_ptr<FUser> FUserManager::FindUserByMail(const std::string& InMail)
 		if (CheckOpResult == EDatabaseOperationResult::Success && bExists)
 		{
 			DownloadUserFromDBByMail(InMail, Out);
+
+			AddUserToCache(Out);
 		}
 	}
 
@@ -557,7 +559,7 @@ EDatabaseOperationResult FUserManager::DoesUserWithMailExists(const std::string&
 				soci::use(InUserEmail),
 				soci::into(Username, Ind);
 
-			if (Ind != soci::i_ok)
+			if (Ind == soci::i_ok)
 			{
 				bOutExists = true;
 			}
