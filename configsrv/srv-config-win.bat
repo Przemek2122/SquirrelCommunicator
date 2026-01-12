@@ -48,7 +48,7 @@ if "%CI%"=="true" (
     
     :open_clion
     echo Opening CLion...
-    start "" "path\to\clion64.exe" "%CD%"
+    start "" "clion64" "%CD%/ProjectServer/CMakeLists.txt"
     goto end_ide
     
     :skip_ide
