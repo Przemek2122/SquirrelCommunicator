@@ -356,17 +356,15 @@ EDatabaseOperationResult FUserManager::DownloadUserFromDBByMail(const std::strin
 			std::string Username;
 			std::string StoredPasswordHash;
 			std::string Mail;
-			std::string DisplayName;
 			Uint64 UserId;
 			soci::indicator Ind;
 
-			DataBaseSession << "SELECT id, username, password, email, displayedname FROM users WHERE email = :email",
+			DataBaseSession << "SELECT id, username, password, email FROM users WHERE email = :email",
 				soci::use(InUserEmail),
 				soci::into(UserId, Ind),
 				soci::into(Username),
 				soci::into(StoredPasswordHash),
-				soci::into(Mail),
-				soci::into(DisplayName);
+				soci::into(Mail);
 
 			if (Ind == soci::i_ok)
 			{
@@ -453,19 +451,18 @@ EDatabaseOperationResult FUserManager::DownloadUsersFromDBByIds(const std::vecto
 			}
 
 			// Prepare fetch variables
-			std::string Username, StoredPasswordHash, Mail, DisplayName;
+			std::string Username, StoredPasswordHash, Mail;
 			Uint64 UserIdVal;
 			soci::indicator Ind;
 
 			// Execute Single Query
 			soci::statement St = (DataBaseSession.prepare <<
-				"SELECT id, username, password, email, displayedname FROM users WHERE id IN (" + IdList + ")",
+				"SELECT id, username, password, email FROM users WHERE id IN (" + IdList + ")",
 				soci::into(UserIdVal, Ind),
 				soci::into(Username),
 				soci::into(StoredPasswordHash),
-				soci::into(Mail),
-				soci::into(DisplayName)
-				);
+				soci::into(Mail)
+			);
 
 			St.execute();
 
