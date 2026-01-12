@@ -26,14 +26,34 @@ echo Try to build all necesary projects
 cmake --build buildsrv\win-%ARCH% --target BuildAllProject --parallel
 echo All builds complete!
 
-REM 
+REM IDE Selection (if not CLI)
 if "%CI%"=="true" (
-    echo Running in CI - skipping VS open and pause
+    echo Running in CI - skipping IDE open and pause
 ) else (
-	REM Finally open Visual Studio
-	REM Note: You could change this part to IDE of your choice
-	echo try to open Visual studio
+    echo Select IDE to open:
+    echo 1. Visual Studio
+    echo 2. CLion
+    echo 3. None
+    choice /C 123 /N /M "Enter choice (1-3): "
+    
+    if errorlevel 3 goto skip_ide
+    if errorlevel 2 goto open_clion
+    if errorlevel 1 goto open_vs
+    
+    :open_vs
+    echo Opening Visual Studio...
     cmake --build buildsrv\win-%ARCH% --target open_vs
-	echo Visual studio show now open
+    echo Visual Studio should now be open
+    goto end_ide
+    
+    :open_clion
+    echo Opening CLion...
+    start "" "path\to\clion64.exe" "%CD%"
+    goto end_ide
+    
+    :skip_ide
+    echo Skipping IDE open
+    
+    :end_ide
     PAUSE
 )
