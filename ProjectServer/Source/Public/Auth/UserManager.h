@@ -93,6 +93,10 @@ private:
 	EDatabaseOperationResult DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr);
 	EDatabaseOperationResult DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers, bool bAutoAddToCache);
 
+	EDatabaseOperationResult UploadUserToDataBase(const std::string& InUserName, const std::string& InUserPasswordHash, const std::string& InUserEMail, Uint64& OutId);
+
+	static EDatabaseOperationResult DoesUserWithMailExists(const std::string& InUserEmail, bool& bOutExists);
+
 	Uint64 GenerateNextAvailableId();
 	bool VerifyPasswords(const std::string& StringWithHash, const std::string& StringWithoutHash);
 	std::string HashUserPassword(const std::string& RawPassword);

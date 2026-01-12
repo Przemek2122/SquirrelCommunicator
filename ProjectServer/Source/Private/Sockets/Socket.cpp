@@ -1,8 +1,5 @@
 #include "Sockets/Socket.h"
 
-#include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
-
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
@@ -11,6 +8,8 @@
 #include "Misc/WebSockets/CookieHelper.h"
 #include "Sockets/SocketManager.h"
 #include "Sockets/WebSocketSessionData.h"
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 ESocketMessageType StringToSocketMessageType(const std::string& InTypeString)
 {
@@ -280,7 +279,7 @@ void FSocket::OnClientConnected(auto* ws)
 
 			if (!OutUsers.empty() && OutUsers[0].get() != nullptr)
 			{
-				JsonData["user_display_name"] = OutUsers[0]->GetDisplayedName();
+				JsonData["user_display_name"] = OutUsers[0]->GetUserNameString();
 			}
 			else
 			{
@@ -1024,7 +1023,7 @@ nlohmann::json FSocket::FormatConversationIntoJson(const CArray<Uint64>& Convers
 						nlohmann::json NewUser;
 
 						NewUser["id"] = UserPtr->GetUserId();
-						NewUser["name"] = UserPtr->GetDisplayedName();
+						NewUser["name"] = UserPtr->GetUserNameString();
 						NewUser["status"] = UserStatusToString(UserPtr->GetUserStatus());
 
 						UsersJsonArray.push_back(NewUser);

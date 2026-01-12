@@ -25,9 +25,6 @@ public:
 	bool IsValid() const { return (UserId > 0); }
 
 protected:
-	/** Displayed name to other users */
-	std::string DisplayedName;
-
 	/** Username (for log in) */
 	std::string UserName;
 
@@ -55,7 +52,6 @@ public:
 	/** Update last active time with current time */
 	void UpdateLastActiveTime();
 
-	void SetDisplayedName(const std::string& InDisplayedName);
 	void SetUserName(const std::string& InUserName);
 	void SetPassword(const std::string& InUserEncryptedPassword);
 	void SetUserEMail(const std::string& InUserEMail);
@@ -68,8 +64,8 @@ public:
 	void SetSocketId(int32 InSocketId);
 	void SetUserStatus(EUserStatus NewUserStatus);
 
-	/** @return Name displayed for other users */
-	const std::string& GetDisplayedName() const;
+	/** Get username */
+	const std::string& GetUserNameString() const;
 
 	/** Get user password in hash form */
 	const std::string& GetUserPasswordHash() const;

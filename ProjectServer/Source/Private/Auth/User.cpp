@@ -41,11 +41,6 @@ void FUser::UpdateLastActiveTime()
 	LastActiveTime = GetCurrentTime();
 }
 
-void FUser::SetDisplayedName(const std::string& InDisplayedName)
-{
-	DisplayedName = InDisplayedName;
-}
-
 void FUser::SetUserName(const std::string& InUserName)
 {
 	UserName = InUserName;
@@ -91,9 +86,9 @@ void FUser::SetUserStatus(EUserStatus NewUserStatus)
 	UserStatus = NewUserStatus;
 }
 
-const std::string& FUser::GetDisplayedName() const
+const std::string& FUser::GetUserNameString() const
 {
-	return DisplayedName;
+	return UserName;
 }
 
 const std::string& FUser::GetUserPasswordHash() const
