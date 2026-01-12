@@ -29,100 +29,15 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 			{
 				const std::string GoogleToken = JsonData["google_token"].s();
 
+				cpr::Response response;
+
 				// Verify google token
 				try
 				{
-					auto response = cpr::Get(
-						cpr::Url{ "https://oauth2.googleapis.com/tokeninfo" },
-						cpr::Parameters{ {"id_token", GoogleToken} }
+					response = cpr::Get(
+						cpr::Url{"https://oauth2.googleapis.com/tokeninfo"},
+						cpr::Parameters{{"id_token", GoogleToken}}
 					);
-
-					if (response.status_code == 200)
-					{
-						//LOG_INFO("Google integration success: " << response.text);
-
-						try
-						{
-							auto json = nlohmann::json::parse(response.text);
-
-							// Verify
-							if (json.contains("error"))
-							{
-								// Token invalid
-								std::string JSON_Error = json["error"];
-
-								OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
-									{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-										{ "message", "Google integration - JSON Contains error:" + JSON_Error } }
-								);
-							}
-
-							std::string EMailVerified = json["email_verified"];
-							if (EMailVerified == "true")
-							{
-								std::string Email = json["email"];
-								std::string Name = json.value("name", "");
-								//std::string picture = json.value("picture", "");
-
-								// Add user (if missing)
-								FUserManager* UserManager = ProjectEngine->GetUserManager();
-								std::shared_ptr<FUser> UserPtr = UserManager->FindUserByMail(Email);
-								if (UserPtr == nullptr)
-								{
-									// Register
-									ERegisterUserStatus RegisterResult = UserManager->RegisterIntegration(Name, Email);
-									if (RegisterResult == ERegisterUserStatus::Successful)
-									{
-										UserPtr = UserManager->FindUserByMail(Email);
-									}
-									else
-									{
-										LOG_ERROR("Google integration - Unable to register in internal database.");
-
-										OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, 
-											{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-												{ "message", "Google integration - Unable to register in internal database."} }
-										);
-									}
-								}
-
-								if (UserPtr != nullptr)
-								{
-									// Create session
-									std::string OutToken;
-									UserManager->LoginIntegration(Email, OutToken);
-								}
-							}
-							else
-							{
-								LOG_ERROR("Google integration - E-Mail not verified.");
-
-								OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, 
-									{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-										{ "message", "Google integration - E-Mail not verified."} }
-								);
-							}
-						}
-						catch (const nlohmann::json::exception& e)
-						{
-							// Parse error
-							std::string ExceptionText = e.what();
-							LOG_ERROR("Google integration - Parse error." << ExceptionText);
-
-							OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
-								{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-								{ "message", "Google integration - exception." + ExceptionText} }
-							);
-						}
-					}
-					else
-					{
-						LOG_WARN("Google responded with error: " << response.status_code << ": " << response.text);
-
-						ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
-					}
-
-					std::cout << "Success" << std::endl;
 				}
 				catch (const std::exception& e)
 				{
@@ -131,9 +46,96 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 					OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
 						{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-							{ "message", "Google integration - exception." + ExceptionText} }
+							{ "message", "Google integration - cpr: " + ExceptionText} }
 					);
 				}
+
+				if (response.status_code == 200)
+				{
+					//LOG_INFO("Google integration success: " << response.text);
+
+					try
+					{
+						auto json = nlohmann::json::parse(response.text);
+
+						// Verify
+						if (json.contains("error"))
+						{
+							// Token invalid
+							std::string JSON_Error = json["error"];
+
+							OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+								{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+									{ "message", "Google integration - JSON Contains error:" + JSON_Error } }
+							);
+						}
+
+						std::string EMailVerified = json["email_verified"];
+						if (EMailVerified == "true")
+						{
+							std::string Email = json["email"];
+							std::string Name = json.value("name", "");
+							//std::string picture = json.value("picture", "");
+
+							// Add user (if missing)
+							FUserManager* UserManager = ProjectEngine->GetUserManager();
+							std::shared_ptr<FUser> UserPtr = UserManager->FindUserByMail(Email);
+							if (UserPtr == nullptr)
+							{
+								// Register
+								ERegisterUserStatus RegisterResult = UserManager->RegisterIntegration(Name, Email);
+								if (RegisterResult == ERegisterUserStatus::Successful)
+								{
+									UserPtr = UserManager->FindUserByMail(Email);
+								}
+								else
+								{
+									LOG_ERROR("Google integration - Unable to register in internal database.");
+
+									OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, 
+										{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+											{ "message", "Google integration - Unable to register in internal database."} }
+									);
+								}
+							}
+
+							if (UserPtr != nullptr)
+							{
+								// Create session
+								std::string OutToken;
+								UserManager->LoginIntegration(Email, OutToken);
+							}
+						}
+						else
+						{
+							LOG_ERROR("Google integration - E-Mail not verified.");
+
+							OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, 
+								{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+									{ "message", "Google integration - E-Mail not verified."} }
+							);
+						}
+					}
+					catch (const nlohmann::json::exception& e)
+					{
+						// Parse error
+						std::string ExceptionText = e.what();
+						LOG_ERROR("Google integration - Parse error." << ExceptionText);
+
+						OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+							{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+							{ "message", "Google integration - exception." + ExceptionText} }
+						);
+					}
+				}
+				else
+				{
+					LOG_WARN("Google responded with error: " << response.status_code << ": " << response.text);
+
+					ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+				}
+
+				std::cout << "Success" << std::endl;
 			}
 			else
 			{
