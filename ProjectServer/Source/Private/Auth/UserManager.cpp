@@ -36,78 +36,117 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
 
 	// Check password
-	if (InUserPassword.length() <= 10)
+	if (!ValidatePasswordLength(InUserPassword))
 	{
-		RegisterUserStatus = ERegisterUserStatus::PasswordToWeak;
+		RegisterUserStatus = ERegisterUserStatus::PasswordLengthIncorrect;
 	}
 
 	// Check mail
-	if (!FStringHelpers::ValidateString(InUserEMail, FPredefinedCharsets::BASE_EMAIL))
+	if (!ValidateEMailLength(InUserEMail))
+	{
+		RegisterUserStatus = ERegisterUserStatus::MailLengthIncorrect;
+	}
+
+	// Check User name
+	if (!ValidateUserNameLength(InUserName))
+	{
+		RegisterUserStatus = ERegisterUserStatus::UserNameLengthIncorrect;
+	}
+
+	// Check mail
+	if (!FStringHelpers::ValidateMail(InUserEMail))
 	{
 		RegisterUserStatus = ERegisterUserStatus::MailIncorrect;
 	}
 
-	// @TODO Check UserName, check password better
+	if (!FStringHelpers::ValidateString(InUserPassword, FPredefinedCharsets::BASE_SIMPLE_PASSWORD))
+	{
+		RegisterUserStatus = ERegisterUserStatus::PasswordIncorrect;
+	}
 	
 	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
 	{
 		const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
 		FUser* User = UserPtr.get();
-		User->SetDisplayedName(InUserName);
 		User->SetUserName(InUserName);
 		User->SetPassword(HashUserPassword(InUserPassword));
 		User->SetUserEMail(InUserEMail);
 		User->UpdateLastActiveTime();
 
-		FDataBaseConnect Connect;
-		if (Connect.IsConnected())
+		// Check if mail is taken // sql << "select name from person where id = 7", into(name, ind);
+		bool bUserExists;
+		const EDatabaseOperationResult DBOpResult = DoesUserWithMailExists(InUserEMail, bUserExists);
+
+		if (DBOpResult == EDatabaseOperationResult::Success && !bUserExists)
 		{
-			// Get database connection session
-			soci::session& DataBaseSession = Connect.GetSession();
+			Uint64 Id;
+			UploadUserToDataBase(InUserName, User->GetUserPasswordHash(), InUserEMail, Id);
 
-			// Check if mail is taken // sql << "select name from person where id = 7", into(name, ind);
-			std::string Username;
-			soci::indicator Ind;
-
-			DataBaseSession << "SELECT username FROM users WHERE email = :email",
-				soci::use(InUserEMail),
-				soci::into(Username, Ind);
-
-			if (Ind != soci::i_ok)
+			if (Id > 0)
 			{
-				// Create user
-				DataBaseSession.once << "INSERT INTO users(username, password, email, displayedname) VALUES(:un, :ps, :em, :dun)",
-					soci::use(InUserName, "un"),
-					soci::use(User->GetUserPasswordHash(), "ps"),
-					soci::use(InUserEMail, "em"),
-					soci::use(InUserName, "dun");
+				User->SetUserId(Id);
 
-				// Get id
-				Uint64 Id = 0;
-				DataBaseSession.once << "SELECT LAST_INSERT_ID()",
-					soci::into(Id);
+				RegisterUserStatus = ERegisterUserStatus::Successful;
 
-				if (Id > 0)
-				{
-					User->SetUserId(Id);
-
-					RegisterUserStatus = ERegisterUserStatus::Successful;
-
-					OnRegisterSuccessful(UserPtr);
-				}
-				else
-				{
-					RegisterUserStatus = ERegisterUserStatus::DataBaseInsertFailed;
-				}
+				OnRegisterSuccessful(UserPtr);
 			}
 			else
 			{
-				RegisterUserStatus = ERegisterUserStatus::MailTaken;
+				RegisterUserStatus = ERegisterUserStatus::DataBaseInsertFailed;
 			}
 		}
 		else
 		{
+			RegisterUserStatus = ERegisterUserStatus::MailTaken;
+		}
+	}
+
+	return RegisterUserStatus;
+}
+
+ERegisterUserStatus FUserManager::RegisterIntegration(const std::string& InUserName, const std::string& InUserEMail)
+{
+	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
+
+	// Check mail
+	if (!ValidateEMailLength(InUserEMail))
+	{
+		RegisterUserStatus = ERegisterUserStatus::MailLengthIncorrect;
+	}
+
+	// Check User name
+	if (!ValidateUserNameLength(InUserName))
+	{
+		RegisterUserStatus = ERegisterUserStatus::UserNameLengthIncorrect;
+	}
+
+	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
+	{
+		bool bUserExists;
+		EDatabaseOperationResult CheckOpResult = DoesUserWithMailExists(InUserEMail, bUserExists);
+		if (CheckOpResult == EDatabaseOperationResult::Success && bUserExists)
+		{
+			const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
+			FUser* User = UserPtr.get();
+			User->SetUserName(InUserName);
+			User->SetPassword("");
+			User->SetUserEMail(InUserEMail);
+			User->UpdateLastActiveTime();
+
+			Uint64 Id;
+			EDatabaseOperationResult UploadOpResult = UploadUserToDataBase(InUserName, "", InUserEMail, Id);
+			if (UploadOpResult == EDatabaseOperationResult::Success)
+			{
+				RegisterUserStatus = ERegisterUserStatus::Successful;
+			}
+		}
+		else if (CheckOpResult != EDatabaseOperationResult::Success)
+		{
 			RegisterUserStatus = ERegisterUserStatus::DataBaseConnectionFailed;
+		}
+		else
+		{
+			RegisterUserStatus = ERegisterUserStatus::MailTaken;
 		}
 	}
 
@@ -117,6 +156,18 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::string& InUserPassword, std::string& OutSessionToken)
 {
 	ELoginStatus LoginStatus = ELoginStatus::IncorrectCredentialsOrUserDoesNotExist;
+
+	// Basic email check
+	if (!ValidateEMailLength(InUserEmail))
+	{
+		return ELoginStatus::IncorrectInputLength;
+	}
+
+	// Basic password check
+	if (!ValidatePasswordLength(InUserPassword))
+	{
+		return ELoginStatus::IncorrectInputLength;
+	}
 
 	std::shared_ptr<FUser> UserPtr = nullptr;
 	bool bWereDownloadedFromDB = false;
@@ -148,29 +199,57 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::
 
 		if (VerifyPasswords(UserPtr->GetUserPasswordHash(), InUserPassword))
 		{
-			FDataBaseConnect Connect;
-			if (Connect.IsConnected())
-			{
-				// Get database connection session
-				soci::session& DataBaseSession = Connect.GetSession();
+			const Uint64 Id = UserPtr->GetUserId();
 
-				const Uint64 Id = UserPtr->GetUserId();
+			UpdateUserActivity(Id);
 
-				// Update activity time
-				DataBaseSession << "UPDATE users SET LastActive = NOW() WHERE id = :id",
-					soci::use(Id, "id");
+			OnLoginSuccessful(UserPtr, bWereDownloadedFromDB);
 
-				OnLoginSuccessful(UserPtr, bWereDownloadedFromDB);
+			OutSessionToken = SessionManager->CreateSession(Id);
 
-				OutSessionToken = SessionManager->CreateSession(Id);
-
-				LoginStatus = ELoginStatus::Successful;
-			}
-			else
-			{
-				LoginStatus = ELoginStatus::DataBaseConnectionFailed;
-			}
+			LoginStatus = ELoginStatus::Successful;
 		}
+	}
+
+	return LoginStatus;
+}
+
+ELoginStatus FUserManager::LoginIntegration(const std::string& InUserEmail, std::string& OutSessionToken)
+{
+	ELoginStatus LoginStatus = ELoginStatus::IncorrectCredentialsOrUserDoesNotExist;
+
+	// Basic email check
+	if (!ValidateEMailLength(InUserEmail))
+	{
+		return ELoginStatus::IncorrectInputLength;
+	}
+
+	bool bHasEMail;
+	Uint64 Id = 0;
+	{
+		// Shared Lock for map
+		const std::shared_lock<std::shared_mutex> UserMailMapMutexScopeLock(UserMailMapMutex);
+		bHasEMail = UserMailToUserIdMap.ContainsKey(InUserEmail);
+		if (bHasEMail)
+		{
+			Id = UserMailToUserIdMap[InUserEmail];
+		}
+	}
+
+	if (bHasEMail)
+	{
+		std::shared_ptr<FUser> UserPtr;
+		{
+			// Shared Lock for map
+			const std::shared_lock<std::shared_mutex> UserDataBaseMutexScopeLock(UserDataBaseMutex);
+			UserPtr = UserDataBaseCache[Id];
+		}
+
+		OnLoginSuccessful(UserPtr, false);
+
+		OutSessionToken = SessionManager->CreateSession(Id);
+
+		LoginStatus = ELoginStatus::Successful;
 	}
 
 	return LoginStatus;
@@ -236,6 +315,35 @@ void FUserManager::UpdateUserActivity(const Uint64 UsedId)
 	}
 }
 
+std::shared_ptr<FUser> FUserManager::FindUserByMail(const std::string& InMail)
+{
+	std::shared_ptr<FUser> Out;
+
+	bool bContainsMailInMap;
+	{
+		const std::shared_lock<std::shared_mutex> UserMailMapMutexScopeLock(UserMailMapMutex);
+		bContainsMailInMap = UserMailToUserIdMap.ContainsKey(InMail);
+	}
+
+	if (bContainsMailInMap)
+	{
+		Out = UserDataBaseCache[UserMailToUserIdMap[InMail]];
+	}
+	else
+	{
+		bool bExists;
+		EDatabaseOperationResult CheckOpResult = DoesUserWithMailExists(InMail, bExists);
+		if (CheckOpResult == EDatabaseOperationResult::Success && bExists)
+		{
+			DownloadUserFromDBByMail(InMail, Out);
+
+			AddUserToCache(Out);
+		}
+	}
+
+	return Out;
+}
+
 Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 {
 	const Uint64 Id = SessionManager->GetUserIdFromSessionId(InToken);
@@ -263,17 +371,15 @@ EDatabaseOperationResult FUserManager::DownloadUserFromDBByMail(const std::strin
 			std::string Username;
 			std::string StoredPasswordHash;
 			std::string Mail;
-			std::string DisplayName;
 			Uint64 UserId;
 			soci::indicator Ind;
 
-			DataBaseSession << "SELECT id, username, password, email, displayedname FROM users WHERE email = :email",
+			DataBaseSession << "SELECT id, username, password, email FROM users WHERE email = :email",
 				soci::use(InUserEmail),
 				soci::into(UserId, Ind),
 				soci::into(Username),
 				soci::into(StoredPasswordHash),
-				soci::into(Mail),
-				soci::into(DisplayName);
+				soci::into(Mail);
 
 			if (Ind == soci::i_ok)
 			{
@@ -282,7 +388,6 @@ EDatabaseOperationResult FUserManager::DownloadUserFromDBByMail(const std::strin
 				User->SetUserName(Username);
 				User->SetPassword(StoredPasswordHash);
 				User->SetUserEMail(Mail);
-				User->SetDisplayedName(DisplayName);
 				User->SetUserId(UserId);
 
 				DownloadResult = EDatabaseOperationResult::Success;
@@ -361,19 +466,18 @@ EDatabaseOperationResult FUserManager::DownloadUsersFromDBByIds(const std::vecto
 			}
 
 			// Prepare fetch variables
-			std::string Username, StoredPasswordHash, Mail, DisplayName;
+			std::string Username, StoredPasswordHash, Mail;
 			Uint64 UserIdVal;
 			soci::indicator Ind;
 
 			// Execute Single Query
 			soci::statement St = (DataBaseSession.prepare <<
-				"SELECT id, username, password, email, displayedname FROM users WHERE id IN (" + IdList + ")",
+				"SELECT id, username, password, email FROM users WHERE id IN (" + IdList + ")",
 				soci::into(UserIdVal, Ind),
 				soci::into(Username),
 				soci::into(StoredPasswordHash),
-				soci::into(Mail),
-				soci::into(DisplayName)
-				);
+				soci::into(Mail)
+			);
 
 			St.execute();
 
@@ -386,7 +490,6 @@ EDatabaseOperationResult FUserManager::DownloadUsersFromDBByIds(const std::vecto
 					NewUser->SetUserName(Username);
 					NewUser->SetPassword(StoredPasswordHash);
 					NewUser->SetUserEMail(Mail);
-					NewUser->SetDisplayedName(DisplayName);
 					NewUser->SetUserId(UserIdVal);
 
 					// Update CACHE
@@ -407,6 +510,77 @@ EDatabaseOperationResult FUserManager::DownloadUsersFromDBByIds(const std::vecto
 		catch (const std::exception& e)
 		{
 			LOG_ERROR("Database error (Bulk User Resolve): " << e.what());
+			DownloadResult = EDatabaseOperationResult::DatabaseFailed;
+		}
+	}
+	else
+	{
+		DownloadResult = EDatabaseOperationResult::ConnectionFailed;
+	}
+
+	return DownloadResult;
+}
+
+EDatabaseOperationResult FUserManager::UploadUserToDataBase(const std::string& InUserName, const std::string& InUserPasswordHash, const std::string& InUserEMail, Uint64& OutId)
+{
+	EDatabaseOperationResult DatabaseOperationResult = EDatabaseOperationResult::Unknown;
+
+	FDataBaseConnect Connect;
+	if (Connect.IsConnected())
+	{
+		// Get database connection session
+		soci::session& DataBaseSession = Connect.GetSession();
+
+		// Create user
+		DataBaseSession.once << "INSERT INTO users(username, password, email) VALUES(:un, :ps, :em)",
+			soci::use(InUserName, "un"),
+			soci::use(InUserPasswordHash, "ps"),
+			soci::use(InUserEMail, "em");
+
+		// Get id
+		Uint64 Id = 0;
+		DataBaseSession.once << "SELECT LAST_INSERT_ID()",
+			soci::into(Id);
+
+		DatabaseOperationResult = EDatabaseOperationResult::Success;
+	}
+	else
+	{
+		DatabaseOperationResult = EDatabaseOperationResult::ConnectionFailed;
+	}
+
+	return DatabaseOperationResult;
+}
+
+EDatabaseOperationResult FUserManager::DoesUserWithMailExists(const std::string& InUserEmail, bool& bOutExists)
+{
+	EDatabaseOperationResult DownloadResult = EDatabaseOperationResult::Unknown;
+	bOutExists = false;
+
+	FDataBaseConnect Connect;
+	if (Connect.IsConnected())
+	{
+		soci::session& DataBaseSession = Connect.GetSession();
+
+		try
+		{
+			std::string Username;
+			soci::indicator Ind;
+
+			DataBaseSession << "SELECT username FROM users WHERE email = :email",
+				soci::use(InUserEmail),
+				soci::into(Username, Ind);
+
+			if (Ind == soci::i_ok)
+			{
+				bOutExists = true;
+			}
+
+			DownloadResult = EDatabaseOperationResult::Success;
+		}
+		catch (const std::exception& e)
+		{
+			LOG_ERROR("Database error: " << e.what());
 			DownloadResult = EDatabaseOperationResult::DatabaseFailed;
 		}
 	}
@@ -471,9 +645,34 @@ void FUserManager::OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr)
 
 void FUserManager::AddUserToCache(const std::shared_ptr<FUser>& UserPtr)
 {
-	// Lock as register may come from any thread
-	const std::unique_lock ScopeLock(UserDataBaseMutex);
+	{
+		// Lock as register may come from any thread
+		const std::unique_lock UserDataBaseMutexScopeLock(UserDataBaseMutex);
 
-	// Create user
-	UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);
+		// Create user
+		UserDataBaseCache.Emplace(UserPtr->GetUserId(), UserPtr);
+	}
+
+	{
+		// Another lock for map
+		const std::unique_lock UserMailMapMutexScopeLock(UserMailMapMutex);
+
+		// Add mail to cache
+		UserMailToUserIdMap.Emplace(UserPtr->GetUserMail(), UserPtr->GetUserId());
+	}
+}
+
+bool FUserManager::ValidateUserNameLength(const std::string& InUserName)
+{
+	return (InUserName.size() > 4 && InUserName.size() < 110);
+}
+
+bool FUserManager::ValidatePasswordLength(const std::string& InPassword)
+{
+	return (InPassword.length() > 7) && (InPassword.size() < 270);
+}
+
+bool FUserManager::ValidateEMailLength(const std::string& InEMail)
+{
+	return InEMail.length() > 4 && (InEMail.size() < 530);
 }

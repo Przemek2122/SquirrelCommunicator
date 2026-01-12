@@ -45,3 +45,4 @@
 ProjectServer/Assets/Config/key.pem
 ProjectServer/Assets/Config/cert.pem
 /vcpkg
+/ProjectServer/Secrets

@@ -11,8 +11,11 @@ enum class ERegisterUserStatus : Uint8
 	Unknown,
 	Successful,
 	MailTaken,
-	PasswordToWeak,
+	PasswordLengthIncorrect,
+	MailLengthIncorrect,
+	UserNameLengthIncorrect,
 	MailIncorrect,
+	PasswordIncorrect,
 	DataBaseInsertFailed,
 	DataBaseConnectionFailed
 };
@@ -22,6 +25,8 @@ enum class ELoginStatus : Uint8
 	Unknown,
 	Successful,
 	SessionAlreadyExist,
+	IncorrectInputLength,
+	IncorrectEMailContent,
 	IncorrectCredentialsOrUserDoesNotExist,
 	DataBaseFetchFailed,
 	DataBaseConnectionFailed
@@ -48,11 +53,17 @@ public:
 	 */
 	ERegisterUserStatus RegisterUser(const std::string& InUserName, const std::string& InUserPassword, const std::string& InUserEMail);
 
+	/** Integration user creation */
+	ERegisterUserStatus RegisterIntegration(const std::string& InUserName, const std::string& InUserEMail);
+
 	/**
 	 * Use for login
 	 * @return Unique session token
 	 */
 	ELoginStatus LoginUser(const std::string& InUserEmail, const std::string& InUserPassword, std::string& OutSessionToken);
+
+	/** Internal login use - Make sure to check if integration is valid as this just logins without any checks. */
+	ELoginStatus LoginIntegration(const std::string& InUserEmail, std::string& OutSessionToken);
 
 	/** @return true if successfully logged out */
 	bool Logout(const std::string& InSessionToken);
@@ -67,6 +78,9 @@ public:
 
 	void UpdateUserActivity(const Uint64 UsedId);
 
+	/** Search all users to find this with mail specified */
+	std::shared_ptr<FUser> FindUserByMail(const std::string& InMail);
+
 	/** Get user ID from token, 0 means not found */
 	Uint64 GetIdFromToken(const std::string& InToken) const;
 
@@ -79,6 +93,10 @@ private:
 	EDatabaseOperationResult DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr);
 	EDatabaseOperationResult DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers, bool bAutoAddToCache);
 
+	EDatabaseOperationResult UploadUserToDataBase(const std::string& InUserName, const std::string& InUserPasswordHash, const std::string& InUserEMail, Uint64& OutId);
+
+	static EDatabaseOperationResult DoesUserWithMailExists(const std::string& InUserEmail, bool& bOutExists);
+
 	Uint64 GenerateNextAvailableId();
 	bool VerifyPasswords(const std::string& StringWithHash, const std::string& StringWithoutHash);
 	std::string HashUserPassword(const std::string& RawPassword);
@@ -87,6 +105,10 @@ private:
 	void OnLoginSuccessful(const std::shared_ptr<FUser>& UserPtr, const bool bWereDownloadedFromDB);
 	void OnRegisterSuccessful(const std::shared_ptr<FUser>& UserPtr);
 	void AddUserToCache(const std::shared_ptr<FUser>& UserPtr);
+
+	bool ValidateUserNameLength(const std::string& InUserName);
+	bool ValidatePasswordLength(const std::string& InPassword);
+	bool ValidateEMailLength(const std::string& InEMail);
 
 private:
 	/** Manager for user sessions */
@@ -99,11 +121,20 @@ private:
 	 */
 	CUnorderedMap<Uint64, std::shared_ptr<FUser>, Uint64> UserDataBaseCache;
 
+	/**
+	 * Map with all users mails to number,
+	 * @TODO For long runs consider clearing every x time of inactivity
+	 */
+	CUnorderedMap<std::string, Uint64> UserMailToUserIdMap;
+
 	/** Tells us which number is available */
 	Uint64 NextAvailableIndex;
 
 	/** Mutex for UserDataBase */
 	std::shared_mutex UserDataBaseMutex;
+
+	/** Mutex for UserDataBase */
+	std::shared_mutex UserMailMapMutex;
 
 	/** Cache for time, we will use it for each login, message, etc so cache will be faster */
 	Uint64 CurrentTimeCached;

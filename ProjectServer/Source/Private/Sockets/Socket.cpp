@@ -1,8 +1,5 @@
 #include "Sockets/Socket.h"
 
-#include <nlohmann/json.hpp>
-#include <nlohmann/json_fwd.hpp>
-
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
@@ -11,6 +8,8 @@
 #include "Misc/WebSockets/CookieHelper.h"
 #include "Sockets/SocketManager.h"
 #include "Sockets/WebSocketSessionData.h"
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 ESocketMessageType StringToSocketMessageType(const std::string& InTypeString)
 {
@@ -19,6 +18,7 @@ ESocketMessageType StringToSocketMessageType(const std::string& InTypeString)
 	if (InTypeString == "mark_read")				return ESocketMessageType::MarkRead;
 	if (InTypeString == "user_status")				return ESocketMessageType::UserStatus;
 	if (InTypeString == "search_user")				return ESocketMessageType::SearchUser;
+	if (InTypeString == "request_add_user")			return ESocketMessageType::RequestAddUser;
 	if (InTypeString == "load_more_messages")		return ESocketMessageType::LoadMoreMessages;
 	if (InTypeString == "get_conversations")		return ESocketMessageType::GetConversations;
 	if (InTypeString == "add_conversation")			return ESocketMessageType::AddConversation;
@@ -38,6 +38,7 @@ std::string SocketMessageTypeToString(const ESocketMessageType InTypeEnum)
 		case ESocketMessageType::MarkRead:				return "mark_read";
 		case ESocketMessageType::UserStatus:			return "user_status";
 		case ESocketMessageType::SearchUser:			return "search_user";
+		case ESocketMessageType::RequestAddUser:		return "request_add_user";
 		case ESocketMessageType::LoadMoreMessages:		return "load_more_messages";
 		case ESocketMessageType::GetConversations:		return "get_conversations";
 		case ESocketMessageType::AddConversation:		return "add_conversation";
@@ -278,7 +279,7 @@ void FSocket::OnClientConnected(auto* ws)
 
 			if (!OutUsers.empty() && OutUsers[0].get() != nullptr)
 			{
-				JsonData["user_display_name"] = OutUsers[0]->GetDisplayedName();
+				JsonData["user_display_name"] = OutUsers[0]->GetUserNameString();
 			}
 			else
 			{
@@ -479,6 +480,23 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 					const std::string Pattern = JsonMessage["data"]["search_target"];
 
 					OnMessageReceived_SearchUser(ws, opCode, Pattern);
+				}
+
+				break;
+			}
+
+			case ESocketMessageType::RequestAddUser:
+			{
+				FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+				if (WebSocketSessionData != nullptr)
+				{
+					if (JsonMessage["data"].contains("user_id"))
+					{
+						const std::string OtherUserIdAsString = JsonMessage["data"]["user_id"];
+						const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+						OnMessageReceived_RequestAddUser(ws, opCode, WebSocketSessionData->UserId, OtherUserId);
+					}
 				}
 
 				break;
@@ -716,7 +734,43 @@ void FSocket::OnMessageReceived_MarkRead(auto* ws, uWS::OpCode opCode, const Uin
 		FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
 		const Uint64& ConnectionUserId = WebSocketSessionData->UserId;
 
+		if (std::shared_ptr<FConversationData> ConversationPtr = ConversationsManager->GetConversation(ConversationId))
+		{
+			bool bIsUserConversation = ConversationPtr->UsersIds.Contains(ConnectionUserId);
+			if (bIsUserConversation)
+			{
+				FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
 
+				for (Uint64 UsersId : ConversationPtr->UsersIds)
+				{
+					if (UsersId != ConnectionUserId)
+					{
+						/*
+						nlohmann::json MessageJson;
+						MessageJson["conversation_id"] = ConversationId;
+						//MessageJson["typing_id"] = ConnectionUserId;
+
+						nlohmann::json JsonRoot;
+						JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::MarkRead);
+						JsonRoot["message"] = MessageJson;
+
+						FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, User](void* ws)
+						{
+							auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+
+							// To send message to a specific user
+							const std::string UserTopic = GenerateUserTopic(User->GetUserId());
+							if (WebSocket->isSubscribed(UserTopic))
+							{
+								WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+							}
+						};
+						SocketManager->EnqueueTaskForUserAtSocket(User->GetSocketId(), User->GetUserId(), SocketAccessFunctor);
+						*/
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -763,36 +817,69 @@ void FSocket::OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const s
 				std::string DisplayName;
 			};
 
-			std::vector<std::string> DisplayNames, UserNames;
+			std::vector<std::string> UserNames;
 			std::vector<Uint64> UserIds;
 
-			DisplayNames.reserve(SearchResults);
 			UserNames.reserve(SearchResults);
 			UserIds.reserve(SearchResults);
 
 			Uint64 UserId;
-			std::string UserName, DisplayedName;
+			std::string UserName;
 
-			soci::statement St = (DataBaseSession.prepare <<
-				"SELECT id, username, displayedname "
-				"FROM users "
-				"WHERE displayedname LIKE :PatternQuery "
-				"LIMIT 20",
-				soci::into(UserId),      // Bind output variables
-				soci::into(UserName),    // before execution
-				soci::into(DisplayedName),
-				soci::use(PatternQuery));
-
-			St.execute();
-
-			while (St.fetch())  // Fetch populates the bound variables
+			// Try with id
+			try
 			{
-				UserIds.push_back(UserId);
-				UserNames.push_back(UserName);
-				DisplayNames.push_back(DisplayedName);
+				soci::statement St = (DataBaseSession.prepare <<
+					"SELECT id, username "
+					"FROM users "
+					"WHERE id = :PatternQuery "
+					"LIMIT 2",
+					soci::into(UserId),      // Bind output variables
+					soci::into(UserName),    // before execution
+					soci::use(PatternQuery));
+
+				St.execute();
+
+				while (St.fetch())  // Fetch populates the bound variables
+				{
+					UserIds.push_back(UserId);
+					UserNames.push_back(UserName);
+				}
+			}
+			catch (const nlohmann::json::exception& e)
+			{
+				LOG_ERROR("Database error (id search): " << e.what());
 			}
 
-			const nlohmann::json UsersJson = FormatUsersToJson(UserIds, DisplayNames);
+			// Try with username
+			if (UserNames.empty())
+			{
+				try
+				{
+					soci::statement St = (DataBaseSession.prepare <<
+						"SELECT id, username "
+						"FROM users "
+						"WHERE username LIKE :PatternQuery "
+						"LIMIT 20",
+						soci::into(UserId),      // Bind output variables
+						soci::into(UserName),    // before execution
+						soci::use(PatternQuery));
+
+					St.execute();
+
+					while (St.fetch())  // Fetch populates the bound variables
+					{
+						UserIds.push_back(UserId);
+						UserNames.push_back(UserName);
+					}
+				}
+				catch (const nlohmann::json::exception& e)
+				{
+					LOG_ERROR("Database error (username search): " << e.what());
+				}
+			}
+
+			const nlohmann::json UsersJson = FormatUsersToJson(UserIds, UserNames);
 			const std::string JsonString = UsersJson.dump();
 
 			nlohmann::json ReturnJson;
@@ -800,6 +887,14 @@ void FSocket::OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const s
 			ReturnJson["message"] = JsonString;
 			ws->send(ReturnJson.dump(), opCode);
 		}
+	}
+}
+
+void FSocket::OnMessageReceived_RequestAddUser(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId)
+{
+	if (CurrentUserId != OtherUserId)
+	{
+		
 	}
 }
 
@@ -961,7 +1056,7 @@ nlohmann::json FSocket::FormatConversationIntoJson(const CArray<Uint64>& Convers
 						nlohmann::json NewUser;
 
 						NewUser["id"] = UserPtr->GetUserId();
-						NewUser["name"] = UserPtr->GetDisplayedName();
+						NewUser["name"] = UserPtr->GetUserNameString();
 						NewUser["status"] = UserStatusToString(UserPtr->GetUserStatus());
 
 						UsersJsonArray.push_back(NewUser);
