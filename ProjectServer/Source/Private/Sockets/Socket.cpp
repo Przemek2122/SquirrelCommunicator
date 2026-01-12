@@ -817,36 +817,69 @@ void FSocket::OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const s
 				std::string DisplayName;
 			};
 
-			std::vector<std::string> DisplayNames, UserNames;
+			std::vector<std::string> UserNames;
 			std::vector<Uint64> UserIds;
 
-			DisplayNames.reserve(SearchResults);
 			UserNames.reserve(SearchResults);
 			UserIds.reserve(SearchResults);
 
 			Uint64 UserId;
-			std::string UserName, DisplayedName;
+			std::string UserName;
 
-			soci::statement St = (DataBaseSession.prepare <<
-				"SELECT id, username, displayedname "
-				"FROM users "
-				"WHERE displayedname LIKE :PatternQuery "
-				"LIMIT 20",
-				soci::into(UserId),      // Bind output variables
-				soci::into(UserName),    // before execution
-				soci::into(DisplayedName),
-				soci::use(PatternQuery));
-
-			St.execute();
-
-			while (St.fetch())  // Fetch populates the bound variables
+			// Try with id
+			try
 			{
-				UserIds.push_back(UserId);
-				UserNames.push_back(UserName);
-				DisplayNames.push_back(DisplayedName);
+				soci::statement St = (DataBaseSession.prepare <<
+					"SELECT id, username "
+					"FROM users "
+					"WHERE id = :PatternQuery "
+					"LIMIT 2",
+					soci::into(UserId),      // Bind output variables
+					soci::into(UserName),    // before execution
+					soci::use(PatternQuery));
+
+				St.execute();
+
+				while (St.fetch())  // Fetch populates the bound variables
+				{
+					UserIds.push_back(UserId);
+					UserNames.push_back(UserName);
+				}
+			}
+			catch (const nlohmann::json::exception& e)
+			{
+				LOG_ERROR("Database error (id search): " << e.what());
 			}
 
-			const nlohmann::json UsersJson = FormatUsersToJson(UserIds, DisplayNames);
+			// Try with username
+			if (UserNames.empty())
+			{
+				try
+				{
+					soci::statement St = (DataBaseSession.prepare <<
+						"SELECT id, username "
+						"FROM users "
+						"WHERE username LIKE :PatternQuery "
+						"LIMIT 20",
+						soci::into(UserId),      // Bind output variables
+						soci::into(UserName),    // before execution
+						soci::use(PatternQuery));
+
+					St.execute();
+
+					while (St.fetch())  // Fetch populates the bound variables
+					{
+						UserIds.push_back(UserId);
+						UserNames.push_back(UserName);
+					}
+				}
+				catch (const nlohmann::json::exception& e)
+				{
+					LOG_ERROR("Database error (username search): " << e.what());
+				}
+			}
+
+			const nlohmann::json UsersJson = FormatUsersToJson(UserIds, UserNames);
 			const std::string JsonString = UsersJson.dump();
 
 			nlohmann::json ReturnJson;
