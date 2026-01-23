@@ -3,8 +3,10 @@
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniObject.h"
+#include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
+#include "Rest/AccountEndpoint.h"
 #include "Rest/CrowUtils.h"
 #include "Rest/IntegrationEndpoint.h"
 #include "Rest/TestEndpoint.h"
@@ -25,6 +27,7 @@ FProjectEngine::FProjectEngine()
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTestEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FUserEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
+	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAccountEndpoint));
 }
 
 void FProjectEngine::Init()
@@ -103,6 +106,9 @@ void FProjectEngine::Init()
 		{
 			LOG_WARN("Missing PortWSField or SocketListenHostField. Sockets will not work.");
 		}
+
+		// Test db connection
+		TestDataBaseConnection();
 	}
 	else
 	{
@@ -252,6 +258,32 @@ void FProjectEngine::AddCookies(crow::response& CurrentResponse, const std::stri
 	{
 		// HTTPS
 		CurrentResponse.add_header("Set-Cookie", "auth_token=" + AuthToken + "; Domain=" + DomainName + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
+	}
+}
+
+void FProjectEngine::TestDataBaseConnection()
+{
+	bool DBConnectionSuccessful = false;
+	FDataBaseConnect Connect;
+	if (Connect.IsConnected())
+	{
+		soci::session& DataBaseSession = Connect.GetSession();
+
+		try
+		{
+			int result;
+			DataBaseSession << "SELECT 1", soci::into(result);
+
+			LOG_INFO("Database has connection.");
+		}
+		catch (const std::exception& e)
+		{
+			LOG_ERROR("Database error: " << e.what());
+		}
+	}
+	else
+	{
+		LOG_ERROR("Database missing connection.");
 	}
 }
 

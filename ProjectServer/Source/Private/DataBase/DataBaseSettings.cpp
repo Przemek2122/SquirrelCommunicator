@@ -3,9 +3,7 @@
 static FDataBaseConnectionData DataBaseConnectionData;
 static std::string ConnectionString;
 
-FDataBaseConnectionData::FDataBaseConnectionData()
-{
-}
+FDataBaseConnectionData::FDataBaseConnectionData() = default;
 
 const FDataBaseConnectionData& FDataBaseSettings::GetDataBaseConnectionData()
 {
@@ -69,7 +67,7 @@ std::string FDataBaseSettings::GetEnvDataBaseName()
 std::string FDataBaseSettings::GetEnvUser()
 {
 	const char* Variable = std::getenv("SQRLL_COMM_DB_USER");
-	return Variable ? Variable : "commapisqrlluser";
+	return Variable ? Variable : "commapisqrllusertest";
 }
 
 std::string FDataBaseSettings::GetEnvPassword()
@@ -78,6 +76,10 @@ std::string FDataBaseSettings::GetEnvPassword()
 	if (Variable == nullptr)
 	{
 		LOG_ERROR("SQRLL_COMM_DB_PASSWORD not set");
+
+		// You are missing a default password, you can set it by
+		// Setting it in the env. for os (recommended to do not by mistake push to repo)
+		ENSURE_VALID(false);
 	}
 
 	return Variable ? Variable : "error";

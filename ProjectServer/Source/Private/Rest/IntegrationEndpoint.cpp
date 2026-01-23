@@ -52,8 +52,6 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 				if (response.status_code == 200)
 				{
-					//LOG_INFO("Google integration success: " << response.text);
-
 					try
 					{
 						auto json = nlohmann::json::parse(response.text);
@@ -70,75 +68,30 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 							);
 						}
 
-						std::string EMailVerified = json["email_verified"];
-						if (EMailVerified == "true")
+						// Google can let you login without verified mail, we do not want that
+						std::string MailVerified = json["email_verified"];
+						if (MailVerified == "true")
 						{
-							std::string Email = json["email"];
+							std::string Mail = json["email"];
 							std::string Name = json.value("name", "");
-							//std::string picture = json.value("picture", "");
 
-							// Add user (if missing)
+							// User (if missing - DB Downlaod)
 							FUserManager* UserManager = ProjectEngine->GetUserManager();
-							std::shared_ptr<FUser> UserPtr = UserManager->FindUserByMail(Email);
+							std::shared_ptr<FUser> UserPtr = UserManager->FindUserByMail(Mail);
+
+							// User missing - try Register
 							if (UserPtr == nullptr)
 							{
-								// Register
-								ERegisterUserStatus RegisterResult = UserManager->RegisterIntegration(Name, Email);
-								if (RegisterResult == ERegisterUserStatus::Successful)
-								{
-									UserPtr = UserManager->FindUserByMail(Email);
-								}
-								else
-								{
-									LOG_ERROR("Google integration - Unable to register in internal database.");
-
-									OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, 
-										{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-											{ "message", "Google integration - Unable to register in internal database."} }
-									);
-								}
+								UserPtr = RegisterIntegration(OutResponse, Mail, Name);
 							}
 
+							// Actual login
 							if (UserPtr != nullptr)
 							{
 								// Create session
 								std::string OutSessionToken;
-								const ELoginStatus LoginResult = UserManager->LoginIntegration(Email, OutSessionToken);
-								switch (LoginResult)
-								{
-									case ELoginStatus::Successful:
-									{
-										OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
-
-										ProjectEngine->AddCookies(OutResponse, OutSessionToken);
-
-										break;
-									}
-
-									case ELoginStatus::IncorrectCredentialsOrUserDoesNotExist:
-									{
-										OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Incorrect Credentials Or User Does Not Exist"} });
-
-										ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
-
-										break;
-									}
-
-									case ELoginStatus::IncorrectInputLength:
-									{
-										OutResponse = FCrowUtils::CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Incorrect Input Length"} });
-
-										ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
-
-										break;
-									}
-
-									default:
-									{
-										OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Login: INTERNAL_SERVER_ERROR"} });
-										LOG_ERROR("Login Integration Status unknown value!");
-									}
-								}
+								const ELoginStatus LoginResult = UserManager->LoginIntegration(Mail, OutSessionToken);
+								HandleLoginCase(OutResponse, LoginResult, OutSessionToken, ClientIP);
 							}
 						}
 						else
@@ -169,8 +122,6 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 					ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
 				}
-
-				std::cout << "Success" << std::endl;
 			}
 			else
 			{
@@ -180,5 +131,176 @@ void FIntegrationEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 			return OutResponse;
 		});
 
+	CROW_ROUTE(App, "/api/v1/integrate/microsoft")
+		.methods("POST"_method, "OPTIONS"_method)
+		([this](const crow::request& req)
+		{
+			crow::response OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
+
+			// Get IP address
+			const std::string& ClientIP = req.remote_ip_address;
+
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
+			{
+				const std::string MicrosoftToken = JsonData["microsoft_token"].s();
+
+				cpr::Response response;
+
+				// Verify microsoft token
+				try
+				{
+					response = cpr::Get(
+						cpr::Url{"https://graph.microsoft.com/v1.0/me"},
+						cpr::Header{{"Authorization", "Bearer " + MicrosoftToken}}
+					);
+				}
+				catch (const std::exception& e)
+				{
+					std::string ExceptionText = e.what();
+					LOG_ERROR("Microsoft login exception, error: " << ExceptionText);
+
+					OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+						{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+							{ "message", "Microsoft integration - cpr: " + ExceptionText} }
+					);
+				}
+
+				if (response.status_code == 200)
+				{
+					try
+					{
+						auto json = nlohmann::json::parse(response.text);
+
+						// Verify
+						if (json.contains("error"))
+						{
+							LOG_ERROR("Microsoft integration - JSON from MS has error." << json["error"]);
+
+							OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+								{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+								{ "message", "Microsoft integration - exception."} }
+							);
+						}
+						else if (json.contains("mail") && json.contains("displayName"))
+						{
+							// Everything fine
+							std::string Mail = json["mail"];
+							std::string Name = json.value("displayName", "");
+
+							// Add user (if missing)
+							FUserManager* UserManager = ProjectEngine->GetUserManager();
+							std::shared_ptr<FUser> UserPtr = UserManager->FindUserByMail(Mail);
+							if (UserPtr == nullptr)
+							{
+								// Register
+								UserPtr = RegisterIntegration(OutResponse, Mail, Name);
+							}
+
+							// Actual login
+							if (UserPtr != nullptr)
+							{
+								// Create session
+								std::string OutSessionToken;
+								const ELoginStatus LoginResult = UserManager->LoginIntegration(Mail, OutSessionToken);
+								HandleLoginCase(OutResponse, LoginResult, OutSessionToken, ClientIP);
+							}
+						}
+						else
+						{
+							LOG_ERROR("Microsoft integration - missing required fields 'mail' or/and 'displayName'.");
+
+							OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+								{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+								{ "message", "Microsoft integration - failed due to MS data missing."} }
+							);
+						}
+					}
+					catch (const nlohmann::json::exception& e)
+					{
+						// Parse error
+						std::string ExceptionText = e.what();
+						LOG_ERROR("Microsoft integration - Parse error." << ExceptionText);
+
+						OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+							{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+							{ "message", "Microsoft integration - internal exception." } }
+						);
+					}
+				}
+				else
+				{
+					LOG_ERROR("Microsoft integration failed: " << response.text);
+
+					OutResponse = FCrowUtils::CreateResponse(crow::status::UNAUTHORIZED,
+						{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+						{ "message", "Microsoft integration - missing authorization."} }
+					);
+				}
+			}
+
+			return OutResponse;
+		});
+
 	FCrowAppEndpoint::RegisterRoutes(App);
+}
+
+std::shared_ptr<FUser> FIntegrationEndpoint::RegisterIntegration(crow::response &OutResponse, const std::string &Mail, const std::string &Name) const
+{
+	FUserManager* UserManager = ProjectEngine->GetUserManager();
+	ERegisterUserStatus RegisterResult = UserManager->RegisterIntegration(Name, Mail);
+	if (RegisterResult == ERegisterUserStatus::Successful)
+	{
+		return UserManager->FindUserByMail(Mail);
+	}
+	else
+	{
+		LOG_ERROR("Integration - Unable to register in internal database.");
+
+		OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+			{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+				{ "message", "Integration - Unable to register in internal database."} }
+		);
+	}
+
+	return nullptr;
+}
+
+void FIntegrationEndpoint::HandleLoginCase(crow::response &OutResponse, ELoginStatus LoginStatus, const std::string& OutSessionToken, const std::string& ClientIP) const
+{
+	switch (LoginStatus)
+	{
+		case ELoginStatus::Successful:
+		{
+			OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
+
+			ProjectEngine->AddCookies(OutResponse, OutSessionToken);
+
+			break;
+		}
+
+		case ELoginStatus::IncorrectCredentialsOrUserDoesNotExist:
+		{
+			OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Incorrect Credentials Or User Does Not Exist"} });
+
+			ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+
+			break;
+		}
+
+		case ELoginStatus::IncorrectInputLength:
+		{
+			OutResponse = FCrowUtils::CreateResponse(crow::status::FORBIDDEN, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Incorrect Input Length"} });
+
+			ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+
+			break;
+		}
+
+		default:
+		{
+			OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Login: INTERNAL_SERVER_ERROR"} });
+			LOG_ERROR("Login Integration Status unknown value!");
+		}
+	}
 }

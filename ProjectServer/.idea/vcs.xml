@@ -39,6 +39,7 @@
     <mapping directory="$PROJECT_DIR$/../../Engine/ThirdParty/cpr" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../Engine/ThirdParty/json" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../Engine/ThirdParty/soci" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../Engine/ThirdParty/soci/3rdparty/sqlite3" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../Engine" vcs="Git" />
   </component>

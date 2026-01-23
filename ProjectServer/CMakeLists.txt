@@ -70,7 +70,9 @@ else()
 	add_library("${PROJECT_NAME}" SHARED 
 		${PROJECT_SOURCE_FILES_PRIVATE}
 		${PROJECT_SOURCE_FILES_PUBLIC}
-	)
+            Source/Private/Rest/AccountEndpoint.cpp
+            Source/Private/Rest/AccountEndpoint.h
+    )
 
 	# The SDL java code is hardcoded to load libmain.so on android, so we need to change EXECUTABLE_NAME
 	# Other platforms could have different lib name but found no reason so far to rename?

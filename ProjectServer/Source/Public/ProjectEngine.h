@@ -33,6 +33,8 @@ public:
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 	void AddCookies(crow::response& CurrentResponse, const std::string& AuthToken);
 
+	void TestDataBaseConnection();
+
 	FUserManager* GetUserManager() const { return UserManager.get(); }
 	FConversationsManager* GetConversationsManager() const { return ConversationsManager.get(); }
 	FSocketManager* GetSocketManager() const { return SocketManager.get(); }
