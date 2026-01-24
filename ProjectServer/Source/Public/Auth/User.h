@@ -52,6 +52,9 @@ public:
 	/** Update last active time with current time */
 	void UpdateLastActiveTime();
 
+	void UpdateUserName(const std::string& NewUserName);
+	void UpdateUserPassword(const std::string& NewPassword);
+
 	void SetUserName(const std::string& InUserName);
 	void SetPassword(const std::string& InUserEncryptedPassword);
 	void SetUserEMail(const std::string& InUserEMail);

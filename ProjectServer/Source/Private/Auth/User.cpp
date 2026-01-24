@@ -41,6 +41,16 @@ void FUser::UpdateLastActiveTime()
 	LastActiveTime = GetCurrentTime();
 }
 
+void FUser::UpdateUserName(const std::string& NewUserName)
+{
+	UserName = NewUserName;
+}
+
+void FUser::UpdateUserPassword(const std::string& NewPassword)
+{
+	UserPasswordHash = NewPassword;
+}
+
 void FUser::SetUserName(const std::string& InUserName)
 {
 	UserName = InUserName;

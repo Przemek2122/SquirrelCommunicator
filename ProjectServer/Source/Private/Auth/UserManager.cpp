@@ -294,25 +294,122 @@ bool FUserManager::RefreshSessionToken(const std::string& InToken) const
 
 void FUserManager::UpdateUserActivity(const Uint64 UsedId)
 {
-	FDataBaseConnect Connect;
-	if (Connect.IsConnected())
+	try
 	{
-		// Get database connection session
-		soci::session& DataBaseSession = Connect.GetSession();
-
-		// Update activity time
-		DataBaseSession << "UPDATE users SET LastActive = NOW() WHERE id = :id",
-			soci::use(UsedId, "id");
-
-		// Update cache
-		std::vector<std::shared_ptr<FUser>> Users;
-		const bool bGetUsers = GetUsersByIds({ UsedId }, Users);
-		if (bGetUsers)
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
 		{
-			std::shared_ptr<FUser>& FirstUser = Users[0];
-			FirstUser->UpdateLastActiveTime();
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			// Update activity time
+			DataBaseSession << "UPDATE users SET LastActive = NOW() WHERE id = :id",
+				soci::use(UsedId, "id");
+
+			// Update cache
+			std::vector<std::shared_ptr<FUser>> Users;
+			const bool bGetUsers = GetUsersByIds({ UsedId }, Users);
+			if (bGetUsers)
+			{
+				std::shared_ptr<FUser>& FirstUser = Users[0];
+				FirstUser->UpdateLastActiveTime();
+			}
 		}
 	}
+	catch (const std::exception& e)
+	{
+		LOG_ERROR("Database error: " << e.what());
+	}
+}
+
+EUpdateUserNameStatus FUserManager::UpdateUserName(const Uint64 UsedId, const std::string& NewUserName)
+{
+	if (!ValidateUserNameLength(NewUserName))
+	{
+		return EUpdateUserNameStatus::UserNameLengthIncorrect;
+	}
+
+	EUpdateUserNameStatus OutStatus = EUpdateUserNameStatus::Unknown;
+
+	try
+	{
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			// Update activity time
+			DataBaseSession << "UPDATE users SET UserName = :username WHERE id = :id",
+				soci::use(UsedId, "id"),
+				soci::use(NewUserName, "username");
+
+			// Update cache
+			std::vector<std::shared_ptr<FUser>> Users;
+			const bool bGetUsers = GetUsersByIds({ UsedId }, Users);
+			if (bGetUsers)
+			{
+				std::shared_ptr<FUser>& FirstUser = Users[0];
+				FirstUser->UpdateUserName(NewUserName);
+
+				OutStatus = EUpdateUserNameStatus::Successful;
+			}
+		}
+	}
+	catch (const std::exception& e)
+	{
+		LOG_ERROR("Database error: " << e.what());
+	}
+
+	return OutStatus;
+}
+
+EUpdateUserPasswordStatus FUserManager::UpdateUserPassword(const Uint64 UsedId, const std::string& OldPassword, const std::string& NewPassword)
+{
+	if (OldPassword.empty() || !ValidatePasswordLength(NewPassword))
+	{
+		return EUpdateUserPasswordStatus::PasswordLengthIncorrect;
+	}
+
+	if (!FStringHelpers::ValidateString(NewPassword, FPredefinedCharsets::BASE_SIMPLE_PASSWORD))
+	{
+		return EUpdateUserPasswordStatus::PasswordIncorrect;
+	}
+
+	EUpdateUserPasswordStatus OutStatus = EUpdateUserPasswordStatus::Successful;
+	std::string UserPasswordHash = HashUserPassword(NewPassword);
+
+	try
+	{
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			// Update activity time
+			DataBaseSession << "UPDATE users SET UserPasswordHash = :password WHERE id = :id",
+				soci::use(UsedId, "id"),
+				soci::use(UserPasswordHash, "password");
+
+			// Update cache
+			std::vector<std::shared_ptr<FUser>> Users;
+			const bool bGetUsers = GetUsersByIds({ UsedId }, Users);
+			if (bGetUsers)
+			{
+				std::shared_ptr<FUser>& FirstUser = Users[0];
+				FirstUser->UpdateUserPassword(UserPasswordHash);
+
+				OutStatus = EUpdateUserPasswordStatus::Successful;
+			}
+		}
+	}
+	catch (const std::exception& e)
+	{
+		LOG_ERROR("Database error: " << e.what());
+	}
+
+	return OutStatus;
 }
 
 std::shared_ptr<FUser> FUserManager::FindUserByMail(const std::string& InMail)
@@ -359,54 +456,61 @@ EDatabaseOperationResult FUserManager::DownloadUserFromDBByMail(const std::strin
 {
 	EDatabaseOperationResult DownloadResult = EDatabaseOperationResult::Unknown;
 
-	FDataBaseConnect Connect;
-	if (Connect.IsConnected())
+	try
 	{
-		// Get database connection session
-		soci::session& DataBaseSession = Connect.GetSession();
-
-		try
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
 		{
-			// Get user data and hashed password
-			std::string Username;
-			std::string StoredPasswordHash;
-			std::string Mail;
-			Uint64 UserId;
-			soci::indicator Ind;
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
 
-			DataBaseSession << "SELECT id, username, password, email FROM users WHERE email = :email",
-				soci::use(InUserEmail),
-				soci::into(UserId, Ind),
-				soci::into(Username),
-				soci::into(StoredPasswordHash),
-				soci::into(Mail);
-
-			if (Ind == soci::i_ok)
+			try
 			{
-				UserPtr = std::make_shared<FUser>(this);
-				FUser* User = UserPtr.get();
-				User->SetUserName(Username);
-				User->SetPassword(StoredPasswordHash);
-				User->SetUserEMail(Mail);
-				User->SetUserId(UserId);
+				// Get user data and hashed password
+				std::string Username;
+				std::string StoredPasswordHash;
+				std::string Mail;
+				Uint64 UserId;
+				soci::indicator Ind;
 
-				DownloadResult = EDatabaseOperationResult::Success;
+				DataBaseSession << "SELECT id, username, password, email FROM users WHERE email = :email",
+					soci::use(InUserEmail),
+					soci::into(UserId, Ind),
+					soci::into(Username),
+					soci::into(StoredPasswordHash),
+					soci::into(Mail);
+
+				if (Ind == soci::i_ok)
+				{
+					UserPtr = std::make_shared<FUser>(this);
+					FUser* User = UserPtr.get();
+					User->SetUserName(Username);
+					User->SetPassword(StoredPasswordHash);
+					User->SetUserEMail(Mail);
+					User->SetUserId(UserId);
+
+					DownloadResult = EDatabaseOperationResult::Success;
+				}
+				else
+				{
+					DownloadResult = EDatabaseOperationResult::DataNotFound;
+				}
 			}
-			else
+			catch (const std::exception& e)
 			{
-				DownloadResult = EDatabaseOperationResult::DataNotFound;
+				LOG_ERROR("Database error: " << e.what());
+
+				DownloadResult = EDatabaseOperationResult::DatabaseFailed;
 			}
 		}
-		catch (const nlohmann::json::exception& e)
+		else
 		{
-			LOG_ERROR("Database error: " << e.what());
-
-			DownloadResult = EDatabaseOperationResult::DatabaseFailed;
+			DownloadResult = EDatabaseOperationResult::ConnectionFailed;
 		}
 	}
-	else
+	catch (const std::exception& e)
 	{
-		DownloadResult = EDatabaseOperationResult::ConnectionFailed;
+		LOG_ERROR("Database error: " << e.what());
 	}
 
 	return DownloadResult;
@@ -448,74 +552,81 @@ EDatabaseOperationResult FUserManager::DownloadUsersFromDBByIds(const std::vecto
 		return EDatabaseOperationResult::Success;
 	}
 
-	// 3. DATABASE PASS: Download only missing IDs
 	EDatabaseOperationResult DownloadResult = EDatabaseOperationResult::Unknown;
-	FDataBaseConnect Connect;
-
-	if (Connect.IsConnected())
+	try
 	{
-		soci::session& DataBaseSession = Connect.GetSession();
+		// 3. DATABASE PASS: Download only missing IDs
+		FDataBaseConnect Connect;
 
-		try
+		if (Connect.IsConnected())
 		{
-			// Build string for SQL "IN" clause: "1, 5, 99"
-			std::string IdList;
-			for (size_t i = 0; i < MissingIds.size(); ++i) {
-				IdList += std::to_string(MissingIds[i]);
-				if (i < MissingIds.size() - 1) IdList += ",";
-			}
+			soci::session& DataBaseSession = Connect.GetSession();
 
-			// Prepare fetch variables
-			std::string Username, StoredPasswordHash, Mail;
-			Uint64 UserIdVal;
-			soci::indicator Ind;
-
-			// Execute Single Query
-			soci::statement St = (DataBaseSession.prepare <<
-				"SELECT id, username, password, email FROM users WHERE id IN (" + IdList + ")",
-				soci::into(UserIdVal, Ind),
-				soci::into(Username),
-				soci::into(StoredPasswordHash),
-				soci::into(Mail)
-			);
-
-			St.execute();
-
-			while (St.fetch())
+			try
 			{
-				if (Ind == soci::i_ok)
-				{
-					// Create User
-					std::shared_ptr<FUser> NewUser = std::make_shared<FUser>(this);
-					NewUser->SetUserName(Username);
-					NewUser->SetPassword(StoredPasswordHash);
-					NewUser->SetUserEMail(Mail);
-					NewUser->SetUserId(UserIdVal);
-
-					// Update CACHE
-					if (bAutoAddToCache)
-					{
-						const std::unique_lock ScopeLock(UserDataBaseMutex);
-						UserDataBaseCache.Emplace(UserIdVal, NewUser);
-					}
-
-					// Add to Output
-					OutUsers.push_back(NewUser);
+				// Build string for SQL "IN" clause: "1, 5, 99"
+				std::string IdList;
+				for (size_t i = 0; i < MissingIds.size(); ++i) {
+					IdList += std::to_string(MissingIds[i]);
+					if (i < MissingIds.size() - 1) IdList += ",";
 				}
-			}
 
-			// If we have any users (from cache OR db), consider it a success
-			DownloadResult = (OutUsers.empty()) ? EDatabaseOperationResult::DataNotFound : EDatabaseOperationResult::Success;
+				// Prepare fetch variables
+				std::string Username, StoredPasswordHash, Mail;
+				Uint64 UserIdVal;
+				soci::indicator Ind;
+
+				// Execute Single Query
+				soci::statement St = (DataBaseSession.prepare <<
+					"SELECT id, username, password, email FROM users WHERE id IN (" + IdList + ")",
+					soci::into(UserIdVal, Ind),
+					soci::into(Username),
+					soci::into(StoredPasswordHash),
+					soci::into(Mail)
+				);
+
+				St.execute();
+
+				while (St.fetch())
+				{
+					if (Ind == soci::i_ok)
+					{
+						// Create User
+						std::shared_ptr<FUser> NewUser = std::make_shared<FUser>(this);
+						NewUser->SetUserName(Username);
+						NewUser->SetPassword(StoredPasswordHash);
+						NewUser->SetUserEMail(Mail);
+						NewUser->SetUserId(UserIdVal);
+
+						// Update CACHE
+						if (bAutoAddToCache)
+						{
+							const std::unique_lock ScopeLock(UserDataBaseMutex);
+							UserDataBaseCache.Emplace(UserIdVal, NewUser);
+						}
+
+						// Add to Output
+						OutUsers.push_back(NewUser);
+					}
+				}
+
+				// If we have any users (from cache OR db), consider it a success
+				DownloadResult = (OutUsers.empty()) ? EDatabaseOperationResult::DataNotFound : EDatabaseOperationResult::Success;
+			}
+			catch (const std::exception& e)
+			{
+				LOG_ERROR("Database error (Bulk User Resolve): " << e.what());
+				DownloadResult = EDatabaseOperationResult::DatabaseFailed;
+			}
 		}
-		catch (const std::exception& e)
+		else
 		{
-			LOG_ERROR("Database error (Bulk User Resolve): " << e.what());
-			DownloadResult = EDatabaseOperationResult::DatabaseFailed;
+			DownloadResult = EDatabaseOperationResult::ConnectionFailed;
 		}
 	}
-	else
+	catch (const std::exception& e)
 	{
-		DownloadResult = EDatabaseOperationResult::ConnectionFailed;
+		LOG_ERROR("Database error: " << e.what());
 	}
 
 	return DownloadResult;
@@ -525,28 +636,35 @@ EDatabaseOperationResult FUserManager::UploadUserToDataBase(const std::string& I
 {
 	EDatabaseOperationResult DatabaseOperationResult = EDatabaseOperationResult::Unknown;
 
-	FDataBaseConnect Connect;
-	if (Connect.IsConnected())
+	try
 	{
-		// Get database connection session
-		soci::session& DataBaseSession = Connect.GetSession();
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
 
-		// Create user
-		DataBaseSession.once << "INSERT INTO users(username, password, email) VALUES(:un, :ps, :em)",
-			soci::use(InUserName, "un"),
-			soci::use(InUserPasswordHash, "ps"),
-			soci::use(InUserEMail, "em");
+			// Create user
+			DataBaseSession.once << "INSERT INTO users(username, password, email) VALUES(:un, :ps, :em)",
+				soci::use(InUserName, "un"),
+				soci::use(InUserPasswordHash, "ps"),
+				soci::use(InUserEMail, "em");
 
-		// Get id
-		Uint64 Id = 0;
-		DataBaseSession.once << "SELECT LAST_INSERT_ID()",
-			soci::into(Id);
+			// Get id
+			Uint64 Id = 0;
+			DataBaseSession.once << "SELECT LAST_INSERT_ID()",
+				soci::into(Id);
 
-		DatabaseOperationResult = EDatabaseOperationResult::Success;
+			DatabaseOperationResult = EDatabaseOperationResult::Success;
+		}
+		else
+		{
+			DatabaseOperationResult = EDatabaseOperationResult::ConnectionFailed;
+		}
 	}
-	else
+	catch (const std::exception& e)
 	{
-		DatabaseOperationResult = EDatabaseOperationResult::ConnectionFailed;
+		LOG_ERROR("Database error: " << e.what());
 	}
 
 	return DatabaseOperationResult;
@@ -557,36 +675,43 @@ EDatabaseOperationResult FUserManager::DoesUserWithMailExists(const std::string&
 	EDatabaseOperationResult DownloadResult = EDatabaseOperationResult::Unknown;
 	bOutExists = false;
 
-	FDataBaseConnect Connect;
-	if (Connect.IsConnected())
+	try
 	{
-		soci::session& DataBaseSession = Connect.GetSession();
-
-		try
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
 		{
-			std::string Username;
-			soci::indicator Ind;
+			soci::session& DataBaseSession = Connect.GetSession();
 
-			DataBaseSession << "SELECT username FROM users WHERE email = :email",
-				soci::use(InUserEmail),
-				soci::into(Username, Ind);
-
-			if (Ind == soci::i_ok)
+			try
 			{
-				bOutExists = true;
-			}
+				std::string Username;
+				soci::indicator Ind;
 
-			DownloadResult = EDatabaseOperationResult::Success;
+				DataBaseSession << "SELECT username FROM users WHERE email = :email",
+					soci::use(InUserEmail),
+					soci::into(Username, Ind);
+
+				if (Ind == soci::i_ok)
+				{
+					bOutExists = true;
+				}
+
+				DownloadResult = EDatabaseOperationResult::Success;
+			}
+			catch (const std::exception& e)
+			{
+				LOG_ERROR("Database error: " << e.what());
+				DownloadResult = EDatabaseOperationResult::DatabaseFailed;
+			}
 		}
-		catch (const std::exception& e)
+		else
 		{
-			LOG_ERROR("Database error: " << e.what());
-			DownloadResult = EDatabaseOperationResult::DatabaseFailed;
+			DownloadResult = EDatabaseOperationResult::ConnectionFailed;
 		}
 	}
-	else
+	catch (const std::exception& e)
 	{
-		DownloadResult = EDatabaseOperationResult::ConnectionFailed;
+		LOG_ERROR("Database error: " << e.what());
 	}
 
 	return DownloadResult;

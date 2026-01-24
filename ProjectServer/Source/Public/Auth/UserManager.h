@@ -32,6 +32,22 @@ enum class ELoginStatus : Uint8
 	DataBaseConnectionFailed
 };
 
+enum class EUpdateUserNameStatus : Uint8
+{
+	Unknown,
+	Successful,
+	UserNameLengthIncorrect,
+};
+
+enum class EUpdateUserPasswordStatus : Uint8
+{
+	Unknown,
+	Successful,
+	OldPasswordIncorrect,
+	PasswordLengthIncorrect,
+	PasswordIncorrect
+};
+
 /**
  * Class for managing users
  * ALL downloading and managing users should be done using this class
@@ -77,6 +93,8 @@ public:
 	bool RefreshSessionToken(const std::string& InToken) const;
 
 	void UpdateUserActivity(const Uint64 UsedId);
+	EUpdateUserNameStatus UpdateUserName(const Uint64 UsedId, const std::string& NewUserName);
+	EUpdateUserPasswordStatus UpdateUserPassword(const Uint64 UsedId, const std::string& OldPassword, const std::string& NewPassword);
 
 	/** Search all users to find this with mail specified */
 	std::shared_ptr<FUser> FindUserByMail(const std::string& InMail);
