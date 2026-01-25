@@ -364,7 +364,7 @@ EUpdateUserNameStatus FUserManager::UpdateUserName(const Uint64 UsedId, const st
 	return OutStatus;
 }
 
-EUpdateUserPasswordStatus FUserManager::UpdateUserPassword(const Uint64 UsedId, const std::string& OldPassword, const std::string& NewPassword)
+EUpdateUserPasswordStatus FUserManager::UpdateUserPassword(const Uint64 InUserId, const std::string& OldPassword, const std::string& NewPassword)
 {
 	if (OldPassword.empty() || !ValidatePasswordLength(NewPassword))
 	{
@@ -379,34 +379,31 @@ EUpdateUserPasswordStatus FUserManager::UpdateUserPassword(const Uint64 UsedId, 
 	EUpdateUserPasswordStatus OutStatus = EUpdateUserPasswordStatus::Successful;
 	std::string UserPasswordHash = HashUserPassword(NewPassword);
 
-	try
+	std::shared_ptr<FUser> UserPtr = GetUserById(InUserId);
+	if (UserPtr == nullptr)
 	{
-		FDataBaseConnect Connect;
-		if (Connect.IsConnected())
-		{
-			// Get database connection session
-			soci::session& DataBaseSession = Connect.GetSession();
-
-			// Update activity time
-			DataBaseSession << "UPDATE users SET UserPasswordHash = :password WHERE id = :id",
-				soci::use(UsedId, "id"),
-				soci::use(UserPasswordHash, "password");
-
-			// Update cache
-			std::vector<std::shared_ptr<FUser>> Users;
-			const bool bGetUsers = GetUsersByIds({ UsedId }, Users);
-			if (bGetUsers)
-			{
-				std::shared_ptr<FUser>& FirstUser = Users[0];
-				FirstUser->UpdateUserPassword(UserPasswordHash);
-
-				OutStatus = EUpdateUserPasswordStatus::Successful;
-			}
-		}
+		return EUpdateUserPasswordStatus::UserNotFound;
 	}
-	catch (const std::exception& e)
+
+	if (!VerifyPasswords(UserPtr->GetUserPasswordHash(), OldPassword))
 	{
-		LOG_ERROR("Database error: " << e.what());
+		return EUpdateUserPasswordStatus::OldPasswordIncorrect;
+	}
+
+	UpdateUserPasswordInDataBase(InUserId, UserPasswordHash);
+
+	return OutStatus;
+}
+
+EUpdateUserPasswordStatus FUserManager::OverrideUserPassword(Uint64 InUserId, const std::string& NewPassword)
+{
+	EUpdateUserPasswordStatus OutStatus = EUpdateUserPasswordStatus::Successful;
+	std::string UserPasswordHash = HashUserPassword(NewPassword);
+
+	EDatabaseOperationResult DatabaseOpResult = UpdateUserPasswordInDataBase(InUserId, UserPasswordHash);
+	if (DatabaseOpResult != EDatabaseOperationResult::Success)
+	{
+		OutStatus = EUpdateUserPasswordStatus::Unknown;
 	}
 
 	return OutStatus;
@@ -450,6 +447,19 @@ Uint64 FUserManager::GetIdFromToken(const std::string& InToken) const
 bool FUserManager::GetUsersByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers)
 {
 	return (DownloadUsersFromDBByIds(UserIds, OutUsers, true) == EDatabaseOperationResult::Success);
+}
+
+std::shared_ptr<FUser> FUserManager::GetUserById(Uint64 InUserId)
+{
+	std::vector<std::shared_ptr<FUser>> OutUsers;
+	const bool bHasUser = GetUsersByIds({ InUserId }, OutUsers);
+
+	if (bHasUser && !OutUsers.empty())
+	{
+		return OutUsers[0];
+	}
+
+	return nullptr;
 }
 
 EDatabaseOperationResult FUserManager::DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr)
@@ -668,6 +678,48 @@ EDatabaseOperationResult FUserManager::UploadUserToDataBase(const std::string& I
 	}
 
 	return DatabaseOperationResult;
+}
+
+EDatabaseOperationResult FUserManager::UpdateUserPasswordInDataBase(Uint64 InUserId, const std::string& InUserPasswordHash)
+{
+	EDatabaseOperationResult DataBaseOperationResult = EDatabaseOperationResult::Unknown;
+
+	try
+	{
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			// Get database connection session
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			// Update activity time
+			DataBaseSession << "UPDATE users SET UserPasswordHash = :password WHERE id = :id",
+				soci::use(InUserId, "id"),
+				soci::use(InUserPasswordHash, "password");
+
+			// Update cache
+			std::vector<std::shared_ptr<FUser>> Users;
+			const bool bGetUsers = GetUsersByIds({ InUserId }, Users);
+			if (bGetUsers)
+			{
+				std::shared_ptr<FUser>& FirstUser = Users[0];
+				FirstUser->UpdateUserPassword(InUserPasswordHash);
+
+				DataBaseOperationResult = EDatabaseOperationResult::Success;
+			}
+		}
+		else
+		{
+			DataBaseOperationResult = EDatabaseOperationResult::ConnectionFailed;
+		}
+	}
+	catch (const std::exception& e)
+	{
+		LOG_ERROR("Database error: " << e.what());
+		DataBaseOperationResult = EDatabaseOperationResult::DatabaseFailed;
+	}
+
+	return DataBaseOperationResult;
 }
 
 EDatabaseOperationResult FUserManager::DoesUserWithMailExists(const std::string& InUserEmail, bool& bOutExists)

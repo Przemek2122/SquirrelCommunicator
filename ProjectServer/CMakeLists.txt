@@ -72,6 +72,10 @@ else()
 		${PROJECT_SOURCE_FILES_PUBLIC}
             Source/Private/Rest/AccountEndpoint.cpp
             Source/Private/Rest/AccountEndpoint.h
+            Source/Private/Managers/MailSender.cpp
+            Source/Private/Managers/MailSender.h
+            Source/Private/Managers/PasswordResetManager.cpp
+            Source/Private/Managers/PasswordResetManager.h
     )
 
 	# The SDL java code is hardcoded to load libmain.so on android, so we need to change EXECUTABLE_NAME

@@ -2,7 +2,10 @@
 
 #include "PredefinedMessages.h"
 #include "ProjectEngine.h"
+#include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
+#include "Managers/MailSender.h"
+#include "Managers/PasswordResetManager.h"
 #include "Misc/WebSockets/CookieHelper.h"
 #include "nlohmann/json.hpp"
 #include "nlohmann/json_fwd.hpp"
@@ -112,6 +115,153 @@ void FAccountEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
          return OutResponse;
      });
+
+    CROW_ROUTE(App, "/api/v1/account/reset_pass_by_mail")
+    .methods("POST"_method, "OPTIONS"_method)
+    ([this](const crow::request& req)
+    {
+        crow::response OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "If such e-mail exists, it was sent. Check you mailbox."} });
+        // Get IP address
+        const std::string& ClientIP = req.remote_ip_address;
+        std::string TargetMail;
+
+        try
+        {
+            const crow::json::rvalue JsonData = crow::json::load(req.body);
+            if (JsonData)
+            {
+                TargetMail = JsonData["target_mail"].s();
+            }
+        }
+        catch (const nlohmann::json::exception& e)
+        {
+            LOG_ERROR("Change pass error: " << e.what());
+            OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+                { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+                    { "message", std::string("error :") + e.what()} }
+            );
+        }
+
+        FProjectEngine* ProjectEngine = dynamic_cast<FProjectEngine*>(FGlobalDefines::GEngine);
+        if (ProjectEngine != nullptr)
+        {
+            if (!TargetMail.empty() && FStringHelpers::ValidateMail(TargetMail))
+            {
+                FUserManager* UserManager = ProjectEngine->GetUserManager();
+                std::shared_ptr<FUser> User = UserManager->FindUserByMail(TargetMail);
+
+                FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+                if (User != nullptr)
+                {
+                    if (AbuseProtection->CanAddressRequestPasswordReset(ClientIP))
+                    {
+                        // Now we need to generate some kind of code, preferably 6 digit long
+                        FPasswordResetManager* PasswordResetManager = ProjectEngine->GetPasswordResetManager();
+                        FPasswordResetStruct ResetStruct = PasswordResetManager->GenerateResetToken(TargetMail);
+
+                        // Mail content
+                        nlohmann::json JsonBody = {
+                            {"to", {{{"email", TargetMail }}}},
+                            {"templateId", 1},  // your template ID
+                            {"params", {
+                                {"TOKEN", ResetStruct.ResetToken },
+                                {"USERNAME", User->GetUserNameString() }
+                            }}
+                        };
+
+                        // Do send
+                        FMailSender::SendMail(JsonBody);
+
+                        AbuseProtection->AddPasswordResetAttempt(ClientIP);
+                    }
+                }
+            }
+            else
+            {
+                OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid email."} });
+            }
+        }
+        else
+        {
+            OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Internal error."} });
+        }
+
+        return OutResponse;
+    });
+
+    CROW_ROUTE(App, "/api/v1/account/reset_pass_by_mail_verify")
+    .methods("POST"_method, "OPTIONS"_method)
+    ([this](const crow::request& req)
+    {
+        crow::response OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
+
+        // Get IP address
+        const std::string& ClientIP = req.remote_ip_address;
+        std::string TargetMail;
+        std::string ResetCode;
+        std::string NewPassword;
+
+        try
+        {
+            const crow::json::rvalue JsonData = crow::json::load(req.body);
+            if (JsonData)
+            {
+                TargetMail = JsonData["target_mail"].s();
+                ResetCode = JsonData["reset_code"].s();
+                NewPassword = JsonData["new_password"].s();
+            }
+        }
+        catch (const nlohmann::json::exception& e)
+        {
+            LOG_ERROR("Change pass error: " << e.what());
+            OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+                { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+                    { "message", std::string("error :") + e.what()} }
+            );
+        }
+
+        if (!TargetMail.empty() && !ResetCode.empty() && !NewPassword.empty())
+        {
+            FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+            FPasswordResetManager* PasswordResetManager = ProjectEngine->GetPasswordResetManager();
+
+            if (AbuseProtection->CanAddressRequestPasswordReset(ClientIP))
+            {
+                const bool bValidationResult = PasswordResetManager->ValidateResetToken(TargetMail, ResetCode);
+
+                if (bValidationResult)
+                {
+                    const bool bUpdateSuccess = PasswordResetManager->UpdatePassword(TargetMail, NewPassword);
+
+                    if (bUpdateSuccess)
+                    {
+                        OutResponse = FCrowUtils::CreateResponse(crow::status::OK, {
+                            { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success },
+                            { "message", "Password reset successful."} }
+                        );
+                    }
+                    else
+                    {
+                        OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
+                            { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+                                { "message", "Internal error."} }
+                        );
+                    }
+                }
+                else
+                {
+                    OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST,
+                        { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+                            { "message", "Invalid reset token or user email." } }
+                    );
+                }
+
+                AbuseProtection->AddPasswordResetAttempt(ClientIP);
+            }
+        }
+
+        return OutResponse;
+    });
 
     FCrowAppEndpoint::RegisterRoutes(App);
 }

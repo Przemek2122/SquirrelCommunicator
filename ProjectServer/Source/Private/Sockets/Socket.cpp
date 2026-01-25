@@ -10,6 +10,7 @@
 #include "Sockets/WebSocketSessionData.h"
 #include <nlohmann/json.hpp>
 #include <nlohmann/json_fwd.hpp>
+#include <utility>
 
 ESocketMessageType StringToSocketMessageType(const std::string& InTypeString)
 {
@@ -53,7 +54,7 @@ std::string SocketMessageTypeToString(const ESocketMessageType InTypeEnum)
 
 FSocket::FSocket(int32 InSocketIndex, std::string InHost, const int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath)
 	: SocketIndex(InSocketIndex)
-	, Host(InHost)
+	, Host(std::move(InHost))
 	, Port(InPort)
 	, bUseSSL(bInUseSSL)
 	, SocketAppWrapper(bInUseSSL, InKeyPath, InCertPath)

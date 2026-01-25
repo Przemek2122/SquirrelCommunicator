@@ -38,7 +38,7 @@ public:
 class FRateLimiter
 {
 public:
-	FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock);
+	FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock);
 	~FRateLimiter();
 
 	/** Check if we have user blocked */
@@ -46,6 +46,12 @@ public:
 
 	/** Add register or login attempt */
 	void AddProtectedActionAttempt(const std::string& InAddress);
+
+	/** Check if address can request password reset **/
+	bool IsPasswordResetAddressBlocked(const std::string& InAddress);
+
+	/** Add password reset attempt */
+	void AddPasswordResetAttempt(const std::string& InAddress);
 
 	void AsyncWork();
 	void ResetRateLimits();
@@ -57,11 +63,17 @@ protected:
 	/** Object for limiting access when using verify */
 	FRateLimitObject VerifyIPAddressToLimits;
 
+	/** Object for limiting access when using password reset */
+	FRateLimitObject PasswordResetIPAddressToLimits;
+
 	/** Time when we clear limits */
 	std::chrono::minutes ClearingTimeInMins;
 
 	/** How many attempts are needed to block */
 	int32 NumberOfAttemptsToBlock;
+
+	/** How many attempts are needed to block */
+	int32 NumberOfPasswordResetAttemptsToBlock;
 
 private:
 	FThreadData* RateLimiterThreadData;

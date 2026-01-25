@@ -43,6 +43,7 @@ enum class EUpdateUserPasswordStatus : Uint8
 {
 	Unknown,
 	Successful,
+	UserNotFound,
 	OldPasswordIncorrect,
 	PasswordLengthIncorrect,
 	PasswordIncorrect
@@ -92,9 +93,10 @@ public:
 	/** @return true when valid. Will leave old token but with longer time to use. */
 	bool RefreshSessionToken(const std::string& InToken) const;
 
-	void UpdateUserActivity(const Uint64 UsedId);
-	EUpdateUserNameStatus UpdateUserName(const Uint64 UsedId, const std::string& NewUserName);
-	EUpdateUserPasswordStatus UpdateUserPassword(const Uint64 UsedId, const std::string& OldPassword, const std::string& NewPassword);
+	void UpdateUserActivity(Uint64 UsedId);
+	EUpdateUserNameStatus UpdateUserName(Uint64 UsedId, const std::string& NewUserName);
+	EUpdateUserPasswordStatus UpdateUserPassword(Uint64 InUserId, const std::string& OldPassword, const std::string& NewPassword);
+	EUpdateUserPasswordStatus OverrideUserPassword(Uint64 InUserId, const std::string& NewPassword);
 
 	/** Search all users to find this with mail specified */
 	std::shared_ptr<FUser> FindUserByMail(const std::string& InMail);
@@ -106,12 +108,14 @@ public:
 	Uint64 GetCurrentTimeCached() const { return CurrentTimeCached; }
 
 	bool GetUsersByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers);
+	std::shared_ptr<FUser> GetUserById(Uint64 InUserId);
 
 private:
 	EDatabaseOperationResult DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr);
 	EDatabaseOperationResult DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers, bool bAutoAddToCache);
 
 	EDatabaseOperationResult UploadUserToDataBase(const std::string& InUserName, const std::string& InUserPasswordHash, const std::string& InUserEMail, Uint64& OutId);
+	EDatabaseOperationResult UpdateUserPasswordInDataBase(Uint64 InUserId, const std::string& InUserPasswordHash);
 
 	static EDatabaseOperationResult DoesUserWithMailExists(const std::string& InUserEmail, bool& bOutExists);
 

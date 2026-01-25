@@ -10,27 +10,42 @@ FAbuseProtection::FAbuseProtection(FBackendSettings* InBackendSettings)
 	{
 		LOG_DEBUG("BackendSettingsIni number of fields: '" << BackendSettingsIni->GetNumberOfFields() << "'.");
 
-		FIniField RateLimitNumberPerIPField = BackendSettingsIni->FindFieldByName("RateLimitNumberPerIP");
 		FIniField RateLimitTimeToClearInMinsField = BackendSettingsIni->FindFieldByName("RateLimitTimeToClearInMins");
+		FIniField RateLimitNumberPerIPField = BackendSettingsIni->FindFieldByName("RateLimitNumberPerIP");
+		FIniField RateLimitPasswordField = BackendSettingsIni->FindFieldByName("PasswordRateLimitNumberPerIP");
 
-		RateLimiter = std::make_unique<FRateLimiter>(RateLimitTimeToClearInMinsField.GetValueAsInt(), RateLimitNumberPerIPField.GetValueAsInt());
+		RateLimiter = std::make_unique<FRateLimiter>(
+			RateLimitTimeToClearInMinsField.GetValueAsInt(),
+			RateLimitNumberPerIPField.GetValueAsInt(),
+			RateLimitPasswordField.GetValueAsInt()
+		);
 	}
 	else
 	{
-		RateLimiter = std::make_unique<FRateLimiter>(60, 10);
+		RateLimiter = std::make_unique<FRateLimiter>(60, 10, 8);
 
 		LOG_ERROR("FAbuseProtection missing BackendSettingsIni");
 	}
 }
 
-bool FAbuseProtection::IsAddressBlocked(const std::string& InAddress)
+bool FAbuseProtection::IsAddressBlocked(const std::string& InAddress) const
 {
 	return RateLimiter->IsAddressBlocked(InAddress);
 }
 
-void FAbuseProtection::AddRateLimitedAttempt(const std::string& InAddress)
+void FAbuseProtection::AddRateLimitedAttempt(const std::string& InAddress) const
 {
 	RateLimiter->AddProtectedActionAttempt(InAddress);
+}
+
+bool FAbuseProtection::CanAddressRequestPasswordReset(const std::string& InAddress) const
+{
+	return !RateLimiter->IsPasswordResetAddressBlocked(InAddress);
+}
+
+void FAbuseProtection::AddPasswordResetAttempt(const std::string& InAddress) const
+{
+	RateLimiter->AddPasswordResetAttempt(InAddress);
 }
 
 CUnorderedMap<std::string, std::string> FAbuseProtection::GetCORHeaders() const

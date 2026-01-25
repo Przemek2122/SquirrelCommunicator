@@ -6,11 +6,12 @@
 #include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
+#include "Managers/PasswordResetManager.h"
 #include "Rest/AccountEndpoint.h"
 #include "Rest/CrowUtils.h"
 #include "Rest/IntegrationEndpoint.h"
 #include "Rest/TestEndpoint.h"
-#include "Rest/UserEndpoint.h"
+#include "Rest/AuthEndpoint.h"
 #include "Sockets/SocketManager.h"
 
 #define ENDPOINT_CLASS(EndpointName) FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<EndpointName>()
@@ -19,13 +20,14 @@ FProjectEngine::FProjectEngine()
 	: BackendSettings(std::make_unique<FBackendSettings>())
 	, SocketManager(std::make_unique<FSocketManager>())
 	, ConversationsManager(std::make_unique<FConversationsManager>())
+	, PasswordResetManager(std::make_unique<FPasswordResetManager>())
 	, bIsSSLEnabled(false)
 {
 	// Collect Database settings
 	FDataBaseSettings::Initialize();
 
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTestEndpoint));
-	RestEndpointsClasses.Push(ENDPOINT_CLASS(FUserEndpoint));
+	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAuthEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAccountEndpoint));
 }
@@ -106,6 +108,8 @@ void FProjectEngine::Init()
 		{
 			LOG_WARN("Missing PortWSField or SocketListenHostField. Sockets will not work.");
 		}
+
+		CacheProperties(ServerSettingsIni);
 
 		// Test db connection
 		TestDataBaseConnection();
@@ -258,6 +262,16 @@ void FProjectEngine::AddCookies(crow::response& CurrentResponse, const std::stri
 	{
 		// HTTPS
 		CurrentResponse.add_header("Set-Cookie", "auth_token=" + AuthToken + "; Domain=" + DomainName + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
+	}
+}
+
+void FProjectEngine::CacheProperties(const std::shared_ptr<FIniObject>& ServerSettingsIni)
+{
+	const std::string MailAPIKeyPropertyName = "SQRLL_COMM_MAIL_API_KEY";
+	MailAPIKey = FUtil::GetEnvVariable(MailAPIKeyPropertyName, "").value();
+	if (MailAPIKey.empty())
+	{
+		LOG_WARN("Env property: '" << MailAPIKeyPropertyName << "' - missing. App will work but password reset will fail. It can be generated on Brevo page. (Section 'https://app.brevo.com/settings/keys/api')");
 	}
 }
 

@@ -1,4 +1,4 @@
-// Created byhttps://www.linkedin.com/in/przemek2122/ 2020-2025 https://github.com/Przemek2122/Engine
+// Created by https://www.linkedin.com/in/przemek2122/ 2020-2025 https://github.com/Przemek2122/Engine
 #pragma once
 
 #include "CoreMinimal.h"
@@ -8,6 +8,7 @@
 #include "BackendSettings.h"
 #include "crow/app.h"
 
+class FPasswordResetManager;
 class FConversationsManager;
 class FSocketManager;
 class FAbuseProtection;
@@ -33,6 +34,7 @@ public:
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 	void AddCookies(crow::response& CurrentResponse, const std::string& AuthToken);
 
+	void CacheProperties(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 	void TestDataBaseConnection();
 
 	FUserManager* GetUserManager() const { return UserManager.get(); }
@@ -42,9 +44,12 @@ public:
 	crow::App<FCrowAppMiddleware>& GetCrowApp() { return CrowApp; }
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }
 	FAbuseProtection* GetAbuseProtection() const { return AbuseProtectionPtr.get(); }
+	FPasswordResetManager* GetPasswordResetManager() const { return PasswordResetManager.get(); }
+
 	CUnorderedMap<std::string, std::string> GetDefaultHeaders() const;
 	CUnorderedMap<std::string, std::string> GetDefaultHeadersCache() const { return DefaultHeadersCache; }
 	const CArray<std::string>& GetOriginWhitelist() const { return OriginWhitelist; }
+	std::string GetMailAPIKey() const { return MailAPIKey; }
 
 protected:
 	/** API Server */
@@ -68,6 +73,9 @@ protected:
 	/** Conversations manager */
 	std::unique_ptr<FConversationsManager> ConversationsManager;
 
+	/** PasswordResetManager */
+	std::unique_ptr<FPasswordResetManager> PasswordResetManager;
+
 	/** Array of rest endpoint classes */
 	CArray<FClassStorage<FCrowAppEndpoint, FProjectEngine*>> RestEndpointsClasses;
 
@@ -76,6 +84,9 @@ protected:
 
 	/** Cached default headers */
 	CUnorderedMap<std::string, std::string> DefaultHeadersCache;
+
+	/** Cached API Key for sending emails */
+	std::string MailAPIKey;
 
 	CArray<std::string> OriginWhitelist;
 	std::string DomainName;

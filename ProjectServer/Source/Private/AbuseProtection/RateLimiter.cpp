@@ -63,9 +63,10 @@ void FRateLimitObject::Reset()
 	bIsClearing = false;
 }
 
-FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock)
+FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock)
 	: ClearingTimeInMins(std::chrono::minutes(InClearingTimeInMins))
 	, NumberOfAttemptsToBlock(InNumberOfAttemptsToBlock)
+	, NumberOfPasswordResetAttemptsToBlock(InNumberOfAttemptsToBlock)
 {
 	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
 	RateLimiterThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(RateLimiterThreadName);
@@ -98,6 +99,16 @@ bool FRateLimiter::IsAddressBlocked(const std::string& InAddress)
 void FRateLimiter::AddProtectedActionAttempt(const std::string& InAddress)
 {
 	DefaultIPAddressToLimits.AddAttempt(InAddress);
+}
+
+bool FRateLimiter::IsPasswordResetAddressBlocked(const std::string& InAddress)
+{
+	return PasswordResetIPAddressToLimits.IsBlockedKey(InAddress, NumberOfPasswordResetAttemptsToBlock);
+}
+
+void FRateLimiter::AddPasswordResetAttempt(const std::string& InAddress)
+{
+	PasswordResetIPAddressToLimits.AddAttempt(InAddress);
 }
 
 void FRateLimiter::AsyncWork()

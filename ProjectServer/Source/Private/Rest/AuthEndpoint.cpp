@@ -1,4 +1,4 @@
-#include "Rest/UserEndpoint.h"
+#include "Rest/AuthEndpoint.h"
 #include "Rest/CrowUtils.h"
 #include "PredefinedMessages.h"
 #include "ProjectEngine.h"
@@ -6,12 +6,12 @@
 #include "Auth/UserManager.h"
 #include "Misc/WebSockets/CookieHelper.h"
 
-FUserEndpoint::FUserEndpoint(FProjectEngine* InProjectEngine)
+FAuthEndpoint::FAuthEndpoint(FProjectEngine* InProjectEngine)
 	: FCrowAppEndpoint(InProjectEngine)
 {
 }
 
-void FUserEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
+void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 {
 	CROW_ROUTE(App, "/api/v1/users/register")
 		.methods("POST"_method, "OPTIONS"_method)

@@ -49,25 +49,24 @@ std::string FDataBaseSettings::GetEnvHost()
 		LOG_INFO("SQRLL_COMM_DB_HOST empty, defaulting to localhost.");
 	}
 
-	return Variable ? Variable : "localhost";
+	return FUtil::GetEnvVariable("SQRLL_COMM_DB_HOST", "localhost").value();
 }
 
 std::string FDataBaseSettings::GetEnvPort()
 {
 	const char* Variable = std::getenv("SQRLL_COMM_DB_PORT");
-	return Variable ? Variable : "3306";
+	return FUtil::GetEnvVariable("SQRLL_COMM_DB_PORT", "3306").value();
 }
 
 std::string FDataBaseSettings::GetEnvDataBaseName()
 {
 	const char* Variable = std::getenv("SQRLL_COMM_DB_DBNAME");
-	return Variable ? Variable : "sqrllapi";
+	return FUtil::GetEnvVariable("SQRLL_COMM_DB_DBNAME", "sqrllapi").value();
 }
 
 std::string FDataBaseSettings::GetEnvUser()
 {
-	const char* Variable = std::getenv("SQRLL_COMM_DB_USER");
-	return Variable ? Variable : "commapisqrllusertest";
+	return FUtil::GetEnvVariable("SQRLL_COMM_DB_USER", "commapisqrllusertest").value();
 }
 
 std::string FDataBaseSettings::GetEnvPassword()
