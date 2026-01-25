@@ -4,6 +4,35 @@
 
 #include "ProjectEngine.h"
 #include "Auth/UserManager.h"
+#include "Threads/ThreadsManager.h"
+
+static const char* TokenManagerThreadName = "TokenManagerThread";
+
+FPasswordResetManager::FPasswordResetManager(int32 InTimeInMinsForTokenToBeAlive)
+    : TokenManagerThreadData(nullptr)
+    , TimeInMinsForTokenToBeAlive(InTimeInMinsForTokenToBeAlive)
+{
+}
+
+void FPasswordResetManager::Init()
+{
+    // Initially skip, there is no chance we will somehow get tokens
+    AsyncUpdateWaitingTime();
+
+    FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
+    TokenManagerThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(TokenManagerThreadName);
+    FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(TokenManagerThreadData->GetThread());
+    GenericThread->SetShouldRemoveDoneJobs(false);
+    if (GenericThread != nullptr)
+    {
+        GenericThread->AddTask([this]()
+        {
+            AsyncCleanupTokens();
+        });
+
+        GenericThread->BeginAsyncWork();
+    }
+}
 
 FPasswordResetStruct FPasswordResetManager::GenerateResetToken(const std::string& UserMail)
 {
@@ -25,6 +54,7 @@ FPasswordResetStruct FPasswordResetManager::GenerateResetToken(const std::string
 
     // Make struct
     FPasswordResetStruct ResetStruct = { UserMail, TokenString };
+    ResetStruct.TokenExpirationTime = std::chrono::system_clock::now() + std::chrono::minutes(TimeInMinsForTokenToBeAlive);
 
     // Mutex unique lock
     std::unique_lock<std::shared_mutex> Lock(TokenToStructureMapMutex);
@@ -70,6 +100,46 @@ bool FPasswordResetManager::UpdatePassword(const std::string& UserMail, const st
     return false;
 }
 
-void FPasswordResetManager::InvalidateToken(const std::string& UserMail, const std::string& ResetToken)
+void FPasswordResetManager::InvalidateToken(const std::string& ResetToken)
 {
+    // Mutex unique lock
+    std::unique_lock<std::shared_mutex> Lock(TokenToStructureMapMutex);
+
+    TokenToStructureMap.erase(ResetToken);
+}
+
+void FPasswordResetManager::AsyncCleanupTokens()
+{
+    static Uint64 TimeToWaitBetweenRuns = 60; // Time to wait (in seconds)
+    const Uint64 CurrentTime = FUtil::GetSeconds();
+    if (CurrentTime > (AsyncWorkLastTime + TimeToWaitBetweenRuns))
+    {
+        // Mutex unique lock
+        std::unique_lock<std::shared_mutex> Lock(TokenToStructureMapMutex);
+
+        // Iterate map to find and remove outdated tokens
+        for (auto It = TokenToStructureMap.begin(); It != TokenToStructureMap.end();)
+        {
+            // Check if expired
+            if (It->second.TokenExpirationTime < std::chrono::system_clock::now())
+            {
+                TokenToStructureMap.erase(It++);
+                continue;
+            }
+
+            ++It;
+        }
+
+        // Set new wait time
+        AsyncUpdateWaitingTime();
+    }
+    else
+    {
+        THREAD_WAIT_MS(1);
+    }
+}
+
+void FPasswordResetManager::AsyncUpdateWaitingTime()
+{
+    AsyncWorkLastTime = FUtil::GetSeconds();
 }

@@ -20,7 +20,7 @@ FProjectEngine::FProjectEngine()
 	: BackendSettings(std::make_unique<FBackendSettings>())
 	, SocketManager(std::make_unique<FSocketManager>())
 	, ConversationsManager(std::make_unique<FConversationsManager>())
-	, PasswordResetManager(std::make_unique<FPasswordResetManager>())
+	, PasswordResetManager(nullptr)
 	, bIsSSLEnabled(false)
 {
 	// Collect Database settings
@@ -49,6 +49,17 @@ void FProjectEngine::Init()
 	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
 	if (ServerSettingsIni->DoesIniExist())
 	{
+		// Get time for token to be alive
+		const FIniField PasswordResetTokenAliveTimeMinsField = ServerSettingsIni->FindFieldByName("PasswordResetTokenAliveTimeMins");
+		int32 PasswordResetTokenAliveTimeMins = 10;
+		if (PasswordResetTokenAliveTimeMinsField.IsValid())
+		{
+			PasswordResetTokenAliveTimeMins = PasswordResetTokenAliveTimeMinsField.GetValueAsInt();
+		}
+
+		PasswordResetManager = std::make_unique<FPasswordResetManager>(PasswordResetTokenAliveTimeMins);
+		PasswordResetManager->Init();
+
 		// Get domain name from ini
 		{
 			const FIniField DomainField = ServerSettingsIni->FindFieldByName("Domain");
@@ -125,11 +136,6 @@ void FProjectEngine::PostSecondTick()
 	FEngine::PostSecondTick();
 
 	UserManager->PostSecondTick();
-}
-
-void FProjectEngine::InitUsersSetup()
-{
-	
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)

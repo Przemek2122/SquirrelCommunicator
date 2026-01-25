@@ -21,6 +21,11 @@ struct FPasswordResetStruct
 class FPasswordResetManager
 {
 public:
+    FPasswordResetManager(int32 InTimeInMinsForTokenToBeAlive = 10);
+
+    /** Init async thread */
+    void Init();
+
     /** Generate token for user password reset. */
     FPasswordResetStruct GenerateResetToken(const std::string& UserMail);
 
@@ -31,7 +36,13 @@ public:
     bool UpdatePassword(const std::string& UserMail, const std::string& NewPassword);
 
     /** Invalidate token. */
-    void InvalidateToken(const std::string& UserMail, const std::string& ResetToken);
+    void InvalidateToken(const std::string& ResetToken);
+
+    /** Async function collecting all tokens and removing outdated */
+    void AsyncCleanupTokens();
+
+    /** Update waiting time */
+    void AsyncUpdateWaitingTime();
 
 protected:
     /** Map of tokens to their associated reset structure. */
@@ -39,5 +50,14 @@ protected:
 
     /** Mutex for TokenToStructureMap. */
     std::shared_mutex TokenToStructureMapMutex;
+
+    /** Thread data */
+    FThreadData* TokenManagerThreadData;
+
+    /** Time for each token generate while it's active */
+    int32 TimeInMinsForTokenToBeAlive;
+
+    /** Time of last async work */
+    Uint64 AsyncWorkLastTime;
 
 };

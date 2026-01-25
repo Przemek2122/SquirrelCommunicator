@@ -25,8 +25,6 @@ public:
 	void Init() override;
 	void PostSecondTick() override;
 
-	void InitUsersSetup();
-
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 
 	void PreExit() override;
