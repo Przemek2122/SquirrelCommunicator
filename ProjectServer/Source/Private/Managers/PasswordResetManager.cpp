@@ -46,7 +46,8 @@ FPasswordResetStruct FPasswordResetManager::GenerateResetToken(const std::string
 
     for (int32 i = 0; i < TokenLength; ++i)
     {
-        RandomToken.push_back(RandomBytes[rand() % RandomBytes.size()]);
+        const int32 RandomIndex = FMath::RandRange(0, 15);
+        RandomToken.push_back(RandomBytes[RandomIndex]);
     }
 
     // Make token as string
