@@ -693,7 +693,7 @@ EDatabaseOperationResult FUserManager::UpdateUserPasswordInDataBase(Uint64 InUse
 			soci::session& DataBaseSession = Connect.GetSession();
 
 			// Update activity time
-			DataBaseSession << "UPDATE users SET UserPasswordHash = :password WHERE id = :id",
+			DataBaseSession << "UPDATE users SET password = :password WHERE id = :id",
 				soci::use(InUserId, "id"),
 				soci::use(InUserPasswordHash, "password");
 

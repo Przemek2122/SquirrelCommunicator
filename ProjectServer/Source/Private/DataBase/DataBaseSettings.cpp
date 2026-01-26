@@ -61,7 +61,7 @@ std::string FDataBaseSettings::GetEnvPort()
 std::string FDataBaseSettings::GetEnvDataBaseName()
 {
 	const char* Variable = std::getenv("SQRLL_COMM_DB_DBNAME");
-	return FUtil::GetEnvVariable("SQRLL_COMM_DB_DBNAME", "sqrllapi").value();
+	return FUtil::GetEnvVariable("SQRLL_COMM_DB_DBNAME", "sqrllapitest").value();
 }
 
 std::string FDataBaseSettings::GetEnvUser()
