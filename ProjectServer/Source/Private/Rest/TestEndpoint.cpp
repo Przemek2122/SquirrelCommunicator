@@ -15,6 +15,12 @@ void FTestEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 		return FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Crow C++ API Server is running."} });
 	});
 
+	// Route for health check
+	CROW_ROUTE(App, "/health")([this]()
+	{
+		return FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "API is working."} });
+	});
+
 	// Route for checking if api is working
 	CROW_ROUTE(App, "/api/v1/is_live")([this]()
 	{

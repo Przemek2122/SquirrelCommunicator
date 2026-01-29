@@ -21,13 +21,23 @@ RUN dnf clean all && rm -rf /var/cache/dnf
 RUN ln -s /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
 	
 # Work dir
+RUN mkdir /var/repos
 WORKDIR /var/repos
 
 # Projects
-#RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
-#RUN git clone https://github.com/Przemek2122/Engine.git
+RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
+RUN git clone -b communicator https://github.com/Przemek2122/Engine.git
 
 # Engine submodules
-#RUN cd Engine && \
-#    git submodule update --init --recursive
-	
+WORKDIR /var/repos/Engine
+RUN git submodule update --init --recursive
+
+# Compile
+WORKDIR /var/repos/SquirrelCommunicator/configsrv
+RUN chmod +x srv-config-linux-release_2cores.sh
+RUN ./srv-config-linux-release_2cores.sh
+
+# Go into build dir
+WORKDIR /var/repos/SquirrelCommunicator/buildsrv/linux-x64/bin/Release/Project/
+# Run but when container starts
+CMD ["./SquirrelCommunicator"]
