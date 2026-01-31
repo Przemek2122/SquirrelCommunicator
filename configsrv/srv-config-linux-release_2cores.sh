@@ -24,5 +24,3 @@ echo "Try to build all necessary projects"
 cmake --build buildsrv/linux-$ARCH --target BuildAllProject --parallel 2
 echo "All builds complete!"
 
-# Hack for docker detecting some minor errors
-exit 0
