@@ -40,4 +40,4 @@ RUN ./srv-config-linux-release_2cores.sh
 # Go into build dir
 WORKDIR /var/repos/SquirrelCommunicator/buildsrv/linux-x64/bin/Release/Project/
 # Run but when container starts
-CMD ["./SquirrelCommunicator"]
+CMD ["./communicatorsrv"]
