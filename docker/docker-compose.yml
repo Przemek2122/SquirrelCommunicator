@@ -1,3 +1,4 @@
+name: communicator
 services:
   backend:
     build:
@@ -5,7 +6,10 @@ services:
       dockerfile: Dockerfile
 
     ports:
-      - "8080:8080" # C++ Backend port
+      - "8080:8080" # Backend rest
+      - "8081:8081" # Backend socket
+
+    network_mode: host
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
@@ -22,6 +26,8 @@ services:
       - "3000:3000" # mediasoup port
       - "40000-40100:40000-40100/udp"
 
+    network_mode: host
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -35,3 +41,4 @@ services:
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
