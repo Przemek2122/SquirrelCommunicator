@@ -5,6 +5,10 @@ services:
       context: .
       dockerfile: Dockerfile
 
+    env_file:
+      - .env.backend
+      - .env.voice
+
     ports:
       - "8080:8080" # Backend rest
       - "8081:8081" # Backend socket
@@ -19,21 +23,18 @@ services:
 
     restart: unless-stopped
 
-  mediasoup:
-    build: ./mediasoup
+  voice_service:
+    build:
+      context: ../services/SquirrelCommunicatorVoice
+      dockerfile: Dockerfile
+
+    env_file:
+      - .env.voice
 
     ports:
-      - "3000:3000" # mediasoup port
-      - "40000-40100:40000-40100/udp"
+      - "8082:8082" # Voice port
 
     network_mode: host
-
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
     restart: unless-stopped
 
   autoheal:

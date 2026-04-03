@@ -6,9 +6,9 @@ RUN dnf update -y && \
     dnf install -y git wget curl tar zip unzip gdb glibc-devel zlib-devel gcc gcc-c++ cmake make ninja-build pkgconf kernel-headers kernel-devel xz patch sed openssl openssl-devel && \
     dnf install -y nano ps ping htop netstat ss
 
-# Packages for project
+# Packages for project (removed mysql-common mysql-devel as we use mariadb-connector-c anyway)
 RUN dnf install -y alsa-lib-devel perl perl-IPC-Cmd perl-generators perl-devel nasm pkgconfig flex bison binutils elfutils-libelf-devel && \
-	dnf install -y mysql-common mysql-devel libaio-devel ncurses-devel readline-devel libuuid-devel libtirpc-devel lz4-devel libedit-devel snappy-devel bzip2-devel && \
+	dnf install -y libaio-devel ncurses-devel readline-devel libuuid-devel libtirpc-devel lz4-devel libedit-devel snappy-devel bzip2-devel && \
     dnf install -y libstdc++-static brotli-devel libwebsockets-devel libuv-devel freetype-devel mariadb-connector-c
 
 # Packages for fake screen (Should be skipped in GUI version)
