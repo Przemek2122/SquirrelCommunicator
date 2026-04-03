@@ -2,3 +2,6 @@
 	path = Engine
 	url = https://github.com/Przemek2122/Engine
 	branch = communicator
+[submodule "services/SquirrelCommunicatorVoice"]
+	path = services/SquirrelCommunicatorVoice
+	url = https://github.com/Przemek2122/SquirrelCommunicatorVoice

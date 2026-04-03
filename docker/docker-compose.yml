@@ -1,5 +1,6 @@
 name: communicator
 services:
+
   backend:
     build:
       context: .
@@ -23,6 +24,7 @@ services:
 
     restart: unless-stopped
 
+
   voice_service:
     build:
       context: ../services/SquirrelCommunicatorVoice
@@ -35,7 +37,15 @@ services:
       - "8082:8082" # Voice port
 
     network_mode: host
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
     restart: unless-stopped
+
 
   autoheal:
     image: willfarrell/autoheal
