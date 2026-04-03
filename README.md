@@ -39,8 +39,8 @@ Squirrel Communicator offers the following features:
 
 You will need the following tools to build and run the project:
 - A C++ compiler (e.g., `g++` or `clang`).
-- CMake (version 3.10 or higher).
-- (optional) Docker (for running the application in a containerized environment).
+
+View Dockerfile in docker directory for latest packages required on Linux (Fedora).
 
 ### Build Instructions
 
@@ -53,11 +53,12 @@ You will need the following tools to build and run the project:
    First download 
 
 4. **Use Build Scripts (Optional)**:
-   If you're on **Windows** or **Linux**, you can use the pre-configured build scripts from the `buildsrv` directory:
-   - For Windows, execute the `.bat` file in the `buildsrv` directory.
-   - For Linux, execute the `.sh` file in the `buildsrv` directory:
+   If you're on **Windows** or **Linux**, you can use the pre-configured build scripts from the `configsrv` directory:
+   - For Windows, execute the `.bat` file in the `configsrv` directory.
+   - For Linux, execute the `.sh` file in the `configsrv` directory:
      ```bash
-     ./buildsrv/build-linux.sh
+     cd configsrv
+     ./build-linux.sh
      ```
 
 5. **Manual Build**:
@@ -116,6 +117,11 @@ Two scripts are available in the repository under the `docker` directory to simp
 Using these predefined scripts ensures that Docker images are built properly without manually typing long commands.
 
 ---
+
+## Mediasoup
+
+For online audio communication, there is mediasoup server (by default it will use port 3000)
+
 
 ## Repository Limitations
 
