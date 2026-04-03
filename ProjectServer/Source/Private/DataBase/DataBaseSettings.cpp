@@ -43,30 +43,46 @@ void FDataBaseSettings::Initialize()
 std::string FDataBaseSettings::GetEnvHost()
 {
 	const char* Variable = std::getenv("SQRLL_COMM_DB_HOST");
-
 	if (Variable == nullptr)
 	{
 		LOG_INFO("SQRLL_COMM_DB_HOST empty, defaulting to localhost.");
+		Variable = "localhost";
 	}
 
-	return FUtil::GetEnvVariable("SQRLL_COMM_DB_HOST", "localhost").value();
+	return Variable;
 }
 
 std::string FDataBaseSettings::GetEnvPort()
 {
 	const char* Variable = std::getenv("SQRLL_COMM_DB_PORT");
-	return FUtil::GetEnvVariable("SQRLL_COMM_DB_PORT", "3306").value();
+	if (Variable == nullptr)
+	{
+		Variable = "3306";
+	}
+
+	return Variable;
 }
 
 std::string FDataBaseSettings::GetEnvDataBaseName()
 {
 	const char* Variable = std::getenv("SQRLL_COMM_DB_DBNAME");
-	return FUtil::GetEnvVariable("SQRLL_COMM_DB_DBNAME", "sqrllapitest").value();
+	if (Variable == nullptr)
+	{
+		Variable = "sqrllapitest";
+	}
+
+	return Variable;
 }
 
 std::string FDataBaseSettings::GetEnvUser()
 {
-	return FUtil::GetEnvVariable("SQRLL_COMM_DB_USER", "commapisqrllusertest").value();
+	const char* Variable = std::getenv("SQRLL_COMM_DB_USER");
+	if (Variable == nullptr)
+	{
+		Variable = "commapisqrllusertest";
+	}
+
+	return Variable;
 }
 
 std::string FDataBaseSettings::GetEnvPassword()

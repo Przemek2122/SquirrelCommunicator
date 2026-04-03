@@ -4,8 +4,8 @@
 
 void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, context& Ctx)
 {
-	FProjectEngine* ProjectEngine = static_cast<FProjectEngine*>(FGlobalDefines::GEngine);
-	FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+	const FProjectEngine* ProjectEngine = static_cast<FProjectEngine*>(FGlobalDefines::GEngine);
+	const FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
 
 	// Get IP address
 	const std::string& ClientIP = Req.remote_ip_address;
@@ -21,9 +21,9 @@ void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, 
 	}
 	else
 	{
-		// Block
-		Res.code = crow::status::TOO_MANY_REQUESTS;  // Too Many Requests
-		Res.body = "{\"error\":\"Rate limit exceeded\"}";
+		// Block due to Too Many Requests
+		Res.code = crow::status::TOO_MANY_REQUESTS;
+		Res.body = R"({"error":"Rate limit exceeded"})";
 		Res.end();
 	}
 }
