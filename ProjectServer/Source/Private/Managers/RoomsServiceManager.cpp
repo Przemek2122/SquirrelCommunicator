@@ -7,7 +7,7 @@
 FRoomsServiceManager::FRoomsServiceManager()
 {
     // Get service password and address from env vars
-    const char* ServicePasswordPtr = getenv("SQRLL_VOICE_PASSWORD");
+    const char* ServicePasswordPtr = getenv("SQRLL_VOICE_API_KEY");
     const char* ServiceAddressPtr = getenv("SQRLL_VOICE_ADDRESS");
     const char* ServicePortPtr = getenv("SQRLL_VOICE_PORT");
     ServicePassword = ServicePasswordPtr != nullptr ? ServicePasswordPtr : "";

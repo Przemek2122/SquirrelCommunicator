@@ -27,5 +27,5 @@ SQRLL_VOICE_ADDRESS=localhost
 SQRLL_VOICE_PORT=8082
 
 # The main password for communicating with the backend (Change this!)
-SQRLL_VOICE_PASSWORD=
+SQRLL_VOICE_API_KEY=
 ```
