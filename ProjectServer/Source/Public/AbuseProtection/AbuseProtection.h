@@ -13,13 +13,16 @@
 class FAbuseProtection
 {
 public:
-	explicit FAbuseProtection(FBackendSettings* InBackendSettings);
+	explicit FAbuseProtection(const FBackendSettings* InBackendSettings);
 
 	bool IsAddressBlocked(const std::string& InAddress) const;
 	void AddRateLimitedAttempt(const std::string& InAddress) const;
 
 	bool CanAddressRequestPasswordReset(const std::string& InAddress) const;
 	void AddPasswordResetAttempt(const std::string& InAddress) const;
+
+	bool CanAddressRequestCreateRoom(const std::string& InAddress) const;
+	void AddCreateRoomAttempt(const std::string& InAddress) const;
 
 	CUnorderedMap<std::string, std::string> GetCORHeaders() const;
 

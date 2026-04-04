@@ -18,17 +18,23 @@ void FRateLimit::AddAttempt()
 
 void FRateLimitObject::AddAttempt(const std::string& InKey)
 {
-	auto It = RateLimitMap.find(InKey);
+	// Shared for reading
+	RateLimitMutex.lock_shared();
+
+	const std::unordered_map<std::string, FRateLimit>::iterator It = RateLimitMap.find(InKey);
 	if (It != RateLimitMap.end())
 	{
-		std::lock_guard<std::mutex> ScopeLock(RateLimitMutex);
-
-		FRateLimit& Data = It->second; 
+		FRateLimit& Data = It->second;
 		Data.AddAttempt();
+
+		RateLimitMutex.unlock_shared();
 	}
 	else
 	{
-		std::lock_guard<std::mutex> ScopeLock(RateLimitMutex);
+		RateLimitMutex.unlock_shared();
+
+		// Exclusive for writing
+		std::lock_guard<std::shared_mutex> ScopeLock(RateLimitMutex);
 
 		RateLimitMap[InKey] = FRateLimit();
 	}
@@ -54,7 +60,7 @@ bool FRateLimitObject::IsBlockedKey(const std::string& InKey, const int32 Number
 void FRateLimitObject::Reset()
 {
 	std::lock_guard<std::mutex> ClearMutexLock(ClearMutex);
-	std::lock_guard<std::mutex> RateLimitMutexLock(RateLimitMutex);
+	std::lock_guard<std::shared_mutex> RateLimitMutexLock(RateLimitMutex);
 
 	bIsClearing = true;
 
@@ -63,10 +69,12 @@ void FRateLimitObject::Reset()
 	bIsClearing = false;
 }
 
-FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock)
+FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock,
+	const int32 InNumberOfRoomOperationAttemptsToBlock)
 	: ClearingTimeInMins(std::chrono::minutes(InClearingTimeInMins))
 	, NumberOfAttemptsToBlock(InNumberOfAttemptsToBlock)
-	, NumberOfPasswordResetAttemptsToBlock(InNumberOfAttemptsToBlock)
+	, NumberOfPasswordResetAttemptsToBlock(InNumberOfPasswordResetAttemptsToBlock)
+	, NumberOfRoomOperationAttemptsToBlock(InNumberOfRoomOperationAttemptsToBlock)
 {
 	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
 	RateLimiterThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(RateLimiterThreadName);
@@ -109,6 +117,16 @@ bool FRateLimiter::IsPasswordResetAddressBlocked(const std::string& InAddress)
 void FRateLimiter::AddPasswordResetAttempt(const std::string& InAddress)
 {
 	PasswordResetIPAddressToLimits.AddAttempt(InAddress);
+}
+
+bool FRateLimiter::IsRoomOperationAddressBlocked(const std::string& InAddress)
+{
+	return RoomOperationAddressToLimits.IsBlockedKey(InAddress, NumberOfRoomOperationAttemptsToBlock);
+}
+
+void FRateLimiter::AddRoomOperationAttempt(const std::string& InAddress)
+{
+	RoomOperationAddressToLimits.AddAttempt(InAddress);
 }
 
 void FRateLimiter::AsyncWork()

@@ -2,27 +2,29 @@
 #include "AbuseProtection/AbuseProtection.h"
 #include "Assets/IniReader/IniObject.h"
 
-FAbuseProtection::FAbuseProtection(FBackendSettings* InBackendSettings)
+FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 	: CORPolicyPtr(std::make_unique<FCORPolicy>())
 {
-	std::shared_ptr<FIniObject> BackendSettingsIni = InBackendSettings->GetBackendSettingsIni();
+	const std::shared_ptr<FIniObject> BackendSettingsIni = InBackendSettings->GetBackendSettingsIni();
 	if (BackendSettingsIni->DoesIniExist())
 	{
 		LOG_DEBUG("BackendSettingsIni number of fields: '" << BackendSettingsIni->GetNumberOfFields() << "'.");
 
-		FIniField RateLimitTimeToClearInMinsField = BackendSettingsIni->FindFieldByName("RateLimitTimeToClearInMins");
-		FIniField RateLimitNumberPerIPField = BackendSettingsIni->FindFieldByName("RateLimitNumberPerIP");
-		FIniField RateLimitPasswordField = BackendSettingsIni->FindFieldByName("PasswordRateLimitNumberPerIP");
+		const FIniField RateLimitTimeToClearInMinsField = BackendSettingsIni->FindFieldByName("RateLimitTimeToClearInMins");
+		const FIniField RateLimitNumberPerIPField = BackendSettingsIni->FindFieldByName("RateLimitNumberPerIP");
+		const FIniField RateLimitPasswordField = BackendSettingsIni->FindFieldByName("PasswordRateLimitNumberPerIP");
+		const FIniField RateLimitCreateRoomField = BackendSettingsIni->FindFieldByName("CreateRoomRateLimitNumberPerIP");
 
 		RateLimiter = std::make_unique<FRateLimiter>(
 			RateLimitTimeToClearInMinsField.GetValueAsInt(),
 			RateLimitNumberPerIPField.GetValueAsInt(),
-			RateLimitPasswordField.GetValueAsInt()
+			RateLimitPasswordField.GetValueAsInt(),
+			RateLimitCreateRoomField.GetValueAsInt()
 		);
 	}
 	else
 	{
-		RateLimiter = std::make_unique<FRateLimiter>(60, 10, 8);
+		RateLimiter = std::make_unique<FRateLimiter>(60, 10, 8, 10);
 
 		LOG_ERROR("FAbuseProtection missing BackendSettingsIni");
 	}
@@ -46,6 +48,16 @@ bool FAbuseProtection::CanAddressRequestPasswordReset(const std::string& InAddre
 void FAbuseProtection::AddPasswordResetAttempt(const std::string& InAddress) const
 {
 	RateLimiter->AddPasswordResetAttempt(InAddress);
+}
+
+bool FAbuseProtection::CanAddressRequestCreateRoom(const std::string& InAddress) const
+{
+	return RateLimiter->IsRoomOperationAddressBlocked(InAddress);
+}
+
+void FAbuseProtection::AddCreateRoomAttempt(const std::string& InAddress) const
+{
+	RateLimiter->AddRoomOperationAttempt(InAddress);
 }
 
 CUnorderedMap<std::string, std::string> FAbuseProtection::GetCORHeaders() const

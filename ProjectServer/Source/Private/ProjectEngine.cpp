@@ -7,11 +7,13 @@
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
 #include "Managers/PasswordResetManager.h"
+#include "Managers/RoomsServiceManager.h"
 #include "Rest/AccountEndpoint.h"
 #include "Rest/CrowUtils.h"
 #include "Rest/IntegrationEndpoint.h"
 #include "Rest/TestEndpoint.h"
 #include "Rest/AuthEndpoint.h"
+#include "Rest/RoomsEndpoint.h"
 #include "Sockets/SocketManager.h"
 
 #define ENDPOINT_CLASS(EndpointName) FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<EndpointName>()
@@ -30,6 +32,7 @@ FProjectEngine::FProjectEngine()
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAuthEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAccountEndpoint));
+	RestEndpointsClasses.Push(ENDPOINT_CLASS(FRoomsEndpoint));
 }
 
 void FProjectEngine::Init()
@@ -45,6 +48,7 @@ void FProjectEngine::Init()
 	BackendSettings->LoadBackendSettings();
 	AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
 	DefaultHeadersCache = GetDefaultHeaders();
+	RoomsManager = std::make_unique<FRoomsServiceManager>();
 
 	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
 	if (ServerSettingsIni->DoesIniExist())
@@ -273,8 +277,13 @@ void FProjectEngine::AddCookies(crow::response& CurrentResponse, const std::stri
 
 void FProjectEngine::CacheProperties(const std::shared_ptr<FIniObject>& ServerSettingsIni)
 {
-	const std::string MailAPIKeyPropertyName = "SQRLL_COMM_MAIL_API_KEY";
-	MailAPIKey = FUtil::GetEnvVariable(MailAPIKeyPropertyName, "").value();
+	const char* MailAPIKeyPropertyName = "SQRLL_COMM_MAIL_API_KEY";
+	char* Variable = std::getenv(MailAPIKeyPropertyName);
+	if (Variable != nullptr)
+	{
+		MailAPIKey = Variable;
+	}
+
 	if (MailAPIKey.empty())
 	{
 		LOG_WARN("Env property: '" << MailAPIKeyPropertyName << "' - missing. App will work but password reset will fail. It can be generated on Brevo page. (Section 'https://app.brevo.com/settings/keys/api')");

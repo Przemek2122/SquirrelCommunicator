@@ -1,6 +1,8 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2020-2025
 #pragma once
 
+#include <shared_mutex>
+
 #include "CoreMinimal.h"
 
 /** Assume reset is done by removing from map */
@@ -26,7 +28,7 @@ public:
 	void Reset();
 
 	std::unordered_map<std::string, FRateLimit> RateLimitMap;
-	std::mutex RateLimitMutex;
+	std::shared_mutex RateLimitMutex;
 	std::mutex ClearMutex;
 	bool bIsClearing;
 };
@@ -38,7 +40,8 @@ public:
 class FRateLimiter
 {
 public:
-	FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock);
+	FRateLimiter(int32 InClearingTimeInMins, int32 InNumberOfAttemptsToBlock, int32 InNumberOfPasswordResetAttemptsToBlock,
+		int32 InNumberOfRoomOperationAttemptsToBlock);
 	~FRateLimiter();
 
 	/** Check if we have user blocked */
@@ -53,10 +56,21 @@ public:
 	/** Add password reset attempt */
 	void AddPasswordResetAttempt(const std::string& InAddress);
 
+	/** Check if address can perform room operation */
+	bool IsRoomOperationAddressBlocked(const std::string& InAddress);
+
+	/** Add room operation attempt */
+	void AddRoomOperationAttempt(const std::string& InAddress);
+
 	void AsyncWork();
 	void ResetRateLimits();
 
 protected:
+	/**
+	 * FRateLimitObject - Left as separate objects for maximum performance
+	 * (This objects contains list of IP Addresses which can be really big)
+	 */
+
 	/** Object for limiting access */
 	FRateLimitObject DefaultIPAddressToLimits;
 
@@ -66,14 +80,20 @@ protected:
 	/** Object for limiting access when using password reset */
 	FRateLimitObject PasswordResetIPAddressToLimits;
 
+	/** Object for limiting access when using room operations */
+	FRateLimitObject RoomOperationAddressToLimits;
+
 	/** Time when we clear limits */
 	std::chrono::minutes ClearingTimeInMins;
 
 	/** How many attempts are needed to block */
 	int32 NumberOfAttemptsToBlock;
 
-	/** How many attempts are needed to block */
+	/** How many attempts are needed to block password reset */
 	int32 NumberOfPasswordResetAttemptsToBlock;
+
+	/** How many attempts are needed to block room operation */
+	int32 NumberOfRoomOperationAttemptsToBlock;
 
 private:
 	FThreadData* RateLimiterThreadData;
