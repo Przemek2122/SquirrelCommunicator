@@ -35,10 +35,15 @@ Squirrel Communicator offers the following features:
 
 ## How to Build
 
+### Supported Platforms
+
+- **Linux**: Fedora 43 (used for development) Debian 13 (used for production)
+- **Windows**: Latest (packages managed by vcpkg)
+
 ### Prerequisites
 
 You will need the following tools to build and run the project:
-- A C++ compiler (e.g., `g++` or `clang`).
+- A C++ compiler (e.g., `g++` or `clang` or Visual Studio 2022 pack for windows).
 
 View Dockerfile in docker directory for latest packages required on Linux (Fedora).
 

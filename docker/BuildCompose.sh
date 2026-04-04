@@ -12,25 +12,59 @@ if [ ! -f .env.backend ] || [ ! -f .env.voice ]; then
     exit 1
 fi
 
+# Check ports if abailable
+PORTS_TO_CHECK=(8080 8081 8082)
+
+echo "Checking port availability..."
+
+for port in "${PORTS_TO_CHECK[@]}"; do
+  if ss -tuln | grep -q ":$port "; then
+    echo "======================================================="
+    echo " ERROR: Port $port is already in use!"
+    echo " Please stop the application occupying this port."
+    echo " Tip: Use 'sudo ss -tulpn | grep :$port' to find the PID."
+    echo "======================================================="
+    exit 1
+  fi
+done
+
+echo "All ports are free. Proceeding..."
+
+# Detect command as it can be 'docker compose' or 'docker-compose' in older version
+if docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+elif docker-compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker-compose"
+else
+    echo "Błąd: Docker Compose nie jest zainstalowany."
+    exit 1
+fi
+
 echo "Configuration files found. Starting container build..."
 
 # Build and start
-docker-compose up --build -d
+$DOCKER_COMPOSE up --build -d
 
+echo "======================================================="
 echo "Waiting for backend to start..."
+echo "======================================================="
+
 sleep 3 # We do not any wait but let's avoid spam for user
 
 # Test
 curl -v http://localhost:8080/health
 
 # Show logs
-docker-compose logs backend
+$DOCKER_COMPOSE logs backend
 
+echo "======================================================="
 echo "Waiting for voice_service to start..."
+echo "======================================================="
+
 sleep 2 # We do not any wait but let's avoid spam for user
 
 # Test
 curl -v http://localhost:8082/health
 
 # Show logs
-docker-compose logs voice_service
+$DOCKER_COMPOSE logs voice_service
