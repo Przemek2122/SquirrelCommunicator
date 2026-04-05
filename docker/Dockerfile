@@ -9,7 +9,7 @@ RUN dnf update -y && \
 # Packages for project (removed mysql-common mysql-devel as we use mariadb-connector-c anyway)
 RUN dnf install -y alsa-lib-devel perl perl-IPC-Cmd perl-generators perl-devel nasm pkgconfig flex bison binutils elfutils-libelf-devel && \
 	dnf install -y libaio-devel ncurses-devel readline-devel libuuid-devel libtirpc-devel lz4-devel libedit-devel snappy-devel bzip2-devel && \
-    dnf install -y libstdc++-static brotli-devel libwebsockets-devel libuv-devel freetype-devel mariadb-connector-c
+    dnf install -y libstdc++-static brotli-devel libwebsockets-devel libuv-devel freetype-devel mariadb-connector-c mariadb-connector-c-devel
 
 # Packages for fake screen (Should be skipped in GUI version)
 RUN dnf install -y libX11-devel libXext-devel libXrandr-devel libXrender-devel  libXinerama-devel libXi-devel libXcursor-devel libXfixes-devel wayland-devel libxkbcommon-devel mesa-libEGL-devel libdecor-devel
@@ -17,9 +17,17 @@ RUN dnf install -y libX11-devel libXext-devel libXrandr-devel libXrender-devel  
 # Clean
 RUN dnf clean all && rm -rf /var/cache/dnf
 
-# Link mariadb as mysql
-RUN ln -s /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
-	
+# Database linking
+RUN ls -la /usr/lib64/pkgconfig/ | grep maria
+RUN if [ -f /usr/lib64/pkgconfig/libmariadb.pc ]; then \
+        ln -sf /usr/lib64/pkgconfig/libmariadb.pc /usr/lib64/pkgconfig/mysqlclient.pc; \
+    elif [ -f /usr/lib64/pkgconfig/mariadb.pc ]; then \
+        ln -sf /usr/lib64/pkgconfig/mariadb.pc /usr/lib64/pkgconfig/mysqlclient.pc; \
+    else \
+        echo "CRITICAL ERROR: No mariadb pc file found!"; exit 1; \
+    fi
+RUN ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
+
 # Work dir
 RUN mkdir /var/repos
 WORKDIR /var/repos
