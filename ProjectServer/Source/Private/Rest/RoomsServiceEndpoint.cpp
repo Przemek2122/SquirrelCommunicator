@@ -1,6 +1,6 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
-#include "Rest/RoomsEndpoint.h"
+#include "Rest/RoomsServiceEndpoint.h"
 #include "PredefinedMessages.h"
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
@@ -11,11 +11,11 @@
 
 class FAbuseProtection;
 
-FRoomsEndpoint::FRoomsEndpoint(FProjectEngine* InProjectEngine)
+FRoomsServiceEndpoint::FRoomsServiceEndpoint(FProjectEngine* InProjectEngine)
 {
 }
 
-void FRoomsEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
+void FRoomsServiceEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 {
     CROW_ROUTE(App, "/rooms/create")
     .methods("POST"_method, "OPTIONS"_method)

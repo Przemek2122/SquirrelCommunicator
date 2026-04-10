@@ -41,23 +41,15 @@ void FUser::UpdateLastActiveTime()
 	LastActiveTime = GetCurrentTime();
 }
 
-void FUser::UpdateUserName(const std::string& NewUserName)
-{
-	UserName = NewUserName;
-}
-
-void FUser::UpdateUserPassword(const std::string& NewPassword)
-{
-	UserPasswordHash = NewPassword;
-}
-
 void FUser::SetUserName(const std::string& InUserName)
 {
+	std::unique_lock Lock(UserNameMutex);
 	UserName = InUserName;
 }
 
 void FUser::SetUserEMail(const std::string& InUserEMail)
 {
+	std::unique_lock Lock(UserEMailMutex);
 	UserEMail = InUserEMail;
 }
 
@@ -68,6 +60,7 @@ void FUser::SetUserId(const Uint64 InUserId)
 
 void FUser::SetPassword(const std::string& InUserEncryptedPassword)
 {
+	std::unique_lock Lock(UserPasswordHashMutex);
 	UserPasswordHash = InUserEncryptedPassword;
 }
 
@@ -96,14 +89,22 @@ void FUser::SetUserStatus(EUserStatus NewUserStatus)
 	UserStatus = NewUserStatus;
 }
 
-const std::string& FUser::GetUserNameString() const
+std::string FUser::GetUserNameString()
 {
+	std::shared_lock Lock(UserNameMutex);
 	return UserName;
 }
 
-const std::string& FUser::GetUserPasswordHash() const
+std::string FUser::GetUserPasswordHash()
 {
+	std::shared_lock Lock(UserPasswordHashMutex);
 	return UserPasswordHash;
+}
+
+std::string FUser::GetUserMail()
+{
+	std::shared_lock Lock(UserEMailMutex);
+	return UserEMail;
 }
 
 EUserStatus FUser::GetUserStatus() const
@@ -114,13 +115,6 @@ EUserStatus FUser::GetUserStatus() const
 Uint64 FUser::GetUserId() const
 {
 	return UserId;
-}
-
-FUserData FUser::GetUserData() const
-{
-	FUserData SavableUserData = *this;
-
-	return SavableUserData;
 }
 
 int32 FUser::GetSocketId() const

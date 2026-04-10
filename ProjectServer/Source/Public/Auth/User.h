@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Misc/PasswordEncryptionArgon.h"
+#include <shared_mutex>
 
 class FUserManager;
 
@@ -27,18 +27,21 @@ public:
 protected:
 	/** Username (for log in) */
 	std::string UserName;
+	std::shared_mutex UserNameMutex;
 
 	/** User password (for log in) */
 	std::string UserPasswordHash;
+	std::shared_mutex UserPasswordHashMutex;
 
 	/** User E-Mail for password recovery (@TODO in future) */
 	std::string UserEMail;
+	std::shared_mutex UserEMailMutex;
 
 	/** Unique user Id */
-	Uint64 UserId;
+	std::atomic<Uint64> UserId;
 
 	/** Timestamp of last activity */
-	Uint64 LastActiveTime;
+	std::atomic<Uint64> LastActiveTime;
 };
 
 std::string UserStatusToString(EUserStatus UserStatus);
@@ -51,9 +54,6 @@ public:
 
 	/** Update last active time with current time */
 	void UpdateLastActiveTime();
-
-	void UpdateUserName(const std::string& NewUserName);
-	void UpdateUserPassword(const std::string& NewPassword);
 
 	void SetUserName(const std::string& InUserName);
 	void SetPassword(const std::string& InUserEncryptedPassword);
@@ -68,20 +68,19 @@ public:
 	void SetUserStatus(EUserStatus NewUserStatus);
 
 	/** Get username */
-	const std::string& GetUserNameString() const;
+	std::string GetUserNameString();
 
 	/** Get user password in hash form */
-	const std::string& GetUserPasswordHash() const;
+	std::string GetUserPasswordHash();
 
 	/** Get user mail */
-	const std::string& GetUserMail() const { return UserEMail; }
+	std::string GetUserMail();
 
 	/** @return User status depending on last time active */
 	EUserStatus GetUserStatus() const;
 
 	/** Get unique user id */
 	Uint64 GetUserId() const;
-	FUserData GetUserData() const;
 	int32 GetSocketId() const;
 
 protected:
@@ -92,11 +91,8 @@ private:
 	FUserManager* UserManager;
 
 	/** Socket Id pointer */
-	int32 SocketId;
+	std::atomic<int32> SocketId;
 
-	EUserStatus UserStatus;
-
-	/**  */
-	//bool bIsConnected;
+	std::atomic<EUserStatus> UserStatus;
 	
 };

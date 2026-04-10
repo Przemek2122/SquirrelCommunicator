@@ -1,0 +1,539 @@
+// Created by https://www.linkedin.com/in/przemek2122/ 2026
+
+#include "Sockets/SocketMiscData.h"
+#include "Sockets/WebSocketSessionData.h"
+#include "ProjectEngine.h"
+#include "Auth/User.h"
+#include "Auth/UserManager.h"
+#include "DataBase/DataBaseConnect.h"
+#include "Managers/ConversationsManager.h"
+#include "nlohmann/json.hpp"
+#include "soci/statement.h"
+#include "Sockets/SocketManager.h"
+
+FSocketMiscData::FSocketMiscData(FSocket* InSocket)
+	: Socket(InSocket)
+	, ProjectEngine(Socket->GetProjectEngine())
+{
+}
+
+void FSocketMiscData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId, const std::string& Content)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
+		{
+			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
+			FUserManager* UserManager = ProjectEngine->GetUserManager();
+			FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+			std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
+			const Uint64& ConnectionUserId = WebSocketSessionData->UserId;
+			if (Conversation != nullptr)
+			{
+				ConversationsManager->AddMessage(ConversationId, ConnectionUserId, Content);
+
+				// Broadcast new message
+				for (Uint64 UserId : Conversation->UsersIds)
+				{
+					nlohmann::json MessageJson;
+					MessageJson["sender_id"] = ConnectionUserId;
+					MessageJson["conversation_id"] = ConversationId;
+					MessageJson["conversation_message"] = Content;
+
+					nlohmann::json JsonRoot;
+					JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::Message);
+					JsonRoot["message"] = MessageJson;
+
+					if (UserId == ConnectionUserId)
+					{
+						// Publish does not work for self, so we need special case
+						ws->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+					}
+					else
+					{
+						std::vector<std::shared_ptr<FUser>> OutIds;
+						UserManager->GetUsersByIds({ UserId }, OutIds);
+						if (!OutIds.empty())
+						{
+							FUser* User = OutIds[0].get();
+
+							FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, UserId](void* ws)
+							{
+								auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+
+								// To send message to a specific user
+								const std::string UserTopic = FSocket::GenerateUserTopic(UserId);
+								if (WebSocket->isSubscribed(UserTopic))
+								{
+									const bool bSentPublish = WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+
+	#if DEBUG
+									LOG_INFO("Backpressure: " << WebSocket->getBufferedAmount());
+									LOG_INFO("Topic: '" << UserTopic << "', subscribed: '" << WebSocket->isSubscribed(UserTopic) << "'");
+									LOG_INFO("Topic: '" << UserTopic << "', sent publish: '" << bSentPublish << "'");
+	#endif
+								}
+							};
+							SocketManager->EnqueueTaskForUserAtSocket(User->GetSocketId(), UserId, SocketAccessFunctor);
+						}
+					}
+
+					UserManager->UpdateUserActivity(ConnectionUserId);
+				}
+			}
+		}
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
+		{
+			const Uint64& ConnectionUserId = WebSocketSessionData->UserId;
+			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
+			FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+			FUserManager* UserManager = ProjectEngine->GetUserManager();
+			std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
+			std::vector<std::shared_ptr<FUser>> Users;
+			UserManager->GetUsersByIds(Conversation->UsersIds.Vector, Users);
+
+			nlohmann::json MessageJson;
+			MessageJson["conversation_id"] = ConversationId;
+			MessageJson["typing_id"] = ConnectionUserId;
+
+			nlohmann::json JsonRoot;
+			JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::Typing);
+			JsonRoot["message"] = MessageJson;
+
+			for (std::shared_ptr<FUser>& User : Users)
+			{
+				if (User->GetUserId() != ConnectionUserId)
+				{
+					FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, User](void* ws)
+					{
+						auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+
+						// To send message to a specific user
+						const std::string UserTopic = FSocket::GenerateUserTopic(User->GetUserId());
+						if (WebSocket->isSubscribed(UserTopic))
+						{
+							WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+						}
+					};
+					SocketManager->EnqueueTaskForUserAtSocket(User->GetSocketId(), User->GetUserId(), SocketAccessFunctor);
+				}
+			}
+		}
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
+		{
+			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
+			const Uint64 ConnectionUserId = WebSocketSessionData->UserId;
+
+			if (std::shared_ptr<FConversationData> ConversationPtr = ConversationsManager->GetConversation(ConversationId))
+			{
+				// Verify that ConnectionUserId is in conversation
+				if (ConversationPtr->UsersIds.Contains(ConnectionUserId))
+				{
+					FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+
+					for (const Uint64 UsersId : ConversationPtr->UsersIds)
+					{
+						if (UsersId != ConnectionUserId)
+						{
+							nlohmann::json MessageJson;
+							MessageJson["conversation_id"] = ConversationId;
+							MessageJson["typing_id"] = ConnectionUserId;
+
+							nlohmann::json JsonRoot;
+							JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::MarkRead);
+							JsonRoot["message"] = MessageJson;
+
+							const std::shared_ptr<FUser> User = ProjectEngine->GetUserManager()->GetUserById(ConnectionUserId);
+
+							const int32 SocketId = User->GetSocketId();
+
+							FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, ConnectionUserId](void* ws)
+							{
+								auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+
+								// To send message to a specific user
+								const std::string UserTopic = FSocket::GenerateUserTopic(ConnectionUserId);
+								if (WebSocket->isSubscribed(UserTopic))
+								{
+									WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+								}
+							};
+							SocketManager->EnqueueTaskForUserAtSocket(SocketId, ConnectionUserId, SocketAccessFunctor);
+						}
+					}
+				}
+			}
+		}
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 UserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FUserManager* UserManager = ProjectEngine->GetUserManager();
+
+		std::vector<std::shared_ptr<FUser>> UserPtrArray;
+		if (UserManager->GetUsersByIds({ UserId }, UserPtrArray) && UserPtrArray.size() == 1)
+		{
+			const std::shared_ptr<FUser>& UserPtr = UserPtrArray[0];
+
+			nlohmann::json MessageJson;
+			MessageJson["user_id"] = UserPtr->GetUserId();
+			MessageJson["status"] = UserStatusToString(UserPtr->GetUserStatus());
+
+			nlohmann::json JsonRoot;
+			JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::UserStatus);
+			JsonRoot["message"] = MessageJson;
+
+			// Publish does not work for self, so we need special case
+			ws->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+		}
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern)
+{
+	std::visit([&](auto* ws)
+	{
+		if (!Pattern.empty())
+		{
+			FDataBaseConnect Connect;
+			if (Connect.IsConnected())
+			{
+				// Get database connection session
+				soci::session& DataBaseSession = Connect.GetSession();
+
+				static constexpr Uint32 SearchResults = 20;
+
+				std::string PatternQuery = "%" + Pattern + "%";
+
+				struct FDataBaseUserStruct
+				{
+					Uint64 UserId;
+					std::string UserName;
+					std::string DisplayName;
+				};
+
+				std::vector<std::string> UserNames;
+				std::vector<Uint64> UserIds;
+
+				UserNames.reserve(SearchResults);
+				UserIds.reserve(SearchResults);
+
+				Uint64 UserId;
+				std::string UserName;
+
+				// Try with id
+				try
+				{
+					soci::statement St = (DataBaseSession.prepare <<
+						"SELECT id, username "
+						"FROM users "
+						"WHERE id = :PatternQuery "
+						"LIMIT 2",
+						soci::into(UserId),      // Bind output variables
+						soci::into(UserName),    // before execution
+						soci::use(PatternQuery));
+
+					St.execute();
+
+					while (St.fetch())  // Fetch populates the bound variables
+					{
+						UserIds.push_back(UserId);
+						UserNames.push_back(UserName);
+					}
+				}
+				catch (const nlohmann::json::exception& e)
+				{
+					LOG_ERROR("Database error (id search): " << e.what());
+				}
+
+				// Try with username
+				if (UserNames.empty())
+				{
+					try
+					{
+						soci::statement St = (DataBaseSession.prepare <<
+							"SELECT id, username "
+							"FROM users "
+							"WHERE username LIKE :PatternQuery "
+							"LIMIT 20",
+							soci::into(UserId),      // Bind output variables
+							soci::into(UserName),    // before execution
+							soci::use(PatternQuery));
+
+						St.execute();
+
+						while (St.fetch())  // Fetch populates the bound variables
+						{
+							UserIds.push_back(UserId);
+							UserNames.push_back(UserName);
+						}
+					}
+					catch (const nlohmann::json::exception& e)
+					{
+						LOG_ERROR("Database error (username search): " << e.what());
+					}
+				}
+
+				const nlohmann::json UsersJson = FormatUsersToJson(UserIds, UserNames);
+				const std::string JsonString = UsersJson.dump();
+
+				nlohmann::json ReturnJson;
+				ReturnJson["type"] = SocketMessageTypeToString(ESocketMessageType::SearchUser);
+				ReturnJson["message"] = JsonString;
+				ws->send(ReturnJson.dump(), opCode);
+			}
+		}
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_RequestAddUser(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		if (CurrentUserId != OtherUserId)
+		{
+
+		}
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_LoadMoreMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count)
+{
+	std::visit([&](auto* ws)
+	{
+		nlohmann::json JsonRoot;
+		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::LoadMoreMessages);
+
+		if (ConversationId > 0 && Offset > 0 && Count > 0)
+		{
+			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
+			std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
+			if (Conversation != nullptr && Conversation->UsersIds.Contains(CurrentUserId))
+			{
+				std::vector<FConversationMessageData> MessagesInRange = ConversationsManager->GetConversationMessagesForRange(Conversation, Offset, Count);
+				if (!MessagesInRange.empty())
+				{
+					JsonRoot["status"] = "success";
+
+					nlohmann::json MessagesJsonArray = nlohmann::json::array();
+
+					for (FConversationMessageData& Message : MessagesInRange | std::views::reverse)
+					{
+						nlohmann::json NewMessage;
+						NewMessage["message"] = Message.Message;
+						NewMessage["sender_id"] = Message.SenderId;
+
+						MessagesJsonArray.push_back(NewMessage);
+					}
+
+					JsonRoot["message"] = MessagesJsonArray;
+				}
+				else
+				{
+					JsonRoot["status"] = "no_more_messages";
+					JsonRoot["message"] = "No messages in range.";
+				}
+			}
+			else
+			{
+				JsonRoot["status"] = "unauthorized";
+				JsonRoot["message"] = "Chat not suitable for user.";
+			}
+		}
+		else
+		{
+			JsonRoot["status"] = "wrong_input";
+			JsonRoot["message"] = "One of input parameters: ConversationId, Offset, Count is wrong.";
+		}
+
+		ws->send(JsonRoot.dump(), uWS::TEXT);
+
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_GetConversations(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit)
+{
+	std::visit([&](auto* ws)
+	{
+		FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
+
+		CArray<Uint64> ConversationIds;
+		ConversationsManager->GetLastConversationByUserId(CurrentUserId, Offset, Limit, ConversationIds);
+
+		const nlohmann::json ConversationsJsonArray = FormatConversationIntoJson(ConversationIds);
+
+		nlohmann::json JsonRoot;
+		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::GetConversations);
+		JsonRoot["message"] = ConversationsJsonArray;
+
+		// Send initial client data
+		ws->send(JsonRoot.dump(), uWS::TEXT);
+
+	}, wsVariant);
+}
+
+void FSocketMiscData::OnMessageReceived_AddConversation(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0)
+		{
+			CArray<Uint64> UserIdArray;
+			UserIdArray.Push(WebSocketSessionData->UserId);
+			UserIdArray.Push(OtherUserId);
+
+			FConversationsManager* ConversationManager = ProjectEngine->GetConversationsManager();
+
+			// Find or create conversation
+			bool bIsNewConversation = false;
+			const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray.Vector, bIsNewConversation);
+
+			const nlohmann::json MessageJson = FormatConversationIntoJson({ ConversationId });
+
+			nlohmann::json JsonRoot;
+			JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::AddConversation);
+			JsonRoot["message"] = MessageJson;
+			ws->send(JsonRoot.dump(), opCode);
+
+			if (bIsNewConversation)
+			{
+				FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+				FUserManager* UserManager = ProjectEngine->GetUserManager();
+
+				std::shared_ptr<FConversationData> ConversationPtr = ConversationManager->GetConversation(ConversationId);
+				for (Uint64 Id : ConversationPtr->UsersIds)
+				{
+					// Can't send publish to self
+					if (Id != WebSocketSessionData->UserId)
+					{
+						std::vector<std::shared_ptr<FUser>> UserPtrArray;
+						UserManager->GetUsersByIds({ Id }, UserPtrArray);
+						if (UserPtrArray.size() == 1)
+						{
+							FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, Id](void* ws)
+							{
+								auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+
+								// To send message to a specific user
+								const std::string UserTopic = FSocket::GenerateUserTopic(Id);
+								if (WebSocket->isSubscribed(UserTopic))
+								{
+									WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+								}
+							};
+
+							const std::shared_ptr<FUser>& UserPtr = UserPtrArray[0];
+							SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), Id, SocketAccessFunctor);
+						}
+					}
+				}
+			}
+		}
+	}, wsVariant);
+}
+
+nlohmann::json FSocketMiscData::FormatConversationIntoJson(const CArray<Uint64>& ConversationIds)
+{
+	FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
+	FUserManager* UserManager = ProjectEngine->GetUserManager();
+
+	nlohmann::json ConversationsJsonArray = nlohmann::json::array();
+
+	for (Uint64 ConversationId : ConversationIds)
+	{
+		std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
+		if (Conversation != nullptr)
+		{
+			nlohmann::json NewConversation;
+			NewConversation["id"] = ConversationId;
+
+			std::vector<std::shared_ptr<FUser>> OutUsers;
+			UserManager->GetUsersByIds(Conversation->UsersIds.Vector, OutUsers);
+
+			// Add users (id to name)
+			{
+				nlohmann::json UsersJsonArray = nlohmann::json::array();
+
+				for (std::shared_ptr<FUser>& UserPtr : OutUsers)
+				{
+					{
+						nlohmann::json NewUser;
+
+						NewUser["id"] = UserPtr->GetUserId();
+						NewUser["name"] = UserPtr->GetUserNameString();
+						NewUser["status"] = UserStatusToString(UserPtr->GetUserStatus());
+
+						UsersJsonArray.push_back(NewUser);
+					}
+				}
+
+				NewConversation["users"] = UsersJsonArray;
+			}
+
+			// Add users Ids
+			NewConversation["userids"] = Conversation->UsersIds.Vector;
+
+			// Add messages
+			{
+				std::vector<FConversationMessageData> LastMessages = Conversation->MessagesMap.PeekFirst(25);
+				nlohmann::json MessagesJsonArray = nlohmann::json::array();
+
+				for (FConversationMessageData& Message : LastMessages | std::views::reverse)
+				{
+					nlohmann::json NewMessage;
+					NewMessage["message"] = Message.Message;
+					NewMessage["sender_id"] = Message.SenderId;
+
+					MessagesJsonArray.push_back(NewMessage);
+				}
+
+				NewConversation["messages"] = MessagesJsonArray;
+			}
+
+			ConversationsJsonArray.push_back(NewConversation);
+		}
+	}
+
+	return ConversationsJsonArray;
+}
+
+nlohmann::json FSocketMiscData::FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames)
+{
+	nlohmann::json DataUserArray = nlohmann::json::array();
+
+	for (size_t i = 0; i < UserIds.size(); i++)
+	{
+		nlohmann::json SingleUser = {
+			{"id", UserIds[i]},
+			{"displayName", DisplayNames[i]}
+		};
+
+		DataUserArray.push_back(SingleUser);
+	}
+
+	// Standard JSON with root object
+	nlohmann::json JsonRoot;
+	JsonRoot["data"] = DataUserArray;
+	return JsonRoot;
+}

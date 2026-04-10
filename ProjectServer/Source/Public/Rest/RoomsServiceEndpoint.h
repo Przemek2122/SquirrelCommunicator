@@ -4,10 +4,11 @@
 
 #include "CrowAppEndpoint.h"
 
-class FRoomsEndpoint : public FCrowAppEndpoint
+/** Endpoint for managing rooms service (GO) endpoint */
+class FRoomsServiceEndpoint : public FCrowAppEndpoint
 {
 public:
-	FRoomsEndpoint(FProjectEngine* InProjectEngine = nullptr);
+	FRoomsServiceEndpoint(FProjectEngine* InProjectEngine = nullptr);
 
 	void RegisterRoutes(crow::App<FCrowAppMiddleware>& App) override;
 	

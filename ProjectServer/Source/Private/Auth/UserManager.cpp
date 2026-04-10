@@ -350,7 +350,7 @@ EUpdateUserNameStatus FUserManager::UpdateUserName(const Uint64 UsedId, const st
 			if (bGetUsers)
 			{
 				std::shared_ptr<FUser>& FirstUser = Users[0];
-				FirstUser->UpdateUserName(NewUserName);
+				FirstUser->SetUserName(NewUserName);
 
 				OutStatus = EUpdateUserNameStatus::Successful;
 			}
@@ -702,8 +702,8 @@ EDatabaseOperationResult FUserManager::UpdateUserPasswordInDataBase(Uint64 InUse
 			const bool bGetUsers = GetUsersByIds({ InUserId }, Users);
 			if (bGetUsers)
 			{
-				std::shared_ptr<FUser>& FirstUser = Users[0];
-				FirstUser->UpdateUserPassword(InUserPasswordHash);
+				const std::shared_ptr<FUser>& FirstUser = Users[0];
+				FirstUser->SetPassword(InUserPasswordHash);
 
 				DataBaseOperationResult = EDatabaseOperationResult::Success;
 			}

@@ -1,35 +1,16 @@
+// Created by https://www.linkedin.com/in/przemek2122/ 2026
+
 #pragma once
 
 #include <shared_mutex>
 #include <nlohmann/json_fwd.hpp>
-
+#include "SocketMiscData.h"
+#include "SocketRoomsData.h"
 #include "Misc/WebSockets/AppWrapper.h"
 
 class FUser;
 struct FConversationData;
 class FProjectEngine;
-
-/** Enum for each message sent using socket */
-enum class ESocketMessageType : uint8
-{
-	Unknown,
-
-	Message,
-	Typing,
-	MarkRead,
-	UserStatus,
-	SearchUser,
-	RequestAddUser,
-	LoadMoreMessages,
-	GetConversations,
-	AddConversation,
-	InitialClientData,
-	InitialConversations,
-	Error
-};
-
-ESocketMessageType StringToSocketMessageType(const std::string& InTypeString);
-std::string SocketMessageTypeToString(ESocketMessageType InTypeEnum);
 
 /**
  * Single web socket
@@ -57,44 +38,16 @@ public:
 	void OnPing(auto* ws);
 	void OnPong(auto* ws);
 
+	static std::string GenerateUserTopic(Uint64 UserId);
+
+	FProjectEngine* GetProjectEngine() const { return ProjectEngine; }
+
 private:
 	/** Begin Default uWS OpCodes */
 	void OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::OpCode opCode);
 	void OnMessageReceived_Ping(auto* ws, std::string_view message, uWS::OpCode opCode);
 	void OnMessageReceived_Pong(auto* ws, std::string_view message, uWS::OpCode opCode);
 	/** EndDefault uWS OpCodes */
-
-	/** Begin custom enum values */
-
-	/** Called when user is sending a message */
-	void OnMessageReceived_Message(auto* ws, uWS::OpCode opCode, Uint64 ConversationId, const std::string& Content);
-
-	void OnMessageReceived_Typing(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
-	void OnMessageReceived_MarkRead(auto* ws, uWS::OpCode opCode, Uint64 ConversationId);
-	void OnMessageReceived_UserStatus(auto* ws, uWS::OpCode opCode, Uint64 UserId);
-
-	/** Called when user is searching for another user */
-	void OnMessageReceived_SearchUser(auto* ws, uWS::OpCode opCode, const std::string& Pattern);
-
-	/** Used to send request to add user as friend */
-	void OnMessageReceived_RequestAddUser(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId);
-
-	/** Used by frontend when user wants more messages, Offset and Limit are used to define if we want conversations 0-5, 5-10, etc... */
-	void OnMessageReceived_LoadMoreMessages(auto* ws, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count);
-
-	/** Used to get conversations list with offset and limit */
-	void OnMessageReceived_GetConversations(auto* ws, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit);
-
-	/** Used to create a new conversation */
-	void OnMessageReceived_AddConversation(auto* ws, uWS::OpCode opCode, Uint64 OtherUserId);
-
-	/** End custom enum values */
-
-	std::string GenerateUserTopic(Uint64 UserId);
-
-	/** returns conversation json aray */
-	nlohmann::json FormatConversationIntoJson(const CArray<Uint64>& ConversationIds);
-	nlohmann::json FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames);
 
 private:
 	/** per socket index to find which socket is user connected to */
@@ -123,4 +76,10 @@ private:
 
 	/** Mutex for UserIdToWebSocketPtrMap */
 	std::shared_mutex UserIdToWebSocketPtrMapMutex;
+
+	/** Represents miscellaneous data associated with a socket, created for readability due to big main class size. */
+	FSocketMiscData SocketMiscData;
+
+	/** Represents data related to socket rooms, such as room management and user room associations, created for readability due to big main class size. */
+	FSocketRoomsData SocketRoomsData;
 };

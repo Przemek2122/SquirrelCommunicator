@@ -3,6 +3,7 @@
 #include <shared_mutex>
 #include "SessionManager.h"
 #include "User.h"
+#include "Misc/PasswordEncryptionArgon.h"
 
 enum class EDatabaseOperationResult : Uint8;
 
