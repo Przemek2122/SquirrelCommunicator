@@ -22,12 +22,12 @@ protected:
 struct FRateLimitObject
 {
 public:
-	void AddAttempt(const std::string& InKey);
-	bool IsBlockedKey(const std::string& InKey, const int32 NumberOfAttemptsToBlock);
+	void AddAttempt(const std::string_view& InKey);
+	bool IsBlockedKey(const std::string_view& InKey, int32 NumberOfAttemptsToBlock);
 
 	void Reset();
 
-	std::unordered_map<std::string, FRateLimit> RateLimitMap;
+	std::unordered_map<std::string_view, FRateLimit> RateLimitMap;
 	std::shared_mutex RateLimitMutex;
 	std::mutex ClearMutex;
 	bool bIsClearing;
@@ -45,22 +45,22 @@ public:
 	~FRateLimiter();
 
 	/** Check if we have user blocked */
-	bool IsAddressBlocked(const std::string& InAddress);
+	bool IsAddressBlocked(const std::string_view InAddress);
 
 	/** Add register or login attempt */
-	void AddProtectedActionAttempt(const std::string& InAddress);
+	void AddProtectedActionAttempt(const std::string_view InAddress);
 
 	/** Check if address can request password reset **/
-	bool IsPasswordResetAddressBlocked(const std::string& InAddress);
+	bool IsPasswordResetAddressBlocked(const std::string_view InAddress);
 
 	/** Add password reset attempt */
-	void AddPasswordResetAttempt(const std::string& InAddress);
+	void AddPasswordResetAttempt(const std::string_view InAddress);
 
 	/** Check if address can perform room operation */
-	bool IsRoomOperationAddressBlocked(const std::string& InAddress);
+	bool IsRoomOperationAddressBlocked(const std::string_view InAddress);
 
 	/** Add room operation attempt */
-	void AddRoomOperationAttempt(const std::string& InAddress);
+	void AddRoomOperationAttempt(const std::string_view InAddress);
 
 	void AsyncWork();
 	void ResetRateLimits();

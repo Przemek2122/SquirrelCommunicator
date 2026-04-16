@@ -4,8 +4,8 @@
 
 #include <shared_mutex>
 #include <nlohmann/json_fwd.hpp>
-#include "SocketMiscData.h"
-#include "SocketRoomsData.h"
+#include "PrivateSocketData.h"
+#include "RoomsSocketData.h"
 #include "Misc/WebSockets/AppWrapper.h"
 
 class FUser;
@@ -38,6 +38,7 @@ public:
 	void OnPing(auto* ws);
 	void OnPong(auto* ws);
 
+	static void EarlySocketExit(AnyWebSocket wsVariant, const char* Message, uWS::OpCode opCode);
 	static std::string GenerateUserTopic(Uint64 UserId);
 
 	FProjectEngine* GetProjectEngine() const { return ProjectEngine; }
@@ -72,14 +73,14 @@ private:
 	FProjectEngine* ProjectEngine;
 
 	/** User id to socket ptr */
-	CUnorderedMap<Uint64, void*> UserIdToWebSocketPtrMap;
+	CUnorderedMap<Uint64, AnyWebSocket> UserIdToWebSocketPtrMap;
 
 	/** Mutex for UserIdToWebSocketPtrMap */
 	std::shared_mutex UserIdToWebSocketPtrMapMutex;
 
 	/** Represents miscellaneous data associated with a socket, created for readability due to big main class size. */
-	FSocketMiscData SocketMiscData;
+	FPrivateSocketData PrivateSocketData;
 
 	/** Represents data related to socket rooms, such as room management and user room associations, created for readability due to big main class size. */
-	FSocketRoomsData SocketRoomsData;
+	FRoomsSocketData RoomsSocketData;
 };

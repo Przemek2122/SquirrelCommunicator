@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 5.0.4deb2+deb11u2
+-- version 5.2.2deb1+deb13u1
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Czas generowania: 21 Lis 2025, 20:53
--- Wersja serwera: 10.5.29-MariaDB-0+deb11u1
--- Wersja PHP: 7.4.33
+-- Generation Time: Apr 16, 2026 at 02:47 PM
+-- Server version: 11.8.3-MariaDB-0+deb13u1 from Debian
+-- PHP Version: 8.4.11
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -18,47 +18,41 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Baza danych: `sqrllapitest`
+-- Database: `sqrllapitest`
 --
 
 -- --------------------------------------------------------
 
 --
--- Struktura tabeli dla tabeli `conversations`
+-- Table structure for table `conversations`
 --
 
 CREATE TABLE `conversations` (
   `conversation_id` bigint(20) UNSIGNED NOT NULL,
-  `last_message_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `last_message_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `rooms_name` text DEFAULT NULL,
+  `rooms_token` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Zrzut danych tabeli `conversations`
---
-
-INSERT INTO `conversations` (`conversation_id`, `last_message_at`) VALUES
-(4, '2025-11-21 19:47:23'),
-(5, '2025-11-21 19:52:16');
-
---
--- Indeksy dla zrzutów tabel
+-- Indexes for dumped tables
 --
 
 --
--- Indeksy dla tabeli `conversations`
+-- Indexes for table `conversations`
 --
 ALTER TABLE `conversations`
   ADD PRIMARY KEY (`conversation_id`);
 
 --
--- AUTO_INCREMENT dla zrzuconych tabel
+-- AUTO_INCREMENT for dumped tables
 --
 
 --
--- AUTO_INCREMENT dla tabeli `conversations`
+-- AUTO_INCREMENT for table `conversations`
 --
 ALTER TABLE `conversations`
-  MODIFY `conversation_id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `conversation_id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

@@ -16,10 +16,23 @@ using AnyWebSocket = std::variant<
     uWS::WebSocket<true, true, FWebSocketSessionData>*
 >;
 
-/** Enum for each message sent using a socket */
-enum class ESocketMessageType : uint8
+enum class ESocketMessageSection : uint8
 {
-    Unknown,
+    Unknown = 0,
+
+    /** Private message section */
+    Priv,
+
+    /** Rooms section */
+    Rooms,
+
+    Error = 255
+};
+
+/** Enum for each message sent in private sections in socket */
+enum class ESocketMessagePrivateType : uint8
+{
+    Unknown = 0,
 
     Message,
     Typing,
@@ -32,11 +45,34 @@ enum class ESocketMessageType : uint8
     AddConversation,
     InitialClientData,
     InitialConversations,
-    Error
+
+    Error = 255
 };
 
-/** ESocketMessageType enum conversion from string */
-ESocketMessageType StringToSocketMessageType(const std::string& InTypeString);
+/** Enum for each message sent in rooms sections in socket */
+enum class ESocketMessageRoomsType : uint8
+{
+    Unknown = 0,
 
-/** ESocketMessageType enum conversion to string */
-std::string SocketMessageTypeToString(ESocketMessageType InTypeEnum);
+    CreateRoom,
+
+    Error = 255
+};
+
+/** Optimized String to Section conversion using compile-time hashing. Clean, readable, and O(1) performance. */
+ESocketMessageSection StringToSocketMessageSection(std::string_view InTypeString);
+
+/** Standard Enum to String conversion. The compiler optimizes this switch into a jump table (O(1)). */
+std::string SocketMessageSectionToString(ESocketMessageSection InTypeEnum);
+
+/** Optimized String to Section conversion using compile-time hashing. Clean, readable, and O(1) performance. */
+ESocketMessagePrivateType StringToSocketMessagePrivateType(std::string_view InTypeString);
+
+/** Standard Enum to String conversion. The compiler optimizes this switch into a jump table (O(1)). */
+std::string SocketMessagePrivateTypeToString(ESocketMessagePrivateType InTypeEnum);
+
+/** Converts incoming string types to the Rooms-specific enum. Uses O(1) compile-time hashing. */
+ESocketMessageRoomsType StringToSocketMessageRoomsType(std::string_view InTypeString);
+
+/** Converts Rooms-specific enum back to string for outgoing messages. */
+std::string SocketMessageRoomsTypeToString(ESocketMessageRoomsType InTypeEnum);

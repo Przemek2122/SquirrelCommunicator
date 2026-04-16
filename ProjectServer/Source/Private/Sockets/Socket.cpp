@@ -18,8 +18,8 @@ FSocket::FSocket(const int32 InSocketIndex, std::string InHost, const int32 InPo
 	, SocketAppWrapper(bInUseSSL, InKeyPath, InCertPath)
 	, AppListenSocket(nullptr)
 	, ProjectEngine(dynamic_cast<FProjectEngine*>(FGlobalDefines::GEngine))
-	, SocketMiscData(this)
-	, SocketRoomsData(this)
+	, PrivateSocketData(this)
+	, RoomsSocketData(this)
 {
 }
 
@@ -27,22 +27,56 @@ FSocket::~FSocket()
 {
 	if (AppListenSocket != nullptr)
 	{
-		us_listen_socket_close(0, AppListenSocket);
+		// Stop the listener (already done)
+		us_listen_socket_close(bUseSSL, AppListenSocket);
+
+		// Copy to avoid simultaneous access and delete
+		CUnorderedMap<Uint64, AnyWebSocket> tempCopyMap;
+
+		{
+			// Lock should be redundant but if somebody were connecting in exact same time as close we might crash
+			std::unique_lock<std::shared_mutex> Lock(UserIdToWebSocketPtrMapMutex);
+
+			// Safe copy
+			tempCopyMap = UserIdToWebSocketPtrMap;
+		}
+
+		// Close all existing sockets
+		for (std::pair<Uint64, AnyWebSocket> UserIdToSocketPair : tempCopyMap)
+		{
+#if DEBUG
+			FFunctorLambda<void, void*> SocketAccessFunctor = [UserIdToSocketPair](void* ws)
+#else
+			FFunctorLambda<void, void*> SocketAccessFunctor = [](void* ws)
+#endif
+			{
+#if DEBUG
+				LOG_INFO("Killing socket session for ID: " << UserIdToSocketPair.first);
+#endif
+
+				auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+
+				WebSocket->close();
+			};
+
+			AddDeferTaskForConnectionId(UserIdToSocketPair.first, SocketAccessFunctor);
+		}
 	}
 }
 
 void FSocket::AddDeferTaskForConnectionId(const Uint64 UserId, FFunctorLambda<void, void*>& FunctionToCallOnSocket)
 {
 	std::shared_lock<std::shared_mutex> Lock(UserIdToWebSocketPtrMapMutex);
-	const std::optional<void*> WebSocketOptionalPtr = UserIdToWebSocketPtrMap.FindValueByKey(UserId);
+	const std::optional<AnyWebSocket> WebSocketOptionalPtr = UserIdToWebSocketPtrMap.FindValueByKey(UserId);
 	if (WebSocketOptionalPtr.has_value())
 	{
-		void* ws = WebSocketOptionalPtr.value();
-
-		uWS::Loop* SocketLoop = SocketAppWrapper.GetLoop();
-		SocketLoop->defer([FunctionToCallOnSocket, ws]() mutable {
-			FunctionToCallOnSocket.operator()(ws);
-		});
+		std::visit([&](auto* ws)
+		{
+			uWS::Loop* SocketLoop = SocketAppWrapper.GetLoop();
+			SocketLoop->defer([FunctionToCallOnSocket, ws]() mutable {
+				FunctionToCallOnSocket.operator()(ws);
+			});
+		}, WebSocketOptionalPtr.value());
 	}
 }
 
@@ -62,7 +96,7 @@ auto CreateSocketBehavior(FSocket* Socket) {
 		/* Handlers */
 		.upgrade = [](/** uWS::HttpResponse<SSL> */ auto* res, uWS::HttpRequest* req, auto* context)
 		{
-			auto CookieHeader = req->getHeader("cookie");
+			const std::string_view CookieHeader = req->getHeader("cookie");
 			const std::string AuthTokenValue = FCookieHelper::GetCookieValue(CookieHeader, "auth_token");
 
 			/** Upgrade data used when connecting new client */
@@ -87,15 +121,16 @@ auto CreateSocketBehavior(FSocket* Socket) {
 
 			/* We have to attach an abort handler for us to be aware of disconnections while we perform task */
 			res->onAborted([=]()
-				{
-					/* We don't implement any kind of cancellation here, so simply flag us as aborted */
-					upgradeData->aborted = true;
+			{
+				/* We don't implement any kind of cancellation here, so simply flag us as aborted */
+				upgradeData->aborted = true;
 
-					LOG_DEBUG("HTTP socket was closed before we upgraded it!");
-				});
+				LOG_DEBUG("HTTP socket was closed before we upgraded it!");
+			});
 
 			bool bIsTokenValid = false;
 			Uint64 TempUserId = 0;
+			std::string_view TempClientIp;
 			if (!AuthTokenValue.empty())
 			{
 				FProjectEngine* ProjectEngine = dynamic_cast<FProjectEngine*>(FGlobalDefines::GEngine);
@@ -107,16 +142,16 @@ auto CreateSocketBehavior(FSocket* Socket) {
 				}
 				else
 				{
-					std::string_view clientIp = res->getRemoteAddressAsText();
+					TempClientIp = res->getRemoteAddressAsText();
 
 					// If behind proxy (nginx, cloudflare), check forwarded header
-					std::string_view forwarded = req->getHeader("x-forwarded-for");
-					if (!forwarded.empty())
+					std::string_view ForwardedHeader = req->getHeader("x-forwarded-for");
+					if (!ForwardedHeader.empty())
 					{
-						clientIp = forwarded; // Use forwarded IP instead
+						TempClientIp = ForwardedHeader; // Use forwarded IP instead
 					}
 
-					ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(std::string(clientIp));
+					ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(std::string(TempClientIp));
 				}
 			}
 
@@ -124,7 +159,10 @@ auto CreateSocketBehavior(FSocket* Socket) {
 			{
 				// Accept
 				res->template upgrade<FWebSocketSessionData>(
-					{ .UserId = TempUserId },  // userData
+					{
+						.UserId = TempUserId,
+						.ClientIP = TempClientIp
+					},  // userData
 					req->getHeader("sec-websocket-key"),
 					req->getHeader("sec-websocket-protocol"),
 					req->getHeader("sec-websocket-extensions"),
@@ -247,7 +285,7 @@ void FSocket::OnClientConnected(auto* ws)
 			}
 
 			nlohmann::json JsonRoot;
-			JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::InitialClientData);
+			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::InitialClientData);
 			JsonRoot["data"] = JsonData;
 
 			// Send initial client data
@@ -345,6 +383,19 @@ void FSocket::OnPong(auto* ws)
 #endif
 }
 
+void FSocket::EarlySocketExit(AnyWebSocket wsVariant, const char* Message, uWS::OpCode opCode)
+{
+	nlohmann::json ErrorJson;
+	ErrorJson["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Error);
+	ErrorJson["message"] = "";
+
+	std::visit([&](auto* ws)
+	{
+		// Send data
+		ws->send(ErrorJson.dump(), opCode);
+	}, wsVariant);
+}
+
 std::string FSocket::GenerateUserTopic(const Uint64 UserId)
 {
 	return "user_" + std::to_string(UserId);
@@ -360,178 +411,42 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 	{
 		nlohmann::json JsonMessage = nlohmann::json::parse(message);
 
-		if (!JsonMessage.contains("type"))
+		if (!JsonMessage.contains("section"))
 		{
 #if DEBUG
 			LOG_ERROR("Message does not contain type");
 #endif
 
-			// Handle error
+			EarlySocketExit(ws, "missing section", opCode);
+
 			return;
 		}
 
-		if (!JsonMessage.contains("data"))
+		const std::string JSONSection = JsonMessage["section"];
+		const ESocketMessageSection Section = StringToSocketMessageSection(JSONSection);
+		switch (Section)
 		{
-#if DEBUG
-			LOG_ERROR("Message does not contain data");
-#endif
-
-			// Handle error
-			return;
-		}
-
-		std::string SocketMessageTypeStr = JsonMessage["type"];
-		const ESocketMessageType SocketMessage = StringToSocketMessageType(SocketMessageTypeStr);
-
-		switch (SocketMessage)
-		{
-			case ESocketMessageType::Message:
+			case ESocketMessageSection::Priv:
 			{
-				if (JsonMessage["data"].contains("conversation_id") && JsonMessage["data"].contains("content"))
-				{
-					const std::string ConversationIdString = JsonMessage["data"]["conversation_id"];
-					const Uint64 ConversationId = std::stoull(ConversationIdString);
-					const std::string Content = JsonMessage["data"]["content"];
-
-					// Handle send message
-					SocketMiscData.OnMessageReceived_Message(ws, opCode, ConversationId, Content);
-				}
+				PrivateSocketData.PrimarySwitch(ws, JsonMessage, opCode);
 
 				break;
 			}
 
-			case ESocketMessageType::Typing:
+			case ESocketMessageSection::Rooms:
 			{
-				if (JsonMessage["data"].contains("conversationId"))
-				{
-					const Uint64 ConversationId = JsonMessage["data"]["conversationId"];
-
-					// Handle typing
-					SocketMiscData.OnMessageReceived_Typing(ws, opCode, ConversationId);
-				}
+				RoomsSocketData.PrimarySwitch(ws, JsonMessage, opCode);
 
 				break;
 			}
 
-			case ESocketMessageType::MarkRead:
-			{
-				if (JsonMessage["data"].contains("conversationId"))
-				{
-					Uint64 ConversationId = JsonMessage["data"]["conversationId"];
-
-					// Handle mark read
-					SocketMiscData.OnMessageReceived_MarkRead(ws, opCode, ConversationId);
-				}
-
-				break;
-			}
-
-			case ESocketMessageType::UserStatus:
-			{
-				if (JsonMessage["data"].contains("user_id"))
-				{
-					Uint64 UserId = JsonMessage["data"]["user_id"];
-
-					// Handle mark read
-					SocketMiscData.OnMessageReceived_UserStatus(ws, opCode, UserId);
-				}
-
-				break;
-			}
-
-			case ESocketMessageType::SearchUser:
-			{
-				if (JsonMessage["data"].contains("search_target"))
-				{
-					const std::string Pattern = JsonMessage["data"]["search_target"];
-
-					SocketMiscData.OnMessageReceived_SearchUser(ws, opCode, Pattern);
-				}
-
-				break;
-			}
-
-			case ESocketMessageType::RequestAddUser:
-			{
-				FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
-				if (WebSocketSessionData != nullptr)
-				{
-					if (JsonMessage["data"].contains("user_id"))
-					{
-						const std::string OtherUserIdAsString = JsonMessage["data"]["user_id"];
-						const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
-
-						SocketMiscData.OnMessageReceived_RequestAddUser(ws, opCode, WebSocketSessionData->UserId, OtherUserId);
-					}
-				}
-
-				break;
-			}
-
-			case ESocketMessageType::LoadMoreMessages:
-			{
-				FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
-				if (WebSocketSessionData != nullptr)
-				{
-					if (JsonMessage["data"].contains("conversation_id") && JsonMessage["data"].contains("offset") && JsonMessage["data"].contains("limit"))
-					{
-						const std::string ConversationIdString = JsonMessage["data"]["conversation_id"];
-						const std::string OffsetString = JsonMessage["data"]["offset"];
-						const std::string LimitString = JsonMessage["data"]["limit"];
-						const Uint64 ConversationId = atoi(ConversationIdString.c_str());
-						const int32 Offset = atoi(OffsetString.c_str());
-						const int32 Limit = atoi(LimitString.c_str());
-
-						SocketMiscData.OnMessageReceived_LoadMoreMessages(ws, opCode, ConversationId, WebSocketSessionData->UserId, Offset, Limit);
-					}
-				}
-
-				break;
-			}
-
-			case ESocketMessageType::GetConversations:
-			{
-				FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
-				if (WebSocketSessionData != nullptr)
-				{
-					if (JsonMessage["data"].contains("offset") && JsonMessage["data"].contains("limit"))
-					{
-						const std::string OffsetString = JsonMessage["data"]["offset"];
-						const std::string LimitString = JsonMessage["data"]["limit"];
-						const int32 Offset = atoi(OffsetString.c_str());
-						const int32 Limit = atoi(LimitString.c_str());
-
-						SocketMiscData.OnMessageReceived_GetConversations(ws, opCode, WebSocketSessionData->UserId, Offset, Limit);
-					}
-				}
-
-				break;
-			}
-
-			case ESocketMessageType::AddConversation:
-			{
-				if (JsonMessage["data"].contains("user_id"))
-				{
-					const std::string OtherUserIdAsString = JsonMessage["data"]["user_id"];
-					const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
-
-					SocketMiscData.OnMessageReceived_AddConversation(ws, opCode, OtherUserId);
-				}
-
-				break;
-			}
-
-			/** Errors */
-			case ESocketMessageType::Unknown:
 			default:
 			{
-				// Send error
-				nlohmann::json ErrorJson;
-				ErrorJson["type"] = SocketMessageTypeToString(ESocketMessageType::Error);
-				ErrorJson["message"] = "Unknown message type";
-				ws->send(ErrorJson.dump(), opCode);
+#if DEBUG
+				LOG_ERROR("JSON unknown case for section: '" << JSONSection << "'.");
+#endif
 
-				break;
+				EarlySocketExit(ws, "error", opCode);
 			}
 		}
 	}
@@ -540,6 +455,8 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 #if DEBUG
 		LOG_ERROR("JSON error: " << e.what());
 #endif
+
+		EarlySocketExit(ws, "j-error", opCode);
 	}
 }
 

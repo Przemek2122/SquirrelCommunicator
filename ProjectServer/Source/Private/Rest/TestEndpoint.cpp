@@ -12,7 +12,7 @@ void FTestEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 	// Most common address to check if it works
 	CROW_ROUTE(App, "/")([]()
 	{
-		return FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Crow C++ API Server is running."} });
+		return FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Squirrel communicator is running."} });
 	});
 
 	// Route for health check

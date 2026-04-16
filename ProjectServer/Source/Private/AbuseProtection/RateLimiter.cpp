@@ -16,12 +16,12 @@ void FRateLimit::AddAttempt()
 	AttemptCount++;
 }
 
-void FRateLimitObject::AddAttempt(const std::string& InKey)
+void FRateLimitObject::AddAttempt(const std::string_view& InKey)
 {
 	// Shared for reading
 	RateLimitMutex.lock_shared();
 
-	const std::unordered_map<std::string, FRateLimit>::iterator It = RateLimitMap.find(InKey);
+	const std::unordered_map<std::string_view, FRateLimit>::iterator It = RateLimitMap.find(InKey);
 	if (It != RateLimitMap.end())
 	{
 		FRateLimit& Data = It->second;
@@ -40,11 +40,11 @@ void FRateLimitObject::AddAttempt(const std::string& InKey)
 	}
 }
 
-bool FRateLimitObject::IsBlockedKey(const std::string& InKey, const int32 NumberOfAttemptsToBlock)
+bool FRateLimitObject::IsBlockedKey(const std::string_view& InKey, const int32 NumberOfAttemptsToBlock)
 {
 	bool bIsBlocked = false;
 
-	std::unordered_map<std::string, FRateLimit>::iterator It = RateLimitMap.find(InKey);
+	const std::unordered_map<std::string_view, FRateLimit>::iterator It = RateLimitMap.find(InKey);
 	if (!bIsClearing && It != RateLimitMap.end())
 	{
 		FRateLimit& Data = It->second;
@@ -99,32 +99,32 @@ FRateLimiter::~FRateLimiter()
 	ThreadsManager->TryStopThread(RateLimiterThreadData);
 }
 
-bool FRateLimiter::IsAddressBlocked(const std::string& InAddress)
+bool FRateLimiter::IsAddressBlocked(const std::string_view InAddress)
 {
 	return DefaultIPAddressToLimits.IsBlockedKey(InAddress, NumberOfAttemptsToBlock);
 }
 
-void FRateLimiter::AddProtectedActionAttempt(const std::string& InAddress)
+void FRateLimiter::AddProtectedActionAttempt(const std::string_view InAddress)
 {
 	DefaultIPAddressToLimits.AddAttempt(InAddress);
 }
 
-bool FRateLimiter::IsPasswordResetAddressBlocked(const std::string& InAddress)
+bool FRateLimiter::IsPasswordResetAddressBlocked(const std::string_view InAddress)
 {
 	return PasswordResetIPAddressToLimits.IsBlockedKey(InAddress, NumberOfPasswordResetAttemptsToBlock);
 }
 
-void FRateLimiter::AddPasswordResetAttempt(const std::string& InAddress)
+void FRateLimiter::AddPasswordResetAttempt(const std::string_view InAddress)
 {
 	PasswordResetIPAddressToLimits.AddAttempt(InAddress);
 }
 
-bool FRateLimiter::IsRoomOperationAddressBlocked(const std::string& InAddress)
+bool FRateLimiter::IsRoomOperationAddressBlocked(const std::string_view InAddress)
 {
 	return RoomOperationAddressToLimits.IsBlockedKey(InAddress, NumberOfRoomOperationAttemptsToBlock);
 }
 
-void FRateLimiter::AddRoomOperationAttempt(const std::string& InAddress)
+void FRateLimiter::AddRoomOperationAttempt(const std::string_view InAddress)
 {
 	RoomOperationAddressToLimits.AddAttempt(InAddress);
 }

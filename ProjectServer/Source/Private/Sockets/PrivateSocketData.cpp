@@ -1,6 +1,6 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
-#include "Sockets/SocketMiscData.h"
+#include "Sockets/PrivateSocketData.h"
 #include "Sockets/WebSocketSessionData.h"
 #include "ProjectEngine.h"
 #include "Auth/User.h"
@@ -11,13 +11,254 @@
 #include "soci/statement.h"
 #include "Sockets/SocketManager.h"
 
-FSocketMiscData::FSocketMiscData(FSocket* InSocket)
+FPrivateSocketData::FPrivateSocketData(FSocket* InSocket)
 	: Socket(InSocket)
 	, ProjectEngine(Socket->GetProjectEngine())
 {
 }
 
-void FSocketMiscData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId, const std::string& Content)
+void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& JsonMessage, uWS::OpCode opCode)
+{
+	if (!JsonMessage.contains("type"))
+	{
+#if DEBUG
+		LOG_ERROR("Message does not contain type");
+#endif
+
+		FSocket::EarlySocketExit(wsVariant, "missing type", opCode);
+
+		// Handle error
+		return;
+	}
+
+	if (!JsonMessage.contains("data"))
+	{
+#if DEBUG
+		LOG_ERROR("Message does not contain data");
+#endif
+
+		FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+
+		// Handle error
+		return;
+	}
+
+	const std::string SocketMessageTypeStr = JsonMessage["type"];
+	const ESocketMessagePrivateType SocketMessage = StringToSocketMessagePrivateType(SocketMessageTypeStr);
+
+	switch (SocketMessage)
+	{
+		case ESocketMessagePrivateType::Message:
+		{
+			if (JsonMessage["data"].contains("conversation_id") && JsonMessage["data"].contains("content"))
+			{
+				const std::string ConversationIdString = JsonMessage["data"]["conversation_id"];
+				const Uint64 ConversationId = std::stoull(ConversationIdString);
+				const std::string Content = JsonMessage["data"]["content"];
+
+				// Handle send message
+				OnMessageReceived_Message(wsVariant, opCode, ConversationId, Content);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::Typing:
+		{
+			if (JsonMessage["data"].contains("conversationId"))
+			{
+				const Uint64 ConversationId = JsonMessage["data"]["conversationId"];
+
+				// Handle typing
+				OnMessageReceived_Typing(wsVariant, opCode, ConversationId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::MarkRead:
+		{
+			if (JsonMessage["data"].contains("conversationId"))
+			{
+				Uint64 ConversationId = JsonMessage["data"]["conversationId"];
+
+				// Handle mark read
+				OnMessageReceived_MarkRead(wsVariant, opCode, ConversationId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::UserStatus:
+		{
+			if (JsonMessage["data"].contains("user_id"))
+			{
+				Uint64 UserId = JsonMessage["data"]["user_id"];
+
+				// Handle mark read
+				OnMessageReceived_UserStatus(wsVariant, opCode, UserId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::SearchUser:
+		{
+			if (JsonMessage["data"].contains("search_target"))
+			{
+				const std::string Pattern = JsonMessage["data"]["search_target"];
+
+				OnMessageReceived_SearchUser(wsVariant, opCode, Pattern);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::RequestAddUser:
+		{
+			FWebSocketSessionData* WebSocketSessionData = nullptr;
+
+			std::visit([&](auto* ws)
+			{
+				WebSocketSessionData = ws->getUserData();
+			}, wsVariant);
+
+			if (WebSocketSessionData != nullptr)
+			{
+				if (JsonMessage["data"].contains("user_id"))
+				{
+					const std::string OtherUserIdAsString = JsonMessage["data"]["user_id"];
+					const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+					OnMessageReceived_RequestAddUser(wsVariant, opCode, WebSocketSessionData->UserId, OtherUserId);
+				}
+				else
+				{
+					FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				}
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::LoadMoreMessages:
+		{
+			FWebSocketSessionData* WebSocketSessionData = nullptr;
+
+			std::visit([&](auto* ws)
+			{
+				WebSocketSessionData = ws->getUserData();
+			}, wsVariant);
+
+			if (WebSocketSessionData != nullptr)
+			{
+				if (JsonMessage["data"].contains("conversation_id") && JsonMessage["data"].contains("offset") && JsonMessage["data"].contains("limit"))
+				{
+					const std::string ConversationIdString = JsonMessage["data"]["conversation_id"];
+					const std::string OffsetString = JsonMessage["data"]["offset"];
+					const std::string LimitString = JsonMessage["data"]["limit"];
+					const Uint64 ConversationId = atoi(ConversationIdString.c_str());
+					const int32 Offset = atoi(OffsetString.c_str());
+					const int32 Limit = atoi(LimitString.c_str());
+
+					OnMessageReceived_LoadMoreMessages(wsVariant, opCode, ConversationId, WebSocketSessionData->UserId, Offset, Limit);
+				}
+				else
+				{
+					FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				}
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::GetConversations:
+		{
+			FWebSocketSessionData* WebSocketSessionData = nullptr;
+
+			std::visit([&](auto* ws)
+			{
+				WebSocketSessionData = ws->getUserData();
+			}, wsVariant);
+
+			if (WebSocketSessionData != nullptr)
+			{
+				if (JsonMessage["data"].contains("offset") && JsonMessage["data"].contains("limit"))
+				{
+					const std::string OffsetString = JsonMessage["data"]["offset"];
+					const std::string LimitString = JsonMessage["data"]["limit"];
+					const int32 Offset = atoi(OffsetString.c_str());
+					const int32 Limit = atoi(LimitString.c_str());
+
+					OnMessageReceived_GetConversations(wsVariant, opCode, WebSocketSessionData->UserId, Offset, Limit);
+				}
+				else
+				{
+					FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				}
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::AddConversation:
+		{
+			if (JsonMessage["data"].contains("user_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["user_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_AddConversation(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		/** Errors */
+		case ESocketMessagePrivateType::Unknown:
+		default:
+		{
+			// Send error
+			nlohmann::json ErrorJson;
+			ErrorJson["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Error);
+			ErrorJson["message"] = "Unknown message type";
+
+			std::visit([&](auto* ws)
+			{
+				// Send data
+				ws->send(ErrorJson.dump(), opCode);
+			}, wsVariant);
+
+			break;
+		}
+	}
+}
+
+void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId, const std::string& Content)
 {
 	std::visit([&](auto* ws)
 	{
@@ -42,7 +283,7 @@ void FSocketMiscData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpC
 					MessageJson["conversation_message"] = Content;
 
 					nlohmann::json JsonRoot;
-					JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::Message);
+					JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Message);
 					JsonRoot["message"] = MessageJson;
 
 					if (UserId == ConnectionUserId)
@@ -68,11 +309,11 @@ void FSocketMiscData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpC
 								{
 									const bool bSentPublish = WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
 
-	#if DEBUG
+#if DEBUG
 									LOG_INFO("Backpressure: " << WebSocket->getBufferedAmount());
 									LOG_INFO("Topic: '" << UserTopic << "', subscribed: '" << WebSocket->isSubscribed(UserTopic) << "'");
 									LOG_INFO("Topic: '" << UserTopic << "', sent publish: '" << bSentPublish << "'");
-	#endif
+#endif
 								}
 							};
 							SocketManager->EnqueueTaskForUserAtSocket(User->GetSocketId(), UserId, SocketAccessFunctor);
@@ -86,7 +327,7 @@ void FSocketMiscData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpC
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
+void FPrivateSocketData::OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
 {
 	std::visit([&](auto* ws)
 	{
@@ -106,7 +347,7 @@ void FSocketMiscData::OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::OpCo
 			MessageJson["typing_id"] = ConnectionUserId;
 
 			nlohmann::json JsonRoot;
-			JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::Typing);
+			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Typing);
 			JsonRoot["message"] = MessageJson;
 
 			for (std::shared_ptr<FUser>& User : Users)
@@ -131,7 +372,7 @@ void FSocketMiscData::OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::OpCo
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
+void FPrivateSocketData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
 {
 	std::visit([&](auto* ws)
 	{
@@ -157,7 +398,7 @@ void FSocketMiscData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::Op
 							MessageJson["typing_id"] = ConnectionUserId;
 
 							nlohmann::json JsonRoot;
-							JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::MarkRead);
+							JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::MarkRead);
 							JsonRoot["message"] = MessageJson;
 
 							const std::shared_ptr<FUser> User = ProjectEngine->GetUserManager()->GetUserById(ConnectionUserId);
@@ -184,7 +425,7 @@ void FSocketMiscData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::Op
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 UserId)
+void FPrivateSocketData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 UserId)
 {
 	std::visit([&](auto* ws)
 	{
@@ -200,7 +441,7 @@ void FSocketMiscData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::
 			MessageJson["status"] = UserStatusToString(UserPtr->GetUserStatus());
 
 			nlohmann::json JsonRoot;
-			JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::UserStatus);
+			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::UserStatus);
 			JsonRoot["message"] = MessageJson;
 
 			// Publish does not work for self, so we need special case
@@ -209,7 +450,7 @@ void FSocketMiscData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern)
+void FPrivateSocketData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern)
 {
 	std::visit([&](auto* ws)
 	{
@@ -298,7 +539,7 @@ void FSocketMiscData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::
 				const std::string JsonString = UsersJson.dump();
 
 				nlohmann::json ReturnJson;
-				ReturnJson["type"] = SocketMessageTypeToString(ESocketMessageType::SearchUser);
+				ReturnJson["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::SearchUser);
 				ReturnJson["message"] = JsonString;
 				ws->send(ReturnJson.dump(), opCode);
 			}
@@ -306,7 +547,7 @@ void FSocketMiscData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_RequestAddUser(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId)
+void FPrivateSocketData::OnMessageReceived_RequestAddUser(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId)
 {
 	std::visit([&](auto* ws)
 	{
@@ -317,12 +558,12 @@ void FSocketMiscData::OnMessageReceived_RequestAddUser(AnyWebSocket wsVariant, u
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_LoadMoreMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count)
+void FPrivateSocketData::OnMessageReceived_LoadMoreMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count)
 {
 	std::visit([&](auto* ws)
 	{
 		nlohmann::json JsonRoot;
-		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::LoadMoreMessages);
+		JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::LoadMoreMessages);
 
 		if (ConversationId > 0 && Offset > 0 && Count > 0)
 		{
@@ -371,7 +612,7 @@ void FSocketMiscData::OnMessageReceived_LoadMoreMessages(AnyWebSocket wsVariant,
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_GetConversations(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit)
+void FPrivateSocketData::OnMessageReceived_GetConversations(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, int32 Offset, int32 Limit)
 {
 	std::visit([&](auto* ws)
 	{
@@ -383,7 +624,7 @@ void FSocketMiscData::OnMessageReceived_GetConversations(AnyWebSocket wsVariant,
 		const nlohmann::json ConversationsJsonArray = FormatConversationIntoJson(ConversationIds);
 
 		nlohmann::json JsonRoot;
-		JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::GetConversations);
+		JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::GetConversations);
 		JsonRoot["message"] = ConversationsJsonArray;
 
 		// Send initial client data
@@ -392,7 +633,7 @@ void FSocketMiscData::OnMessageReceived_GetConversations(AnyWebSocket wsVariant,
 	}, wsVariant);
 }
 
-void FSocketMiscData::OnMessageReceived_AddConversation(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 OtherUserId)
+void FPrivateSocketData::OnMessageReceived_AddConversation(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 OtherUserId)
 {
 	std::visit([&](auto* ws)
 	{
@@ -412,7 +653,7 @@ void FSocketMiscData::OnMessageReceived_AddConversation(AnyWebSocket wsVariant, 
 			const nlohmann::json MessageJson = FormatConversationIntoJson({ ConversationId });
 
 			nlohmann::json JsonRoot;
-			JsonRoot["type"] = SocketMessageTypeToString(ESocketMessageType::AddConversation);
+			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::AddConversation);
 			JsonRoot["message"] = MessageJson;
 			ws->send(JsonRoot.dump(), opCode);
 
@@ -453,7 +694,7 @@ void FSocketMiscData::OnMessageReceived_AddConversation(AnyWebSocket wsVariant, 
 	}, wsVariant);
 }
 
-nlohmann::json FSocketMiscData::FormatConversationIntoJson(const CArray<Uint64>& ConversationIds)
+nlohmann::json FPrivateSocketData::FormatConversationIntoJson(const CArray<Uint64>& ConversationIds)
 {
 	FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
 	FUserManager* UserManager = ProjectEngine->GetUserManager();
@@ -518,7 +759,7 @@ nlohmann::json FSocketMiscData::FormatConversationIntoJson(const CArray<Uint64>&
 	return ConversationsJsonArray;
 }
 
-nlohmann::json FSocketMiscData::FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames)
+nlohmann::json FPrivateSocketData::FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames)
 {
 	nlohmann::json DataUserArray = nlohmann::json::array();
 

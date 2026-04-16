@@ -30,32 +30,32 @@ FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 	}
 }
 
-bool FAbuseProtection::IsAddressBlocked(const std::string& InAddress) const
+bool FAbuseProtection::IsAddressBlocked(const std::string_view InAddress) const
 {
 	return RateLimiter->IsAddressBlocked(InAddress);
 }
 
-void FAbuseProtection::AddRateLimitedAttempt(const std::string& InAddress) const
+void FAbuseProtection::AddRateLimitedAttempt(const std::string_view InAddress) const
 {
 	RateLimiter->AddProtectedActionAttempt(InAddress);
 }
 
-bool FAbuseProtection::CanAddressRequestPasswordReset(const std::string& InAddress) const
+bool FAbuseProtection::CanAddressRequestPasswordReset(const std::string_view InAddress) const
 {
 	return !RateLimiter->IsPasswordResetAddressBlocked(InAddress);
 }
 
-void FAbuseProtection::AddPasswordResetAttempt(const std::string& InAddress) const
+void FAbuseProtection::AddPasswordResetAttempt(const std::string_view InAddress) const
 {
 	RateLimiter->AddPasswordResetAttempt(InAddress);
 }
 
-bool FAbuseProtection::CanAddressRequestCreateRoom(const std::string& InAddress) const
+bool FAbuseProtection::CanAddressRequestCreateRoom(const std::string_view InAddress) const
 {
 	return RateLimiter->IsRoomOperationAddressBlocked(InAddress);
 }
 
-void FAbuseProtection::AddCreateRoomAttempt(const std::string& InAddress) const
+void FAbuseProtection::AddCreateRoomAttempt(const std::string_view InAddress) const
 {
 	RateLimiter->AddRoomOperationAttempt(InAddress);
 }

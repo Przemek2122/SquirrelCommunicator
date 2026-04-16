@@ -13,7 +13,6 @@
 #include "Rest/IntegrationEndpoint.h"
 #include "Rest/TestEndpoint.h"
 #include "Rest/AuthEndpoint.h"
-#include "Rest/RoomsServiceEndpoint.h"
 #include "Sockets/SocketManager.h"
 
 #define ENDPOINT_CLASS(EndpointName) FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<EndpointName>()
@@ -32,7 +31,6 @@ FProjectEngine::FProjectEngine()
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAuthEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAccountEndpoint));
-	RestEndpointsClasses.Push(ENDPOINT_CLASS(FRoomsServiceEndpoint));
 }
 
 void FProjectEngine::Init()

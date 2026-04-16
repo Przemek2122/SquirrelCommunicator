@@ -3,7 +3,6 @@
 #pragma once
 
 #include <uwebsockets/WebSocketProtocol.h>
-
 #include "SocketData.h"
 #include "nlohmann/json_fwd.hpp"
 
@@ -14,10 +13,13 @@ class FSocket;
  * Helper class for Socket class.
  * Only stores conversation functions
  */
-class FSocketMiscData
+class FPrivateSocketData
 {
 public:
-    explicit FSocketMiscData(FSocket* InSocket);
+    explicit FPrivateSocketData(FSocket* InSocket);
+
+    /** Function for jumping into all other functions in this class */
+    void PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& JsonMessage, uWS::OpCode opCode);
 
     /** Called when user is sending a message */
     void OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, const std::string& Content);
