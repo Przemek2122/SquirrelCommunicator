@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 5.0.4deb2+deb11u2
+-- version 5.2.2deb1+deb13u1
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Czas generowania: 21 Lis 2025, 20:53
--- Wersja serwera: 10.5.29-MariaDB-0+deb11u1
--- Wersja PHP: 7.4.33
+-- Generation Time: Apr 17, 2026 at 06:48 AM
+-- Server version: 11.8.3-MariaDB-0+deb13u1 from Debian
+-- PHP Version: 8.4.11
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -18,13 +18,13 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Baza danych: `sqrllapitest`
+-- Database: `sqrllapitest`
 --
 
 -- --------------------------------------------------------
 
 --
--- Struktura tabeli dla tabeli `messages`
+-- Table structure for table `messages`
 --
 
 CREATE TABLE `messages` (
@@ -32,15 +32,21 @@ CREATE TABLE `messages` (
   `conversation_id` bigint(20) UNSIGNED NOT NULL,
   `sender_id` bigint(20) UNSIGNED NOT NULL,
   `text` varchar(4096) NOT NULL,
-  `created_at` date NOT NULL DEFAULT current_timestamp()
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `text_encrypt_type` int(8) DEFAULT NULL,
+  `text_encryption_value` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Indeksy dla zrzutów tabel
+-- Dumping data for table `messages`
 --
 
 --
--- Indeksy dla tabeli `messages`
+-- Indexes for dumped tables
+--
+
+--
+-- Indexes for table `messages`
 --
 ALTER TABLE `messages`
   ADD PRIMARY KEY (`id`),
@@ -48,21 +54,21 @@ ALTER TABLE `messages`
   ADD KEY `conversation_id` (`conversation_id`);
 
 --
--- AUTO_INCREMENT dla zrzuconych tabel
+-- AUTO_INCREMENT for dumped tables
 --
 
 --
--- AUTO_INCREMENT dla tabeli `messages`
+-- AUTO_INCREMENT for table `messages`
 --
 ALTER TABLE `messages`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=263;
 
 --
--- Ograniczenia dla zrzutów tabel
+-- Constraints for dumped tables
 --
 
 --
--- Ograniczenia dla tabeli `messages`
+-- Constraints for table `messages`
 --
 ALTER TABLE `messages`
   ADD CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`conversation_id`),
