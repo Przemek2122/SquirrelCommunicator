@@ -134,33 +134,6 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
-		case ESocketMessagePrivateType::RequestAddUser:
-		{
-			FWebSocketSessionData* WebSocketSessionData = nullptr;
-
-			std::visit([&](auto* ws)
-			{
-				WebSocketSessionData = ws->getUserData();
-			}, wsVariant);
-
-			if (WebSocketSessionData != nullptr)
-			{
-				if (JsonMessage["data"].contains("user_id"))
-				{
-					const std::string OtherUserIdAsString = JsonMessage["data"]["user_id"];
-					const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
-
-					OnMessageReceived_RequestAddUser(wsVariant, opCode, WebSocketSessionData->UserId, OtherUserId);
-				}
-				else
-				{
-					FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
-				}
-			}
-
-			break;
-		}
-
 		case ESocketMessagePrivateType::LoadMoreMessages:
 		{
 			FWebSocketSessionData* WebSocketSessionData = nullptr;
@@ -229,6 +202,57 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
 
 				OnMessageReceived_AddConversation(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::CreateFriendRequest:
+		{
+			if (JsonMessage["data"].contains("other_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_CreateFriendRequest(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::AcceptFriendRequest:
+		{
+			if (JsonMessage["data"].contains("other_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_AcceptFriendRequest(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::RemoveFriend:
+		{
+			if (JsonMessage["data"].contains("other_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_RemoveFriend(wsVariant, opCode, OtherUserId);
 			}
 			else
 			{
@@ -547,17 +571,6 @@ void FPrivateSocketData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uW
 	}, wsVariant);
 }
 
-void FPrivateSocketData::OnMessageReceived_RequestAddUser(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId)
-{
-	std::visit([&](auto* ws)
-	{
-		if (CurrentUserId != OtherUserId)
-		{
-
-		}
-	}, wsVariant);
-}
-
 void FPrivateSocketData::OnMessageReceived_LoadMoreMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count)
 {
 	std::visit([&](auto* ws)
@@ -690,6 +703,88 @@ void FPrivateSocketData::OnMessageReceived_AddConversation(AnyWebSocket wsVarian
 					}
 				}
 			}
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_CreateFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			if (CurrentUserId == OtherUserId)
+			{
+				FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+				return;
+			}
+
+			const EFriendRequestStatus RequestStatus = ProjectEngine->GetFriendListManager()->SendFriendRequest(CurrentUserId, OtherUserId);
+
+			switch (RequestStatus)
+			{
+				case EFriendRequestStatus::RequestAdded:
+				{
+
+
+					break;
+				}
+				case EFriendRequestStatus::RequestAlreadyExists:
+				{
+
+					break;
+				}
+			}
+
+
+		}
+		else
+		{
+			FSocket::EarlySocketExit(wsVariant, "missing type", opCode);
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			if (CurrentUserId == OtherUserId)
+			{
+				FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+				return;
+			}
+
+
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			if (CurrentUserId == OtherUserId)
+			{
+				FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+				return;
+			}
+
+
+
 		}
 	}, wsVariant);
 }

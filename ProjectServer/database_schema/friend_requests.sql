@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Apr 17, 2026 at 06:38 AM
+-- Generation Time: Apr 19, 2026 at 08:39 AM
 -- Server version: 11.8.3-MariaDB-0+deb13u1 from Debian
 -- PHP Version: 8.4.11
 
@@ -28,9 +28,9 @@ SET time_zone = "+00:00";
 --
 
 CREATE TABLE `friend_requests` (
-  `id` bigint(20) NOT NULL,
-  `id_requesting` bigint(20) NOT NULL,
-  `id_target` bigint(20) NOT NULL
+  `id` bigint(20) UNSIGNED NOT NULL,
+  `id_requesting` bigint(20) UNSIGNED NOT NULL,
+  `id_target` bigint(20) UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -51,7 +51,7 @@ ALTER TABLE `friend_requests`
 -- AUTO_INCREMENT for table `friend_requests`
 --
 ALTER TABLE `friend_requests`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

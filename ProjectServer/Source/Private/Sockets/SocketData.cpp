@@ -47,13 +47,15 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
 		case HashString("mark_read"):				return ESocketMessagePrivateType::MarkRead;
 		case HashString("user_status"):				return ESocketMessagePrivateType::UserStatus;
 		case HashString("search_user"):				return ESocketMessagePrivateType::SearchUser;
-		case HashString("request_add_user"):			return ESocketMessagePrivateType::RequestAddUser;
 		case HashString("load_more_messages"):		return ESocketMessagePrivateType::LoadMoreMessages;
 		case HashString("get_conversations"):		return ESocketMessagePrivateType::GetConversations;
 		case HashString("add_conversation"):			return ESocketMessagePrivateType::AddConversation;
 		case HashString("initial_client_data"):		return ESocketMessagePrivateType::InitialClientData;
 		case HashString("initial_conversations"):	return ESocketMessagePrivateType::InitialConversations;
 		case HashString("error"):					return ESocketMessagePrivateType::Error;
+		case HashString("create_friend_request"):	return ESocketMessagePrivateType::CreateFriendRequest;
+		case HashString("accept_friend_request"):	return ESocketMessagePrivateType::AcceptFriendRequest;
+		case HashString("remove_friend"):			return ESocketMessagePrivateType::RemoveFriend;
 
 		default:										return ESocketMessagePrivateType::Unknown;
 	}
@@ -68,13 +70,15 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
 		case ESocketMessagePrivateType::MarkRead:				return "mark_read";
 		case ESocketMessagePrivateType::UserStatus:				return "user_status";
 		case ESocketMessagePrivateType::SearchUser:				return "search_user";
-		case ESocketMessagePrivateType::RequestAddUser:			return "request_add_user";
 		case ESocketMessagePrivateType::LoadMoreMessages:		return "load_more_messages";
 		case ESocketMessagePrivateType::GetConversations:		return "get_conversations";
 		case ESocketMessagePrivateType::AddConversation:		return "add_conversation";
 		case ESocketMessagePrivateType::InitialClientData:		return "initial_client_data";
 		case ESocketMessagePrivateType::InitialConversations:	return "initial_conversations";
 		case ESocketMessagePrivateType::Error:					return "error";
+		case ESocketMessagePrivateType::CreateFriendRequest:	return "create_friend_request";
+		case ESocketMessagePrivateType::AcceptFriendRequest:	return "accept_friend_request";
+		case ESocketMessagePrivateType::RemoveFriend:			return "remove_friend";
 
 		case ESocketMessagePrivateType::Unknown:
 		default:												return "unknown";

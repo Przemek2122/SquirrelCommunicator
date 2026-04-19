@@ -22,6 +22,7 @@ FProjectEngine::FProjectEngine()
 	, SocketManager(std::make_unique<FSocketManager>())
 	, ConversationsManager(std::make_unique<FConversationsManager>())
 	, PasswordResetManager(nullptr)
+	, FriendListManager(std::make_unique<FFriendListManager>())
 	, bIsSSLEnabled(false)
 {
 	// Collect Database settings

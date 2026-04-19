@@ -7,6 +7,7 @@
 #include "Rest/CrowAppEndpoint.h"
 #include "BackendSettings.h"
 #include "crow/app.h"
+#include "Managers/FriendListManager.h"
 
 class FRoomsServiceManager;
 class FPasswordResetManager;
@@ -44,6 +45,7 @@ public:
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }
 	FAbuseProtection* GetAbuseProtection() const { return AbuseProtectionPtr.get(); }
 	FPasswordResetManager* GetPasswordResetManager() const { return PasswordResetManager.get(); }
+	FFriendListManager* GetFriendListManager() const { return FriendListManager.get(); }
 	FRoomsServiceManager* GetRoomsManager() const { return RoomsManager.get(); }
 
 	CUnorderedMap<std::string, std::string> GetDefaultHeaders() const;
@@ -75,6 +77,9 @@ protected:
 
 	/** PasswordResetManager */
 	std::unique_ptr<FPasswordResetManager> PasswordResetManager;
+
+	/** FriendListManager */
+	std::unique_ptr<FFriendListManager> FriendListManager;
 
 	/** Manager for rooms service (GO Microserivce) */
 	std::unique_ptr<FRoomsServiceManager> RoomsManager;

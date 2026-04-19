@@ -36,9 +36,6 @@ public:
     /** Called when user is searching for another user */
     void OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern);
 
-    /** Used to send request to add user as friend */
-    void OnMessageReceived_RequestAddUser(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 CurrentUserId, Uint64 OtherUserId);
-
     /** Used by frontend when user wants more messages, Offset and Limit are used to define if we want conversations 0-5, 5-10, etc... */
     void OnMessageReceived_LoadMoreMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 CurrentUserId, int32 Offset, int32 Count);
 
@@ -47,6 +44,15 @@ public:
 
     /** Used to create a new conversation */
     void OnMessageReceived_AddConversation(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
+    /** Used to create friend request */
+    void OnMessageReceived_CreateFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
+    /** Used to add friend */
+    void OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
+    /** Used to remove friend */
+    void OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
 
 private:
     /** returns conversation json aray */

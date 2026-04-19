@@ -39,12 +39,14 @@ enum class ESocketMessagePrivateType : uint8
     MarkRead,
     UserStatus,
     SearchUser,
-    RequestAddUser,
     LoadMoreMessages,
     GetConversations,
     AddConversation,
     InitialClientData,
     InitialConversations,
+    CreateFriendRequest,
+    AcceptFriendRequest,
+    RemoveFriend,
 
     Error = 255
 };

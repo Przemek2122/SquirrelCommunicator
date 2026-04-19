@@ -10,8 +10,29 @@ namespace soci
 	class session;
 }
 
+/** How is certain message encrypted */
+enum class EConversationEncryptionType : Uint8
+{
+	/** This means exactly NO ENCRYPTION */
+	Null,
+
+	/** User defined encryption */
+	User,
+
+	/** Default */
+	Default,
+};
+
+/** Struct for conversation each message */
 struct FConversationMessageData
 {
+	FConversationMessageData()
+		: MessageId(0)
+		, SenderId(0)
+		, EncryptionType(EConversationEncryptionType::Null)
+	{
+	}
+
 	Uint64 MessageId;
 
 	/** Who sent message? */
@@ -22,6 +43,9 @@ struct FConversationMessageData
 
 	/** Creation time */
 	std::string CreatedAt;
+
+	/** Encryption type */
+	EConversationEncryptionType EncryptionType;
 
 };
 
