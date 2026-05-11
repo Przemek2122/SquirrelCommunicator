@@ -22,11 +22,12 @@ FProjectEngine::FProjectEngine()
 	, SocketManager(std::make_unique<FSocketManager>())
 	, ConversationsManager(std::make_unique<FConversationsManager>())
 	, PasswordResetManager(nullptr)
-	, FriendListManager(std::make_unique<FFriendListManager>())
 	, bIsSSLEnabled(false)
 {
 	// Collect Database settings
 	FDataBaseSettings::Initialize();
+
+	FriendListManager = std::make_unique<FFriendListManager>(GetThreadsManager());
 
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTestEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAuthEndpoint));

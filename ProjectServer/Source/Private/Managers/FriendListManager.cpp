@@ -4,8 +4,13 @@
 
 #include "DataBase/DataBaseConnect.h"
 #include <soci/rowset.h>
-#include <soci/row.h>
 #include "soci/transaction.h"
+#include "Threads/ThreadsManager.h"
+
+FFriendListManager::FFriendListManager(FThreadsManager* InThreadsManager)
+    : ThreadsManager(InThreadsManager)
+{
+}
 
 EFriendRequestStatus FFriendListManager::SendFriendRequest(const Uint64 SendingId, const Uint64 ReceivingId)
 {
@@ -125,9 +130,9 @@ EAcceptFriendRequestStatus FFriendListManager::AcceptFriendRequest(const Uint64 
     }
 }
 
-ERejectFriendRequestStatus FFriendListManager::RejectFriendRequest(Uint64 AcceptingId, Uint64 SendingId)
+ERejectFriendRequestStatus FFriendListManager::RejectFriendRequest(const Uint64 RejectingId, const Uint64 RejectedId)
 {
-    const bool bFriendRequestExists = DoesFriendRequestExist(AcceptingId, SendingId);
+    const bool bFriendRequestExists = DoesFriendRequestExist(RejectingId, RejectedId);
     if (bFriendRequestExists)
     {
         try
@@ -143,7 +148,7 @@ ERejectFriendRequestStatus FFriendListManager::RejectFriendRequest(Uint64 Accept
 
                 // Remove request
                 DataBaseSession << "DELETE FROM friend_requests WHERE id_requesting = :sid AND id_target = :aid",
-                    soci::use(SendingId), soci::use(AcceptingId);
+                    soci::use(RejectedId), soci::use(RejectingId);
 
                 Tr.commit();
             }
@@ -157,38 +162,113 @@ ERejectFriendRequestStatus FFriendListManager::RejectFriendRequest(Uint64 Accept
         {
             std::unique_lock<std::shared_mutex> WriteLock(FriendRequestListMutex);
 
-            if (UserIdToFriendRequestList.contains(SendingId))
+            if (UserIdToFriendRequestList.contains(RejectedId))
             {
-                UserIdToFriendRequestList[SendingId].FriendRequests.erase(AcceptingId);
+                UserIdToFriendRequestList[RejectedId].FriendRequests.erase(RejectingId);
             }
         }
 
         return ERejectFriendRequestStatus::RequestRejected;
     }
-    else
+
+    return ERejectFriendRequestStatus::RequestNotExists;
+}
+
+ECancelFriendRequestStatus FFriendListManager::CancelFriendRequest(const Uint64 CancelingId, const Uint64 CanceledId)
+{
+    const bool bFriendRequestExists = DoesFriendRequestExist(CancelingId, CanceledId);
+    if (bFriendRequestExists)
     {
-        return ERejectFriendRequestStatus::RequestNotExists;
+        try
+        {
+            FDataBaseConnect Connect;
+            if (Connect.IsConnected())
+            {
+                // Get database connection session
+                soci::session& DataBaseSession = Connect.GetSession();
+
+                // Transaction to ensure we do not lose friend-request in case of failure
+                soci::transaction Tr(DataBaseSession);
+
+                // Remove request
+                DataBaseSession << "DELETE FROM friend_requests WHERE id_requesting = :sid AND id_target = :aid",
+                    soci::use(CancelingId), soci::use(CanceledId);
+
+                Tr.commit();
+            }
+        }
+        catch (const soci::soci_error& e)
+        {
+            LOG_ERROR("SOCI Error: " << e.what());
+        }
+
+        // Clear local cache
+        {
+            std::unique_lock<std::shared_mutex> WriteLock(FriendRequestListMutex);
+
+            if (UserIdToFriendRequestList.contains(CancelingId))
+            {
+                UserIdToFriendRequestList[CancelingId].FriendRequests.erase(CanceledId);
+            }
+        }
+
+        return ECancelFriendRequestStatus::RequestCanceled;
     }
+
+    return ECancelFriendRequestStatus::RequestNotExists;
 }
 
 ERemoveFriendStatus FFriendListManager::RemoveFriend(const Uint64 RemovingId, const Uint64 RemovedId)
 {
     if (IsFriend(RemovingId, RemovedId))
     {
-        LOG_WARN("Misisng impl");
+        try
+        {
+            FDataBaseConnect Connect;
+            if (Connect.IsConnected())
+            {
+                soci::session& DataBaseSession = Connect.GetSession();
 
+                long long Id1 = static_cast<long long>(RemovingId);
+                long long Id2 = static_cast<long long>(RemovedId);
 
+                // Remove whoever were first
+                DataBaseSession << "DELETE FROM friends WHERE "
+                                   "(id_requesting = :id1a AND id_target = :id2a) OR "
+                                   "(id_requesting = :id2b AND id_target = :id1b)",
+                    soci::use(Id1), soci::use(Id2), soci::use(Id2), soci::use(Id1);
+            }
+        }
+        catch (const soci::soci_error& e)
+        {
+            LOG_ERROR("SOCI Error (RemoveFriend): " << e.what());
+            return ERemoveFriendStatus::FriendNotExists;
+        }
+
+        {
+            std::unique_lock<std::shared_mutex> WriteLock(FriendListMutex);
+
+            if (UserIdToFriendList.contains(RemovingId))
+            {
+                std::vector<Uint64>& Array = UserIdToFriendList[RemovingId].FriendsArray;
+
+                Array.erase(std::remove(Array.begin(), Array.end(), RemovedId), Array.end());
+                UserIdToFriendList[RemovingId].FriendsMap.erase(RemovedId);
+            }
+
+            if (UserIdToFriendList.contains(RemovedId))
+            {
+                std::vector<Uint64>& Array = UserIdToFriendList[RemovedId].FriendsArray;
+
+                Array.erase(std::remove(Array.begin(), Array.end(), RemovingId), Array.end());
+                UserIdToFriendList[RemovedId].FriendsMap.erase(RemovingId);
+            }
+        }
+
+        return ERemoveFriendStatus::FriendRemoved;
     }
 
     return ERemoveFriendStatus::FriendNotExists;
-}
-
-void FFriendListManager::DownloadFriendListForUserId(const Uint64 UserId)
-{
-    if (!HasFriendListForUserId(UserId))
-    {
-        DownloadFriendListFromDB(UserId);
-    }
 }
 
 bool FFriendListManager::HasFriendListForUserId(const Uint64 UserId)
@@ -198,12 +278,19 @@ bool FFriendListManager::HasFriendListForUserId(const Uint64 UserId)
     return UserIdToFriendList.contains(UserId);
 }
 
+bool FFriendListManager::HasFriendRequestListForUserId(Uint64 UserId)
+{
+    std::shared_lock<std::shared_mutex> Lock(FriendRequestListMutex);
+
+    return UserIdToFriendRequestList.contains(UserId);
+}
+
 bool FFriendListManager::IsFriend(const Uint64 UserId, const Uint64 FriendId)
 {
     // Make sure we do have friend list downloaded
     if (!HasFriendListForUserId(UserId))
     {
-        DownloadFriendListForUserId(UserId);
+        DownloadFriendListFromDB(UserId);
     }
 
     // Check cache
@@ -261,7 +348,95 @@ FFriendList FFriendListManager::GetUserFriendListWholeByUserId(const Uint64 User
     return { };
 }
 
-void FFriendListManager::DownloadFriendListFromDB(Uint64 UserId)
+FFriendRequestList FFriendListManager::GetUserFriendRequestListWholeByUserId(Uint64 UserId)
+{
+    std::shared_lock<std::shared_mutex> Lock(FriendRequestListMutex);
+
+    if (UserIdToFriendRequestList.contains(UserId))
+    {
+        return UserIdToFriendRequestList[UserId];
+    }
+
+    return { };
+}
+
+std::vector<Uint64> FFriendListManager::GetFriendListInRange(const Uint64 UserId, const Uint64 Offset, const Uint64 Limit)
+{
+    std::vector<Uint64> OutVector;
+
+    if (!HasFriendListForUserId(UserId))
+    {
+        // @TODO: Should be async for more users with proper callback
+        DownloadFriendListFromDB(UserId);
+    }
+
+    if (HasFriendListForUserId(UserId))
+    {
+        std::shared_lock<std::shared_mutex> Lock(FriendListMutex);
+
+        const std::vector<Uint64>& FriendsArray = UserIdToFriendList.at(UserId).FriendsArray;
+        const Uint64 TotalFriends = FriendsArray.size();
+
+        // Will it even fit?
+        if (Offset < TotalFriends)
+        {
+            // Calculate safe end (to avoid going out of array bounds)
+            const Uint64 EndIndex = std::min(Offset + Limit, TotalFriends);
+
+            // Copy only the requested slice using iterators
+            OutVector.assign(FriendsArray.begin() + Offset, FriendsArray.begin() + EndIndex);
+        }
+    }
+
+    return OutVector;
+}
+
+std::vector<Uint64> FFriendListManager::GetFriendRequestListInRange(const Uint64 UserId, const Uint64 Offset, const Uint64 Limit)
+{
+    std::vector<Uint64> OutVector;
+
+    if (!HasFriendRequestListForUserId(UserId))
+    {
+        // @TODO: Should be async for more users with proper callback
+        DownloadFriendRequestListForUserId(UserId);
+    }
+
+    if (HasFriendRequestListForUserId(UserId))
+    {
+        std::shared_lock<std::shared_mutex> ReadLock(FriendRequestListMutex);
+
+        if (UserIdToFriendRequestList.contains(UserId))
+        {
+            // Reference to the map of requests
+            const std::unordered_map<Uint64, bool>& FriendRequestsMap = UserIdToFriendRequestList.at(UserId).FriendRequests;
+            const Uint64 TotalRequests = FriendRequestsMap.size();
+
+            // 3. Ensure Offset is within bounds
+            if (Offset < TotalRequests)
+            {
+                // Move iterator to the starting offset
+                std::unordered_map<Uint64, bool>::const_iterator Iterator = FriendRequestsMap.begin();
+                std::advance(Iterator, Offset);
+
+                // Calculate how many elements we can safely take
+                const Uint64 ElementsToTake = std::min(Limit, TotalRequests - Offset);
+
+                // Reserve memory for optimization
+                OutVector.reserve(ElementsToTake);
+
+                // Extract IDs (keys from the map) and push to the output vector
+                for (Uint64 i = 0; i < ElementsToTake && Iterator != FriendRequestsMap.end(); ++i, ++Iterator)
+                {
+                    OutVector.push_back(Iterator->first);
+                }
+            }
+        }
+    }
+
+    return OutVector;
+}
+
+void FFriendListManager::DownloadFriendListFromDB(const Uint64 UserId)
 {
     std::vector<Uint64> DownloadedFriends;
 

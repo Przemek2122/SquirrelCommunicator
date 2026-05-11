@@ -29,7 +29,10 @@ enum class ESocketMessageSection : uint8
     Error = 255
 };
 
-/** Enum for each message sent in private sections in socket */
+/**
+ * Enum for each message sent in private sections in socket
+ * As most performance important enum, even with compile time hashing should be sorted into more recently used being on top
+ */
 enum class ESocketMessagePrivateType : uint8
 {
     Unknown = 0,
@@ -42,10 +45,14 @@ enum class ESocketMessagePrivateType : uint8
     LoadMoreMessages,
     GetConversations,
     AddConversation,
+    GetFriendRequestList,
+    GetFriendList,
     InitialClientData,
     InitialConversations,
     CreateFriendRequest,
     AcceptFriendRequest,
+    RejectFriendRequest,
+    CancelFriendRequest,
     RemoveFriend,
 
     Error = 255

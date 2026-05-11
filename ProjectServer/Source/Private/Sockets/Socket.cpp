@@ -387,7 +387,7 @@ void FSocket::EarlySocketExit(AnyWebSocket wsVariant, const char* Message, uWS::
 {
 	nlohmann::json ErrorJson;
 	ErrorJson["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Error);
-	ErrorJson["message"] = "";
+	ErrorJson["message"] = Message;
 
 	std::visit([&](auto* ws)
 	{

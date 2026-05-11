@@ -28,6 +28,12 @@ enum class ERejectFriendRequestStatus : uint8
     RequestNotExists,
 };
 
+enum class ECancelFriendRequestStatus : uint8
+{
+    RequestCanceled,
+    RequestNotExists,
+};
+
 /** Structure which holds friends */
 struct FFriendList
 {
@@ -49,6 +55,8 @@ struct FFriendRequestList
 class FFriendListManager
 {
 public:
+    FFriendListManager(FThreadsManager* InThreadsManager);
+
     /**
      * Function used to create friend request
      * @param SendingId Who wants to add other ID
@@ -65,10 +73,17 @@ public:
 
     /**
      * Function used to reject friend request
-     * @param AcceptingId Who is rejecting existing friend-request
-     * @param SendingId Who is being rejected
+     * @param RejectingId Who is rejecting existing friend-request
+     * @param RejectedId Who is being rejected
      */
-    ERejectFriendRequestStatus RejectFriendRequest(Uint64 AcceptingId, Uint64 SendingId);
+    ERejectFriendRequestStatus RejectFriendRequest(Uint64 RejectingId, Uint64 RejectedId);
+
+    /**
+     * Function used to cancel friend request
+     * @param CancelingId Who is canceling existing friend-request
+     * @param CanceledId Who is being canceled
+     */
+    ECancelFriendRequestStatus CancelFriendRequest(Uint64 CancelingId, Uint64 CanceledId);
 
     /**
      * Function used to remove friend
@@ -77,10 +92,8 @@ public:
      */
     ERemoveFriendStatus RemoveFriend(Uint64 RemovingId, Uint64 RemovedId);
 
-    /** Should be called on login to download user friend list and friend requests list */
-    void DownloadFriendListForUserId(Uint64 UserId);
-
     bool HasFriendListForUserId(Uint64 UserId);
+    bool HasFriendRequestListForUserId(Uint64 UserId);
 
     /**
      * Function used to check if two users are friends
@@ -94,8 +107,17 @@ public:
     /** Get friend list map (Copy for thread safety) */
     std::unordered_map<Uint64, bool> GetUserFriendListMapByUserId(Uint64 UserId);
 
-    /** Get both array and a map (Copy for thread safety) */
+    /** Get structure with both array and a map (Copy for thread safety) */
     FFriendList GetUserFriendListWholeByUserId(Uint64 UserId);
+
+    /** Get structure with a map (Copy for thread safety) */
+    FFriendRequestList GetUserFriendRequestListWholeByUserId(Uint64 UserId);
+
+    /** Get friend list using specified range for specified user */
+    std::vector<Uint64> GetFriendListInRange(Uint64 UserId, Uint64 Offset, Uint64 Limit);
+
+    /** Get friend request list using specified range for specified user */
+    std::vector<Uint64> GetFriendRequestListInRange(Uint64 UserId, Uint64 Offset, Uint64 Limit);
 
 private:
     /**
@@ -121,5 +143,7 @@ private:
 
     /** Mutex for friend request list map access */
     std::shared_mutex FriendRequestListMutex;
+
+    FThreadsManager* ThreadsManager;
 
 };

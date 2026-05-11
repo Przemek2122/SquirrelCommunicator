@@ -211,6 +211,46 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
+		case ESocketMessagePrivateType::GetFriendList:
+		{
+			if (JsonMessage["data"].contains("offset") && JsonMessage["data"].contains("limit"))
+			{
+				const std::string OffsetString = JsonMessage["data"]["offset"];
+				const std::string LimitString = JsonMessage["data"]["limit"];
+
+				const int32 Offset = atoi(OffsetString.c_str());
+				const int32 Limit = atoi(LimitString.c_str());
+
+				OnMessageReceived_GetFriendList(wsVariant, opCode, Offset, Limit);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::GetFriendRequestList:
+		{
+			if (JsonMessage["data"].contains("offset") && JsonMessage["data"].contains("limit"))
+			{
+				const std::string OffsetString = JsonMessage["data"]["offset"];
+				const std::string LimitString = JsonMessage["data"]["limit"];
+
+				const int32 Offset = atoi(OffsetString.c_str());
+				const int32 Limit = atoi(LimitString.c_str());
+
+				OnMessageReceived_GetFriendRequestsList(wsVariant, opCode, Offset, Limit);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
 		case ESocketMessagePrivateType::CreateFriendRequest:
 		{
 			if (JsonMessage["data"].contains("other_id"))
@@ -229,6 +269,40 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 		}
 
 		case ESocketMessagePrivateType::AcceptFriendRequest:
+		{
+			if (JsonMessage["data"].contains("other_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_AcceptFriendRequest(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::RejectFriendRequest:
+		{
+			if (JsonMessage["data"].contains("other_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_RejectFriendRequest(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
+		case ESocketMessagePrivateType::CancelFriendRequest:
 		{
 			if (JsonMessage["data"].contains("other_id"))
 			{
@@ -718,28 +792,29 @@ void FPrivateSocketData::OnMessageReceived_CreateFriendRequest(AnyWebSocket wsVa
 
 			if (CurrentUserId == OtherUserId)
 			{
-				FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+				FSocket::EarlySocketExit(wsVariant, "cannot friend yourself", opCode);
 				return;
 			}
 
-			const EFriendRequestStatus RequestStatus = ProjectEngine->GetFriendListManager()->SendFriendRequest(CurrentUserId, OtherUserId);
-
-			switch (RequestStatus)
+			const EFriendRequestStatus Status = ProjectEngine->GetFriendListManager()->SendFriendRequest(CurrentUserId, OtherUserId);
+			if (Status == EFriendRequestStatus::RequestAdded)
 			{
-				case EFriendRequestStatus::RequestAdded:
-				{
-
-
-					break;
-				}
-				case EFriendRequestStatus::RequestAlreadyExists:
-				{
-
-					break;
-				}
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CreateFriendRequest, "friend request added");
+				ws->send(JSON.dump(), opCode);
 			}
-
-
+			else if (Status == EFriendRequestStatus::RequestAlreadyExists)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CreateFriendRequest, "friend request already exists");
+				ws->send(JSON.dump(), opCode);
+			}
+			else
+			{
+#if DEBUG
+				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
+#endif
+				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				return;
+			}
 		}
 		else
 		{
@@ -759,13 +834,108 @@ void FPrivateSocketData::OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVa
 
 			if (CurrentUserId == OtherUserId)
 			{
+				FSocket::EarlySocketExit(wsVariant, "cannot accept yourself", opCode);
+				return;
+			}
+
+			const EAcceptFriendRequestStatus Status = ProjectEngine->GetFriendListManager()->AcceptFriendRequest(CurrentUserId, OtherUserId);
+			if (Status == EAcceptFriendRequestStatus::RequestAccepted)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::AcceptFriendRequest, "friend request accepted");
+				ws->send(JSON.dump(), opCode);
+			}
+			else if (Status == EAcceptFriendRequestStatus::RequestNotExists)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::AcceptFriendRequest, "no friend request");
+				ws->send(JSON.dump(), opCode);
+			}
+			else
+			{
+#if DEBUG
+				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
+#endif
+				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				return;
+			}
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_RejectFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			if (CurrentUserId == OtherUserId)
+			{
 				FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
 				return;
 			}
 
+			const ERejectFriendRequestStatus Status = ProjectEngine->GetFriendListManager()->RejectFriendRequest(CurrentUserId, OtherUserId);
+			if (Status == ERejectFriendRequestStatus::RequestRejected)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RejectFriendRequest, "friend request rejected");
+				ws->send(JSON.dump(), opCode);
+			}
+			else if (Status == ERejectFriendRequestStatus::RequestNotExists)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RejectFriendRequest, "friend request not found");
+				ws->send(JSON.dump(), opCode);
+			}
+			else
+			{
+#if DEBUG
+				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
+#endif
+				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				return;
+			}
 
 		}
 	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_CancelFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+{
+	FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+	if (WebSocketSessionData != nullptr && OtherUserId > 0)
+	{
+		const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+		if (CurrentUserId == OtherUserId)
+		{
+			FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+			return;
+		}
+
+		const ECancelFriendRequestStatus Status = ProjectEngine->GetFriendListManager()->CancelFriendRequest(CurrentUserId, OtherUserId);
+		if (Status == ECancelFriendRequestStatus::RequestCanceled)
+		{
+			const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CancelFriendRequest, "friend request canceled");
+			ws->send(JSON.dump(), opCode);
+		}
+		else if (Status == ECancelFriendRequestStatus::RequestNotExists)
+		{
+			const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CancelFriendRequest, "friend request not found");
+			ws->send(JSON.dump(), opCode);
+		}
+		else
+		{
+#if DEBUG
+			LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
+#endif
+			FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+			return;
+		}
+	}
+}, wsVariant);
 }
 
 void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
@@ -783,8 +953,81 @@ void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, 
 				return;
 			}
 
+			const ERemoveFriendStatus Status = ProjectEngine->GetFriendListManager()->RemoveFriend(CurrentUserId, OtherUserId);
+			if (Status == ERemoveFriendStatus::FriendRemoved)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RemoveFriend, "friend removed");
+				ws->send(JSON.dump(), opCode);
+			}
+			else if (Status == ERemoveFriendStatus::FriendNotExists)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RemoveFriend, "friend not found");
+				ws->send(JSON.dump(), opCode);
+			}
+			else
+			{
+	#if DEBUG
+				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
+	#endif
+				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				return;
+			}
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_GetFriendRequestsList(AnyWebSocket wsVariant, const uWS::OpCode opCode, const int32 Offset, const int32 Limit)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			if (Limit <= 0)
+			{
+				FSocket::EarlySocketExit(wsVariant, "Limit <= 0", opCode);
+				return;
+			}
+
+			FFriendListManager* FriendListManager = ProjectEngine->GetFriendListManager();
+			std::vector<Uint64> FriendRequestListVector = FriendListManager->GetFriendRequestListInRange(CurrentUserId, Offset, Limit);
 
 
+		}
+		else
+		{
+			FSocket::EarlySocketExit(wsVariant, "user not found", opCode);
+			return;
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_GetFriendList(AnyWebSocket wsVariant, uWS::OpCode opCode, const int32 Offset, const int32 Limit)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			if (Limit <= 0)
+			{
+				FSocket::EarlySocketExit(wsVariant, "Limit <= 0", opCode);
+				return;
+			}
+
+			FFriendListManager* FriendListManager = ProjectEngine->GetFriendListManager();
+			std::vector<Uint64> FriendListVector = FriendListManager->GetFriendListInRange(CurrentUserId, Offset, Limit);
+
+
+		}
+		else
+		{
+			FSocket::EarlySocketExit(wsVariant, "user not found", opCode);
+			return;
 		}
 	}, wsVariant);
 }
@@ -871,5 +1114,15 @@ nlohmann::json FPrivateSocketData::FormatUsersToJson(const std::vector<uint64_t>
 	// Standard JSON with root object
 	nlohmann::json JsonRoot;
 	JsonRoot["data"] = DataUserArray;
+	return JsonRoot;
+}
+
+nlohmann::json FPrivateSocketData::FormatDataToJson(const ESocketMessagePrivateType Type, const std::string& Message)
+{
+	nlohmann::json JsonRoot;
+
+	JsonRoot["type"] = SocketMessagePrivateTypeToString(Type);
+	JsonRoot["message"] = Message;
+
 	return JsonRoot;
 }

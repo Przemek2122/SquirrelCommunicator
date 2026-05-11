@@ -51,13 +51,27 @@ public:
     /** Used to add friend */
     void OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
 
+    /** Used to reject friend request */
+    void OnMessageReceived_RejectFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
+    /** Used to cancel friend request */
+    void OnMessageReceived_CancelFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
     /** Used to remove friend */
     void OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
+    /** Used to get friend requests list */
+    void OnMessageReceived_GetFriendRequestsList(AnyWebSocket wsVariant, uWS::OpCode opCode, int32 Offset, int32 Limit);
+
+    /** Used to get friend list */
+    void OnMessageReceived_GetFriendList(AnyWebSocket wsVariant, uWS::OpCode opCode, int32 Offset, int32 Limit);
 
 private:
     /** returns conversation json aray */
     nlohmann::json FormatConversationIntoJson(const CArray<Uint64>& ConversationIds);
     nlohmann::json FormatUsersToJson(const std::vector<uint64_t>& UserIds, const std::vector<std::string>& DisplayNames);
+
+    nlohmann::json FormatDataToJson(const ESocketMessagePrivateType Type, const std::string& Message);
 
 private:
     /** Pointer to main class */
