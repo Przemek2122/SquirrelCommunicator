@@ -309,7 +309,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
 				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
 
-				OnMessageReceived_AcceptFriendRequest(wsVariant, opCode, OtherUserId);
+				OnMessageReceived_CancelFriendRequest(wsVariant, opCode, OtherUserId);
 			}
 			else
 			{
@@ -807,6 +807,21 @@ void FPrivateSocketData::OnMessageReceived_CreateFriendRequest(AnyWebSocket wsVa
 				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CreateFriendRequest, "friend request already exists");
 				ws->send(JSON.dump(), opCode);
 			}
+			else if (Status == EFriendRequestStatus::FriendAlreadyExists)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CreateFriendRequest, "already friends");
+				ws->send(JSON.dump(), opCode);
+			}
+			else if (Status == EFriendRequestStatus::SentRequestsLimitReached)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CreateFriendRequest, "sent requests limit reached");
+				ws->send(JSON.dump(), opCode);
+			}
+			else if (Status == EFriendRequestStatus::IncomingRequestsLimitReached)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CreateFriendRequest, "target incoming requests limit reached");
+				ws->send(JSON.dump(), opCode);
+			}
 			else
 			{
 #if DEBUG
@@ -847,6 +862,11 @@ void FPrivateSocketData::OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVa
 			else if (Status == EAcceptFriendRequestStatus::RequestNotExists)
 			{
 				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::AcceptFriendRequest, "no friend request");
+				ws->send(JSON.dump(), opCode);
+			}
+			else if (Status == EAcceptFriendRequestStatus::FriendsLimitReached)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::AcceptFriendRequest, "friends limit reached");
 				ws->send(JSON.dump(), opCode);
 			}
 			else
@@ -993,8 +1013,37 @@ void FPrivateSocketData::OnMessageReceived_GetFriendRequestsList(AnyWebSocket ws
 
 			FFriendListManager* FriendListManager = ProjectEngine->GetFriendListManager();
 			std::vector<Uint64> FriendRequestListVector = FriendListManager->GetFriendRequestListInRange(CurrentUserId, Offset, Limit);
+			std::vector<Uint64> IncomingFriendRequestListVector = FriendListManager->GetIncomingFriendRequestListInRange(CurrentUserId, Offset, Limit);
 
+			FUserManager* UserManager = ProjectEngine->GetUserManager();
+			
+			auto FormatRequests = [&](const std::vector<Uint64>& Ids) {
+				nlohmann::json Array = nlohmann::json::array();
+				std::vector<std::shared_ptr<FUser>> Users;
+				UserManager->GetUsersByIds(Ids, Users);
+				for (const auto& User : Users) {
+					if (User) {
+						nlohmann::json Obj;
+						Obj["id"] = User->GetUserId();
+						Obj["name"] = User->GetUserNameString();
+						Obj["status"] = UserStatusToString(User->GetUserStatus());
+						Array.push_back(Obj);
+					}
+				}
+				return Array;
+			};
 
+			nlohmann::json JsonData;
+			JsonData["sent"] = FormatRequests(FriendRequestListVector);
+			JsonData["incoming"] = FormatRequests(IncomingFriendRequestListVector);
+			JsonData["offset"] = Offset;
+			JsonData["limit"] = Limit;
+
+			nlohmann::json JsonRoot;
+			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::GetFriendRequestList);
+			JsonRoot["data"] = JsonData;
+
+			ws->send(JsonRoot.dump(), opCode);
 		}
 		else
 		{
@@ -1022,7 +1071,31 @@ void FPrivateSocketData::OnMessageReceived_GetFriendList(AnyWebSocket wsVariant,
 			FFriendListManager* FriendListManager = ProjectEngine->GetFriendListManager();
 			std::vector<Uint64> FriendListVector = FriendListManager->GetFriendListInRange(CurrentUserId, Offset, Limit);
 
+			FUserManager* UserManager = ProjectEngine->GetUserManager();
+			std::vector<std::shared_ptr<FUser>> Users;
+			UserManager->GetUsersByIds(FriendListVector, Users);
 
+			nlohmann::json FriendsArray = nlohmann::json::array();
+			for (const auto& User : Users) {
+				if (User) {
+					nlohmann::json Obj;
+					Obj["id"] = User->GetUserId();
+					Obj["name"] = User->GetUserNameString();
+					Obj["status"] = UserStatusToString(User->GetUserStatus());
+					FriendsArray.push_back(Obj);
+				}
+			}
+
+			nlohmann::json JsonData;
+			JsonData["friends"] = FriendsArray;
+			JsonData["offset"] = Offset;
+			JsonData["limit"] = Limit;
+
+			nlohmann::json JsonRoot;
+			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::GetFriendList);
+			JsonRoot["data"] = JsonData;
+
+			ws->send(JsonRoot.dump(), opCode);
 		}
 		else
 		{

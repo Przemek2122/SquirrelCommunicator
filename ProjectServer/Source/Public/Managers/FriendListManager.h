@@ -8,12 +8,16 @@ enum class EFriendRequestStatus : uint8
 {
     RequestAdded,
     RequestAlreadyExists,
+    FriendAlreadyExists,
+    SentRequestsLimitReached,
+    IncomingRequestsLimitReached,
 };
 
 enum class EAcceptFriendRequestStatus : uint8
 {
     RequestAccepted,
     RequestNotExists,
+    FriendsLimitReached,
 };
 
 enum class ERemoveFriendStatus : uint8
@@ -55,7 +59,7 @@ struct FFriendRequestList
 class FFriendListManager
 {
 public:
-    FFriendListManager(FThreadsManager* InThreadsManager);
+    FFriendListManager(FThreadsManager* InThreadsManager, int32 InMaxSentRequests = 25, int32 InMaxIncomingRequests = 25, int32 InMaxFriends = 200);
 
     /**
      * Function used to create friend request
@@ -119,6 +123,13 @@ public:
     /** Get friend request list using specified range for specified user */
     std::vector<Uint64> GetFriendRequestListInRange(Uint64 UserId, Uint64 Offset, Uint64 Limit);
 
+    /** Get incoming friend request list using specified range for specified user */
+    std::vector<Uint64> GetIncomingFriendRequestListInRange(Uint64 UserId, Uint64 Offset, Uint64 Limit);
+
+    int32 GetMaxSentRequests() const { return MaxSentRequests; }
+    int32 GetMaxIncomingRequests() const { return MaxIncomingRequests; }
+    int32 GetMaxFriends() const { return MaxFriends; }
+
 private:
     /**
      * Function used to fetch friends from database for user ID
@@ -145,5 +156,9 @@ private:
     std::shared_mutex FriendRequestListMutex;
 
     FThreadsManager* ThreadsManager;
+
+    int32 MaxSentRequests;
+    int32 MaxIncomingRequests;
+    int32 MaxFriends;
 
 };

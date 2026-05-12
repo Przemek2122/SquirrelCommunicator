@@ -27,8 +27,6 @@ FProjectEngine::FProjectEngine()
 	// Collect Database settings
 	FDataBaseSettings::Initialize();
 
-	FriendListManager = std::make_unique<FFriendListManager>(GetThreadsManager());
-
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTestEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAuthEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
@@ -45,12 +43,41 @@ void FProjectEngine::Init()
 	LOG_DEBUG("Server init");
 
 	UserManager = std::make_unique<FUserManager>();
+
 	BackendSettings->LoadBackendSettings();
+	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
+	if (ServerSettingsIni->DoesIniExist())
+	{
+		// Read limits from settings or use defaults
+		int32 MaxSentRequests = 10;
+		int32 MaxIncomingRequests = 10;
+		int32 MaxFriends = 25;
+
+		const FIniField MaxSentRequestsField = ServerSettingsIni->FindFieldByName("MaxSentRequests");
+		if (MaxSentRequestsField.IsValid())
+		{
+			MaxSentRequests = MaxSentRequestsField.GetValueAsInt();
+		}
+
+		const FIniField MaxIncomingRequestsField = ServerSettingsIni->FindFieldByName("MaxIncomingRequests");
+		if (MaxIncomingRequestsField.IsValid())
+		{
+			MaxIncomingRequests = MaxIncomingRequestsField.GetValueAsInt();
+		}
+
+		const FIniField MaxFriendsField = ServerSettingsIni->FindFieldByName("MaxFriends");
+		if (MaxFriendsField.IsValid())
+		{
+			MaxFriends = MaxFriendsField.GetValueAsInt();
+		}
+
+		FriendListManager = std::make_unique<FFriendListManager>(GetThreadsManager(), MaxSentRequests, MaxIncomingRequests, MaxFriends);
+	}
+
 	AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
 	DefaultHeadersCache = GetDefaultHeaders();
 	RoomsManager = std::make_unique<FRoomsServiceManager>();
 
-	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
 	if (ServerSettingsIni->DoesIniExist())
 	{
 		// Get time for token to be alive

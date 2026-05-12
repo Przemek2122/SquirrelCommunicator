@@ -6,23 +6,39 @@
 #include <soci/rowset.h>
 #include "soci/transaction.h"
 #include "Threads/ThreadsManager.h"
+#include <algorithm>
 
-FFriendListManager::FFriendListManager(FThreadsManager* InThreadsManager)
+FFriendListManager::FFriendListManager(FThreadsManager* InThreadsManager, int32 InMaxSentRequests, int32 InMaxIncomingRequests, int32 InMaxFriends)
     : ThreadsManager(InThreadsManager)
+    , MaxSentRequests(InMaxSentRequests)
+    , MaxIncomingRequests(InMaxIncomingRequests)
+    , MaxFriends(InMaxFriends)
 {
 }
 
 EFriendRequestStatus FFriendListManager::SendFriendRequest(const Uint64 SendingId, const Uint64 ReceivingId)
 {
+    if (IsFriend(SendingId, ReceivingId))
+    {
+        return EFriendRequestStatus::FriendAlreadyExists;
+    }
+
     // Thread-safe check of the local cache
     {
         std::shared_lock<std::shared_mutex> Lock(FriendRequestListMutex);
-        const bool bUserAlreadyExists = UserIdToFriendRequestList.contains(SendingId);
-        if (bUserAlreadyExists)
+        
+        // Check if I already sent a request to this person
+        if (UserIdToFriendRequestList.contains(SendingId))
         {
             if (UserIdToFriendRequestList[SendingId].FriendRequests.contains(ReceivingId))
             {
                 return EFriendRequestStatus::RequestAlreadyExists;
+            }
+
+            // Check sent requests limit
+            if (UserIdToFriendRequestList[SendingId].FriendRequests.size() >= static_cast<size_t>(MaxSentRequests))
+            {
+                return EFriendRequestStatus::SentRequestsLimitReached;
             }
         }
     }
@@ -45,11 +61,28 @@ EFriendRequestStatus FFriendListManager::SendFriendRequest(const Uint64 SendingI
 
             if (rowCount > 0)
             {
-#if DEBUG
-                LOG_INFO("Friend request already exists in the database.");
-#endif
-
                 return EFriendRequestStatus::RequestAlreadyExists;
+            }
+
+            // Double check limits in DB if needed, but for now cache is source of truth for "online" users
+            // and we rely on it. In a real scenario we'd query DB for count.
+            
+            long long sentCount = 0;
+            DataBaseSession << "SELECT count(*) FROM friend_requests WHERE id_requesting = :sid",
+                soci::into(sentCount), soci::use(SendingId);
+            
+            if (sentCount >= MaxSentRequests)
+            {
+                return EFriendRequestStatus::SentRequestsLimitReached;
+            }
+
+            long long incomingCount = 0;
+            DataBaseSession << "SELECT count(*) FROM friend_requests WHERE id_target = :aid",
+                soci::into(incomingCount), soci::use(ReceivingId);
+
+            if (incomingCount >= MaxIncomingRequests)
+            {
+                return EFriendRequestStatus::IncomingRequestsLimitReached;
             }
 
             DataBaseSession << "INSERT INTO friend_requests (id_requesting, id_target) VALUES (:sid, :aid)",
@@ -73,7 +106,8 @@ EFriendRequestStatus FFriendListManager::SendFriendRequest(const Uint64 SendingI
 EAcceptFriendRequestStatus FFriendListManager::AcceptFriendRequest(const Uint64 AcceptingId, const Uint64 SendingId)
 {
     const bool bFriendRequestExists = DoesFriendRequestExist(AcceptingId, SendingId);
-    if (bFriendRequestExists)
+    const bool bFriendExists = IsFriend(AcceptingId, SendingId);
+    if (bFriendRequestExists && !bFriendExists)
     {
         try
         {
@@ -86,8 +120,10 @@ EAcceptFriendRequestStatus FFriendListManager::AcceptFriendRequest(const Uint64 
                 // Transaction to ensure we do not lose friend request in case of failure
                 soci::transaction Tr(DataBaseSession);
 
+                // @TODO Adding checking number of friends would be nice
+
                 // Add friend
-                DataBaseSession << "INSERT INTO friends (id_requesting, id_target) VALUES (:sid, :aid)",
+                DataBaseSession << "INSERT INTO friend_list (id_requesting, id_target) VALUES (:sid, :aid)",
                     soci::use(SendingId), soci::use(AcceptingId);
 
                 // Remove request
@@ -233,7 +269,7 @@ ERemoveFriendStatus FFriendListManager::RemoveFriend(const Uint64 RemovingId, co
                 long long Id2 = static_cast<long long>(RemovedId);
 
                 // Remove whoever were first
-                DataBaseSession << "DELETE FROM friends WHERE "
+                DataBaseSession << "DELETE FROM friend_list WHERE "
                                    "(id_requesting = :id1a AND id_target = :id2a) OR "
                                    "(id_requesting = :id2b AND id_target = :id1b)",
                     soci::use(Id1), soci::use(Id2), soci::use(Id2), soci::use(Id1);
@@ -436,6 +472,72 @@ std::vector<Uint64> FFriendListManager::GetFriendRequestListInRange(const Uint64
     return OutVector;
 }
 
+std::vector<Uint64> FFriendListManager::GetIncomingFriendRequestListInRange(const Uint64 UserId, const Uint64 Offset, const Uint64 Limit)
+{
+    std::vector<Uint64> OutVector;
+
+    // For incoming requests, we need to iterate over all users' sent requests
+    // because our cache is indexed by sender.
+    // In a real high-scale system, we'd have a secondary index.
+    
+    std::vector<Uint64> AllIncomingIds;
+    {
+        std::shared_lock<std::shared_mutex> Lock(FriendRequestListMutex);
+        for (const auto& [SenderId, RequestList] : UserIdToFriendRequestList)
+        {
+            if (RequestList.FriendRequests.contains(UserId))
+            {
+                AllIncomingIds.push_back(SenderId);
+            }
+        }
+    }
+
+    // Also check DB if cache might be incomplete for "offline" senders
+    // For now, let's assume DownloadFriendRequestListForUserId should have populated enough,
+    // but incoming requests can come from anyone.
+    
+    try
+    {
+        FDataBaseConnect Connect;
+        if (Connect.IsConnected())
+        {
+            soci::session& DataBaseSession = Connect.GetSession();
+            
+            long long Sid = 0;
+            long long DBUserId = static_cast<long long>(UserId);
+
+            soci::statement Statement =
+                (DataBaseSession.prepare << "SELECT id_requesting FROM friend_requests WHERE id_target = :tid",
+                 soci::into(Sid),
+                 soci::use(DBUserId));
+
+            Statement.execute();
+
+            while (Statement.fetch())
+            {
+                Uint64 USid = static_cast<Uint64>(Sid);
+                if (std::find(AllIncomingIds.begin(), AllIncomingIds.end(), USid) == AllIncomingIds.end())
+                {
+                    AllIncomingIds.push_back(USid);
+                }
+            }
+        }
+    }
+    catch (const soci::soci_error& e)
+    {
+        LOG_ERROR("SOCI Error: " << e.what());
+    }
+
+    const Uint64 TotalRequests = AllIncomingIds.size();
+    if (Offset < TotalRequests)
+    {
+        const Uint64 EndIndex = std::min(Offset + Limit, TotalRequests);
+        OutVector.assign(AllIncomingIds.begin() + Offset, AllIncomingIds.begin() + EndIndex);
+    }
+
+    return OutVector;
+}
+
 void FFriendListManager::DownloadFriendListFromDB(const Uint64 UserId)
 {
     std::vector<Uint64> DownloadedFriends;
@@ -452,7 +554,7 @@ void FFriendListManager::DownloadFriendListFromDB(const Uint64 UserId)
             long long DBUserId = static_cast<long long>(UserId);
 
             soci::statement st = (DataBaseSession.prepare <<
-                "SELECT id_requesting, id_target FROM friends WHERE id_requesting = :id1 OR id_target = :id2",
+                "SELECT id_requesting, id_target FROM friend_list WHERE id_requesting = :id1 OR id_target = :id2",
                 soci::into(IdRequesting),
                 soci::into(IdTarget),
                 soci::use(DBUserId),
@@ -525,7 +627,7 @@ void FFriendListManager::DownloadFriendRequestListForUserId(Uint64 UserId)
                 const Uint64 Sender = IdRequesting;
                 const Uint64 Receiver = IdTarget;
 
-                DownloadedRequests.push_back({Sender, Receiver});
+                DownloadedRequests.emplace_back(Sender, Receiver);
             }
         }
     }
@@ -551,58 +653,43 @@ void FFriendListManager::DownloadFriendRequestListForUserId(Uint64 UserId)
 
 bool FFriendListManager::DoesFriendRequestExist(Uint64 AcceptingId, Uint64 SendingId)
 {
-    // Check if we have user downloaded
-    bool bUserExists;
-
     // Thread-safe check of the local cache
     {
         std::shared_lock<std::shared_mutex> Lock(FriendRequestListMutex);
-        bUserExists = UserIdToFriendRequestList.contains(SendingId);
-    }
-
-    bool bDoesUserHaveFriendRequest = false;
-
-    if (!bUserExists)
-    {
-        // Search in DB for user
-        try
+        if (UserIdToFriendRequestList.contains(AcceptingId))
         {
-            FDataBaseConnect Connect;
-            if (Connect.IsConnected())
+            if (UserIdToFriendRequestList[AcceptingId].FriendRequests.contains(SendingId))
             {
-                // Get database connection session
-                soci::session& DataBaseSession = Connect.GetSession();
-
-                // Check if the request actually exists in DB and is still 'pending'
-                long long rowCount = 0;
-                DataBaseSession << "SELECT count(*) FROM friend_requests "
-                                   "WHERE id_requesting = :sid AND id_target = :aid",
-                    soci::use(SendingId), soci::use(AcceptingId), soci::into(rowCount);
-
-                if (rowCount > 0)
-                {
-                    bDoesUserHaveFriendRequest = true;
-                }
-            }
-        }
-        catch (const soci::soci_error& e)
-        {
-            LOG_ERROR("SOCI Error: " << e.what());
-        }
-    }
-    else
-    {
-        // We need to check again and lock and if exists, remove
-        std::unique_lock<std::shared_mutex> Lock(FriendRequestListMutex);
-        if (UserIdToFriendRequestList.contains(SendingId))
-        {
-            if (UserIdToFriendRequestList[SendingId].FriendRequests.contains(AcceptingId))
-            {
-                bDoesUserHaveFriendRequest = true;
-                UserIdToFriendRequestList[SendingId].FriendRequests.erase(AcceptingId);
+                return true;
             }
         }
     }
 
-    return bDoesUserHaveFriendRequest;
+    // If not in cache, check DB
+    try
+    {
+        FDataBaseConnect Connect;
+        if (Connect.IsConnected())
+        {
+            // Get database connection session
+            soci::session& DataBaseSession = Connect.GetSession();
+
+            // Check if the request actually exists in DB and is still 'pending'
+            long long rowCount = 0;
+            DataBaseSession << "SELECT count(*) FROM friend_requests "
+                               "WHERE id_requesting = :sid AND id_target = :aid",
+                soci::use(SendingId), soci::use(AcceptingId), soci::into(rowCount);
+
+            if (rowCount > 0)
+            {
+                return true;
+            }
+        }
+    }
+    catch (const soci::soci_error& e)
+    {
+        LOG_ERROR("SOCI Error: " << e.what());
+    }
+
+    return false;
 }
