@@ -396,6 +396,18 @@ FFriendRequestList FFriendListManager::GetUserFriendRequestListWholeByUserId(Uin
     return { };
 }
 
+std::vector<Uint64> FFriendListManager::GetFriendsListArrayByUserId(Uint64 UserId)
+{
+    std::shared_lock<std::shared_mutex> Lock(FriendListMutex);
+
+    if (UserIdToFriendList.contains(UserId))
+    {
+        return UserIdToFriendList[UserId].FriendsArray;
+    }
+
+    return { };
+}
+
 std::vector<Uint64> FFriendListManager::GetFriendListInRange(const Uint64 UserId, const Uint64 Offset, const Uint64 Limit)
 {
     std::vector<Uint64> OutVector;

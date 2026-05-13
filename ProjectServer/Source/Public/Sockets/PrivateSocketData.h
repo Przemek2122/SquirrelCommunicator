@@ -30,7 +30,7 @@ public:
     /** Called when user is reading message */
     void OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId);
 
-    /** @TODO: Does not work properly */
+    /** @TODO: Temporary, socket will send this data once on connect or disconnect of user using friendlist */
     void OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 UserId);
 
     /** Called when user is searching for another user */

@@ -6,6 +6,7 @@
 #include <nlohmann/json_fwd.hpp>
 #include "PrivateSocketData.h"
 #include "RoomsSocketData.h"
+#include "Auth/UserManager.h"
 #include "Misc/WebSockets/AppWrapper.h"
 
 class FUser;
@@ -38,7 +39,7 @@ public:
 	void OnPing(auto* ws);
 	void OnPong(auto* ws);
 
-	static void EarlySocketExit(AnyWebSocket wsVariant, const char* Message, uWS::OpCode opCode);
+	static void EarlyExit(AnyWebSocket wsVariant, const char* Message, uWS::OpCode opCode);
 	static std::string GenerateUserTopic(Uint64 UserId);
 
 	FProjectEngine* GetProjectEngine() const { return ProjectEngine; }
@@ -49,6 +50,11 @@ private:
 	void OnMessageReceived_Ping(auto* ws, std::string_view message, uWS::OpCode opCode);
 	void OnMessageReceived_Pong(auto* ws, std::string_view message, uWS::OpCode opCode);
 	/** EndDefault uWS OpCodes */
+
+	void AddWebSocketForConnectedUser(auto* ws, FWebSocketSessionData* WebSocketSessionData);
+	void RemoveWebSocketForDisconnectedUser(Uint64 UserId);
+
+	void BroadcastUserStatus(FUserManager* UserManger, Uint64 ConnectedUserId, EUserStatus NewUserStatus);
 
 private:
 	/** per socket index to find which socket is user connected to */

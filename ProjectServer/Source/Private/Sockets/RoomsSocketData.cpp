@@ -24,7 +24,7 @@ void FRoomsSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& Jso
         LOG_ERROR("Message does not contain type");
 #endif
 
-        FSocket::EarlySocketExit(wsVariant, "missing type", opCode);
+        FSocket::EarlyExit(wsVariant, "missing type", opCode);
 
         // Handle error
         return;
@@ -36,7 +36,7 @@ void FRoomsSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& Jso
         LOG_ERROR("Message does not contain data");
 #endif
 
-        FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+        FSocket::EarlyExit(wsVariant, "missing data", opCode);
 
         // Handle error
         return;
@@ -56,7 +56,7 @@ void FRoomsSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& Jso
             }
             else
             {
-                FSocket::EarlySocketExit(wsVariant, "missing room_name", opCode);
+                FSocket::EarlyExit(wsVariant, "missing room_name", opCode);
             }
 
             break;
@@ -89,7 +89,7 @@ void FRoomsSocketData::CreateRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, co
     // 1. Basic validation
     if (RoomName.empty())
     {
-        FSocket::EarlySocketExit(wsVariant, "empty room_name", opCode);
+        FSocket::EarlyExit(wsVariant, "empty room_name", opCode);
 
         return;
     }
@@ -141,6 +141,6 @@ void FRoomsSocketData::CreateRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, co
     }
     else
     {
-        FSocket::EarlySocketExit(wsVariant, "service abuse", opCode);
+        FSocket::EarlyExit(wsVariant, "service abuse", opCode);
     }
 }

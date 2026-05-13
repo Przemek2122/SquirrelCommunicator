@@ -117,6 +117,9 @@ public:
     /** Get structure with a map (Copy for thread safety) */
     FFriendRequestList GetUserFriendRequestListWholeByUserId(Uint64 UserId);
 
+    /** Get friend list array (Copy for thread safety) */
+    std::vector<Uint64> GetFriendsListArrayByUserId(Uint64 UserId);
+
     /** Get friend list using specified range for specified user */
     std::vector<Uint64> GetFriendListInRange(Uint64 UserId, Uint64 Offset, Uint64 Limit);
 

@@ -25,7 +25,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 		LOG_ERROR("Message does not contain type");
 #endif
 
-		FSocket::EarlySocketExit(wsVariant, "missing type", opCode);
+		FSocket::EarlyExit(wsVariant, "missing type", opCode);
 
 		// Handle error
 		return;
@@ -37,7 +37,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 		LOG_ERROR("Message does not contain data");
 #endif
 
-		FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+		FSocket::EarlyExit(wsVariant, "missing data", opCode);
 
 		// Handle error
 		return;
@@ -61,7 +61,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -78,7 +78,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -95,7 +95,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -112,7 +112,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -128,7 +128,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -158,7 +158,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 				}
 				else
 				{
-					FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+					FSocket::EarlyExit(wsVariant, "missing data", opCode);
 				}
 			}
 
@@ -187,7 +187,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 				}
 				else
 				{
-					FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+					FSocket::EarlyExit(wsVariant, "missing data", opCode);
 				}
 			}
 
@@ -205,7 +205,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -225,7 +225,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -245,7 +245,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -262,7 +262,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -279,7 +279,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -296,7 +296,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -313,7 +313,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -330,7 +330,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			}
 			else
 			{
-				FSocket::EarlySocketExit(wsVariant, "missing data", opCode);
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
 			}
 
 			break;
@@ -525,6 +525,7 @@ void FPrivateSocketData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS:
 
 void FPrivateSocketData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 UserId)
 {
+	/*
 	std::visit([&](auto* ws)
 	{
 		FUserManager* UserManager = ProjectEngine->GetUserManager();
@@ -546,6 +547,7 @@ void FPrivateSocketData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uW
 			ws->send(JsonRoot.dump(), uWS::OpCode::TEXT);
 		}
 	}, wsVariant);
+	*/
 }
 
 void FPrivateSocketData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern)
@@ -732,47 +734,51 @@ void FPrivateSocketData::OnMessageReceived_AddConversation(AnyWebSocket wsVarian
 			UserIdArray.Push(OtherUserId);
 
 			FConversationsManager* ConversationManager = ProjectEngine->GetConversationsManager();
+			FFriendListManager* FriendListManager = ProjectEngine->GetFriendListManager();
 
-			// Find or create conversation
-			bool bIsNewConversation = false;
-			const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray.Vector, bIsNewConversation);
-
-			const nlohmann::json MessageJson = FormatConversationIntoJson({ ConversationId });
-
-			nlohmann::json JsonRoot;
-			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::AddConversation);
-			JsonRoot["message"] = MessageJson;
-			ws->send(JsonRoot.dump(), opCode);
-
-			if (bIsNewConversation)
+			if (FriendListManager->IsFriend(OtherUserId, WebSocketSessionData->UserId))
 			{
-				FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
-				FUserManager* UserManager = ProjectEngine->GetUserManager();
+				// Find or create conversation
+				bool bIsNewConversation = false;
+				const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray.Vector, bIsNewConversation);
 
-				std::shared_ptr<FConversationData> ConversationPtr = ConversationManager->GetConversation(ConversationId);
-				for (Uint64 Id : ConversationPtr->UsersIds)
+				const nlohmann::json MessageJson = FormatConversationIntoJson({ ConversationId });
+
+				nlohmann::json JsonRoot;
+				JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::AddConversation);
+				JsonRoot["message"] = MessageJson;
+				ws->send(JsonRoot.dump(), opCode);
+
+				if (bIsNewConversation)
 				{
-					// Can't send publish to self
-					if (Id != WebSocketSessionData->UserId)
+					FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+					FUserManager* UserManager = ProjectEngine->GetUserManager();
+
+					std::shared_ptr<FConversationData> ConversationPtr = ConversationManager->GetConversation(ConversationId);
+					for (Uint64 Id : ConversationPtr->UsersIds)
 					{
-						std::vector<std::shared_ptr<FUser>> UserPtrArray;
-						UserManager->GetUsersByIds({ Id }, UserPtrArray);
-						if (UserPtrArray.size() == 1)
+						// Can't send publish to self
+						if (Id != WebSocketSessionData->UserId)
 						{
-							FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, Id](void* ws)
+							std::vector<std::shared_ptr<FUser>> UserPtrArray;
+							UserManager->GetUsersByIds({ Id }, UserPtrArray);
+							if (UserPtrArray.size() == 1)
 							{
-								auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
-
-								// To send message to a specific user
-								const std::string UserTopic = FSocket::GenerateUserTopic(Id);
-								if (WebSocket->isSubscribed(UserTopic))
+								FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, Id](void* ws)
 								{
-									WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
-								}
-							};
+									auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
 
-							const std::shared_ptr<FUser>& UserPtr = UserPtrArray[0];
-							SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), Id, SocketAccessFunctor);
+									// To send message to a specific user
+									const std::string UserTopic = FSocket::GenerateUserTopic(Id);
+									if (WebSocket->isSubscribed(UserTopic))
+									{
+										WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+									}
+								};
+
+								const std::shared_ptr<FUser>& UserPtr = UserPtrArray[0];
+								SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), Id, SocketAccessFunctor);
+							}
 						}
 					}
 				}
@@ -792,7 +798,7 @@ void FPrivateSocketData::OnMessageReceived_CreateFriendRequest(AnyWebSocket wsVa
 
 			if (CurrentUserId == OtherUserId)
 			{
-				FSocket::EarlySocketExit(wsVariant, "cannot friend yourself", opCode);
+				FSocket::EarlyExit(wsVariant, "cannot friend yourself", opCode);
 				return;
 			}
 
@@ -827,13 +833,13 @@ void FPrivateSocketData::OnMessageReceived_CreateFriendRequest(AnyWebSocket wsVa
 #if DEBUG
 				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
 #endif
-				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				FSocket::EarlyExit(wsVariant, "request failed", opCode);
 				return;
 			}
 		}
 		else
 		{
-			FSocket::EarlySocketExit(wsVariant, "missing type", opCode);
+			FSocket::EarlyExit(wsVariant, "missing type", opCode);
 		}
 	}, wsVariant);
 }
@@ -849,7 +855,7 @@ void FPrivateSocketData::OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVa
 
 			if (CurrentUserId == OtherUserId)
 			{
-				FSocket::EarlySocketExit(wsVariant, "cannot accept yourself", opCode);
+				FSocket::EarlyExit(wsVariant, "cannot accept yourself", opCode);
 				return;
 			}
 
@@ -874,7 +880,7 @@ void FPrivateSocketData::OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVa
 #if DEBUG
 				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
 #endif
-				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				FSocket::EarlyExit(wsVariant, "request failed", opCode);
 				return;
 			}
 		}
@@ -892,7 +898,7 @@ void FPrivateSocketData::OnMessageReceived_RejectFriendRequest(AnyWebSocket wsVa
 
 			if (CurrentUserId == OtherUserId)
 			{
-				FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+				FSocket::EarlyExit(wsVariant, "cannot remove yourself", opCode);
 				return;
 			}
 
@@ -912,7 +918,7 @@ void FPrivateSocketData::OnMessageReceived_RejectFriendRequest(AnyWebSocket wsVa
 #if DEBUG
 				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
 #endif
-				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				FSocket::EarlyExit(wsVariant, "request failed", opCode);
 				return;
 			}
 
@@ -931,7 +937,7 @@ void FPrivateSocketData::OnMessageReceived_CancelFriendRequest(AnyWebSocket wsVa
 
 		if (CurrentUserId == OtherUserId)
 		{
-			FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+			FSocket::EarlyExit(wsVariant, "cannot remove yourself", opCode);
 			return;
 		}
 
@@ -951,7 +957,7 @@ void FPrivateSocketData::OnMessageReceived_CancelFriendRequest(AnyWebSocket wsVa
 #if DEBUG
 			LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
 #endif
-			FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+			FSocket::EarlyExit(wsVariant, "request failed", opCode);
 			return;
 		}
 	}
@@ -969,7 +975,7 @@ void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, 
 
 			if (CurrentUserId == OtherUserId)
 			{
-				FSocket::EarlySocketExit(wsVariant, "cannot remove yourself", opCode);
+				FSocket::EarlyExit(wsVariant, "cannot remove yourself", opCode);
 				return;
 			}
 
@@ -989,7 +995,7 @@ void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, 
 	#if DEBUG
 				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
 	#endif
-				FSocket::EarlySocketExit(wsVariant, "request failed", opCode);
+				FSocket::EarlyExit(wsVariant, "request failed", opCode);
 				return;
 			}
 		}
@@ -1007,7 +1013,7 @@ void FPrivateSocketData::OnMessageReceived_GetFriendRequestsList(AnyWebSocket ws
 
 			if (Limit <= 0)
 			{
-				FSocket::EarlySocketExit(wsVariant, "Limit <= 0", opCode);
+				FSocket::EarlyExit(wsVariant, "Limit <= 0", opCode);
 				return;
 			}
 
@@ -1047,7 +1053,7 @@ void FPrivateSocketData::OnMessageReceived_GetFriendRequestsList(AnyWebSocket ws
 		}
 		else
 		{
-			FSocket::EarlySocketExit(wsVariant, "user not found", opCode);
+			FSocket::EarlyExit(wsVariant, "user not found", opCode);
 			return;
 		}
 	}, wsVariant);
@@ -1064,7 +1070,7 @@ void FPrivateSocketData::OnMessageReceived_GetFriendList(AnyWebSocket wsVariant,
 
 			if (Limit <= 0)
 			{
-				FSocket::EarlySocketExit(wsVariant, "Limit <= 0", opCode);
+				FSocket::EarlyExit(wsVariant, "Limit <= 0", opCode);
 				return;
 			}
 
@@ -1099,7 +1105,7 @@ void FPrivateSocketData::OnMessageReceived_GetFriendList(AnyWebSocket wsVariant,
 		}
 		else
 		{
-			FSocket::EarlySocketExit(wsVariant, "user not found", opCode);
+			FSocket::EarlyExit(wsVariant, "user not found", opCode);
 			return;
 		}
 	}, wsVariant);
