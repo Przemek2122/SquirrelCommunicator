@@ -28,9 +28,6 @@ RUN if [ -f /usr/lib64/pkgconfig/libmariadb.pc ]; then \
     fi
 RUN ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
 
-# Random argument to ensure we have next steps rebuild each time we call build instead of caching them
-ARG CACHE_BUST=1
-
 # Work dir
 RUN mkdir /var/repos
 WORKDIR /var/repos
@@ -38,6 +35,9 @@ WORKDIR /var/repos
 # Projects
 RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
 RUN git clone -b communicator https://github.com/Przemek2122/Engine.git
+
+# Random argument to ensure we have next steps rebuild each time we call build instead of caching them
+ARG CACHE_BUST=1
 
 # Engine submodules
 WORKDIR /var/repos/Engine
