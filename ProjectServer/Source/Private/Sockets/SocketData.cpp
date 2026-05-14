@@ -45,6 +45,7 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
 		case HashString("message"):					return ESocketMessagePrivateType::Message;
 		case HashString("typing"):					return ESocketMessagePrivateType::Typing;
 		case HashString("mark_read"):				return ESocketMessagePrivateType::MarkRead;
+		case HashString("user_status"):				return ESocketMessagePrivateType::UserStatus;
 		case HashString("search_user"):				return ESocketMessagePrivateType::SearchUser;
 		case HashString("load_more_messages"):		return ESocketMessagePrivateType::LoadMoreMessages;
 		case HashString("get_conversations"):		return ESocketMessagePrivateType::GetConversations;
@@ -72,6 +73,7 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
 		case ESocketMessagePrivateType::Message:				return "message";
 		case ESocketMessagePrivateType::Typing:					return "typing";
 		case ESocketMessagePrivateType::MarkRead:				return "mark_read";
+		case ESocketMessagePrivateType::UserStatus:				return "user_status";
 		case ESocketMessagePrivateType::SearchUser:				return "search_user";
 		case ESocketMessagePrivateType::LoadMoreMessages:		return "load_more_messages";
 		case ESocketMessagePrivateType::GetConversations:		return "get_conversations";

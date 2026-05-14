@@ -40,6 +40,7 @@ enum class ESocketMessagePrivateType : uint8
     Message,
     Typing,
     MarkRead,
+    UserStatus,
     SearchUser,
     LoadMoreMessages,
     GetConversations,
