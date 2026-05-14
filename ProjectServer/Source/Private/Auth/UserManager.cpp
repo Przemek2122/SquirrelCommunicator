@@ -139,6 +139,10 @@ ERegisterUserStatus FUserManager::RegisterIntegration(const std::string& InUserN
 			{
 				RegisterUserStatus = ERegisterUserStatus::Successful;
 			}
+			else
+			{
+				RegisterUserStatus = ERegisterUserStatus::DataBaseInsertFailed;
+			}
 		}
 		else if (CheckOpResult != EDatabaseOperationResult::Success)
 		{

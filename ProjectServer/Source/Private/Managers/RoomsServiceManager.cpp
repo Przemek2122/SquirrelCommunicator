@@ -75,15 +75,13 @@ bool FRoomsServiceManager::CreateRoom(const std::string& RoomName)
         }
         catch (const nlohmann::json::exception& e)
         {
-            LOG_ERROR("Blad parsowania odpowiedzi CreateRoom: " << e.what());
+            LOG_ERROR("parsing of CreateRoom failed: " << e.what());
         }
     }
     else
     {
-        LOG_ERROR("Nie udalo sie stworzyc pokoju. Kod: " << CPRResponse.status_code << ", Wiadomosc: " << CPRResponse.text);
+        LOG_ERROR("Failed to create room in Go. Status: " << CPRResponse.status_code << " Msg: " << CPRResponse.text);
     }
-
-    LOG_ERROR("Failed to create room in Go. Status: " << CPRResponse.status_code << " Msg: " << CPRResponse.text);
 
     return false;
 }
@@ -126,7 +124,7 @@ ERoomExistenceStatus FRoomsServiceManager::CheckRoom(const std::string& RoomName
         }
         catch (const nlohmann::json::exception& e)
         {
-            LOG_ERROR("Blad parsowania JSON z serwera Go: " << e.what());
+            LOG_ERROR("Error json parsing in rooms service: " << e.what());
             return ERoomExistenceStatus::Unknown;
         }
     }

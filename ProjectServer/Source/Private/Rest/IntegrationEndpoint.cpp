@@ -255,7 +255,35 @@ std::shared_ptr<FUser> FIntegrationEndpoint::RegisterIntegration(crow::response 
 	}
 	else
 	{
-		LOG_ERROR("Integration - Unable to register in internal database.");
+		switch (RegisterResult)
+		{
+		case ERegisterUserStatus::MailTaken:
+			LOG_ERROR("Integration - Mail already taken during registration.");
+			break;
+		case ERegisterUserStatus::PasswordLengthIncorrect:
+			LOG_ERROR("Integration - Password length incorrect during registration.");
+			break;
+		case ERegisterUserStatus::MailLengthIncorrect:
+			LOG_ERROR("Integration - Mail length incorrect during registration.");
+			break;
+		case ERegisterUserStatus::UserNameLengthIncorrect:
+			LOG_ERROR("Integration - User name length incorrect during registration.");
+			break;
+		case ERegisterUserStatus::MailIncorrect:
+			LOG_ERROR("Integration - Mail format incorrect during registration.");
+			break;
+		case ERegisterUserStatus::PasswordIncorrect:
+			LOG_ERROR("Integration - Password format incorrect during registration.");
+			break;
+		case ERegisterUserStatus::DataBaseInsertFailed:
+			LOG_ERROR("Integration - Database insert failed during registration.");
+			break;
+		case ERegisterUserStatus::DataBaseConnectionFailed:
+			LOG_ERROR("Integration - Database connection failed during registration.");
+			break;
+		default:
+			LOG_ERROR("Integration - Unknown error during registration.");
+		}
 
 		OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
 			{ { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
