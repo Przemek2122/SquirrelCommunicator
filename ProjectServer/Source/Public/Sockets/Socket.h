@@ -41,6 +41,7 @@ public:
 
 	static void EarlyExit(AnyWebSocket wsVariant, const char* Message, uWS::OpCode opCode);
 	static std::string GenerateUserTopic(Uint64 UserId);
+	static std::string GenerateVoiceRoomNameFromIds(std::vector<Uint64> IdArray);
 
 	FProjectEngine* GetProjectEngine() const { return ProjectEngine; }
 

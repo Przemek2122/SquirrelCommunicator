@@ -30,9 +30,6 @@ public:
     /** Called when user is reading message */
     void OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId);
 
-    /** @TODO: Temporary, socket will send this data once on connect or disconnect of user using friendlist */
-    void OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 UserId);
-
     /** Called when user is searching for another user */
     void OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern);
 
@@ -57,14 +54,17 @@ public:
     /** Used to cancel friend request */
     void OnMessageReceived_CancelFriendRequest(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
 
-    /** Used to remove friend */
-    void OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
-
     /** Used to get friend requests list */
     void OnMessageReceived_GetFriendRequestsList(AnyWebSocket wsVariant, uWS::OpCode opCode, int32 Offset, int32 Limit);
 
     /** Used to get friend list */
     void OnMessageReceived_GetFriendList(AnyWebSocket wsVariant, uWS::OpCode opCode, int32 Offset, int32 Limit);
+
+    /** Used to remove friend */
+    void OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
+    /** Used to join voice chat */
+    void OnMessageReceived_DataStreamChannel(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
 
 private:
     /** returns conversation json aray */

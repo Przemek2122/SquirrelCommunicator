@@ -1,6 +1,7 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
 #pragma once
+#include <shared_mutex>
 
 enum class ERoomExistenceStatus
 {
@@ -25,10 +26,9 @@ public:
      * Creates a new room with the specified name and token.
      *
      * @param RoomName The name of the room to create.
-     * @param RoomToken Token is like a password for rooms.
      * @return True if the room creation was successful, false otherwise.
      */
-    bool CreateRoom(const std::string& RoomName, const std::string& RoomToken);
+    bool CreateRoom(const std::string& RoomName);
 
     /**
      * Call to query GO Voice Service to check if a room exists.
@@ -37,9 +37,22 @@ public:
      */
     ERoomExistenceStatus CheckRoom(const std::string& RoomName);
 
+    /** @return Room token if exists, empty string otherwise */
+    std::string GetRoomToken(const std::string& RoomName);
+
     /** @Note: connection is done by users browser. */
+
+private:
+    /** Creates token for given room. It's like password for room access */
+    std::string CreateRoomToken(const std::string& RoomName);
 
 private:
     std::string ServicePassword;
     std::string ServiceAddress;
+
+    /** Mutex for RoomNameToToken */
+    std::shared_mutex RoomNameToTokenMutex;
+
+    /** Each room token */
+    std::unordered_map<std::string, std::string> RoomNameToToken;
 };

@@ -3,6 +3,9 @@
 #include "Managers/RoomsServiceManager.h"
 #include <cpr/cpr.h>
 #include "crow/json.h"
+#include "Misc/EncryptionUtil.h"
+#include "nlohmann/json.hpp"
+#include "nlohmann/json_fwd.hpp"
 
 FRoomsServiceManager::FRoomsServiceManager()
 {
@@ -27,10 +30,10 @@ FRoomsServiceManager::FRoomsServiceManager()
     }
 }
 
-bool FRoomsServiceManager::CreateRoom(const std::string& RoomName, const std::string& RoomToken)
+bool FRoomsServiceManager::CreateRoom(const std::string& RoomName)
 {
     // If either the name OR the token is empty, abort.
-    if (RoomName.empty() || RoomToken.empty())
+    if (RoomName.empty())
     {
         return false;
     }
@@ -38,11 +41,11 @@ bool FRoomsServiceManager::CreateRoom(const std::string& RoomName, const std::st
     // 1. Build the request body in JSON format
     crow::json::wvalue JSONData;
     JSONData["RoomId"] = RoomName;
-    JSONData["Token"] = RoomToken;
+    JSONData["Token"] = CreateRoomToken(RoomName);
 
     // 2. Construct the target URL
     // Let's assume ServiceAddress is "http://localhost:8082"
-    const std::string TargetURL = ServiceAddress + "/api/create_room";
+    const std::string TargetURL = ServiceAddress + "/api/rooms/create";
 
     // 3. Synchronous POST request (blocks the current thread, which is fine here)
     cpr::Response CPRResponse = cpr::Post(
@@ -59,7 +62,25 @@ bool FRoomsServiceManager::CreateRoom(const std::string& RoomName, const std::st
     // Your Go code uses w.WriteHeader(http.StatusCreated), which is code 201.
     if (CPRResponse.status_code == 201)
     {
-        return true;
+        try
+        {
+            nlohmann::json JsonResponse = nlohmann::json::parse(CPRResponse.text);
+
+            if (JsonResponse["created"].get<bool>())
+            {
+                LOG_INFO("Created room in Go Voice Service.");
+
+                return true;
+            }
+        }
+        catch (const nlohmann::json::exception& e)
+        {
+            LOG_ERROR("Blad parsowania odpowiedzi CreateRoom: " << e.what());
+        }
+    }
+    else
+    {
+        LOG_ERROR("Nie udalo sie stworzyc pokoju. Kod: " << CPRResponse.status_code << ", Wiadomosc: " << CPRResponse.text);
     }
 
     LOG_ERROR("Failed to create room in Go. Status: " << CPRResponse.status_code << " Msg: " << CPRResponse.text);
@@ -76,7 +97,7 @@ ERoomExistenceStatus FRoomsServiceManager::CheckRoom(const std::string& RoomName
     }
 
     // 1. Construct the target URL base
-    std::string TargetURL = ServiceAddress + "/api/check_room";
+    const std::string TargetURL = ServiceAddress + "/api/rooms/check";
 
     // 2. Synchronous GET request
     cpr::Response r = cpr::Get(
@@ -92,15 +113,73 @@ ERoomExistenceStatus FRoomsServiceManager::CheckRoom(const std::string& RoomName
     // GO Voice Service code uses w.WriteHeader(http.StatusOK) for success, which is code 200.
     if (r.status_code == 200)
     {
-        // Room exists
-        return ERoomExistenceStatus::Exists;
+        try
+        {
+            if (nlohmann::json JsonResponse = nlohmann::json::parse(r.text); JsonResponse["exists"].get<bool>())
+            {
+                return ERoomExistenceStatus::Exists;
+            }
+            else
+            {
+                return ERoomExistenceStatus::NotExists;
+            }
+        }
+        catch (const nlohmann::json::exception& e)
+        {
+            LOG_ERROR("Blad parsowania JSON z serwera Go: " << e.what());
+            return ERoomExistenceStatus::Unknown;
+        }
     }
-
-    if (r.status_code == 404)
+    else
     {
-        // Room does not exist (this is an expected, valid response)
-        return ERoomExistenceStatus::NotExists;
+        LOG_ERROR("Rooms service API error, Status: " << r.status_code);
+
+        return ERoomExistenceStatus::Unknown;
     }
 
     return ERoomExistenceStatus::Unknown;
+}
+
+std::string FRoomsServiceManager::GetRoomToken(const std::string& RoomName)
+{
+    std::shared_lock<std::shared_mutex> Lock(RoomNameToTokenMutex);
+
+    auto TokenIter = RoomNameToToken.find(RoomName);
+    if (TokenIter != RoomNameToToken.end())
+    {
+        return TokenIter->second;
+    }
+
+    return "";
+}
+
+std::string FRoomsServiceManager::CreateRoomToken(const std::string& RoomName)
+{
+    bool bTokenExists = false;
+    std::string Token = "";
+
+    {
+        // Lock shared to check if token exists already
+        std::shared_lock<std::shared_mutex> Lock(RoomNameToTokenMutex);
+
+        auto TokenIter = RoomNameToToken.find(RoomName);
+        if (TokenIter != RoomNameToToken.end())
+        {
+            bTokenExists = true;
+            Token = TokenIter->second;
+        }
+    }
+
+    if (!bTokenExists)
+    {
+        // @TODO: What should be actual length of Token?
+        // Create token
+        Token = FEncryptionUtil::GenerateSecureSalt(48);
+        Token = FEncryptionUtil::ToBaseN_Irreversible(Token, FPredefinedCharsets::BASE62);
+
+        std::unique_lock<std::shared_mutex> Lock(RoomNameToTokenMutex);
+        RoomNameToToken[RoomName] = Token;
+    }
+
+    return Token;
 }

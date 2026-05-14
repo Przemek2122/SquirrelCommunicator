@@ -7,6 +7,7 @@
 #include "Auth/UserManager.h"
 #include "DataBase/DataBaseConnect.h"
 #include "Managers/ConversationsManager.h"
+#include "Managers/RoomsServiceManager.h"
 #include "nlohmann/json.hpp"
 #include "soci/statement.h"
 #include "Sockets/SocketManager.h"
@@ -92,23 +93,6 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 
 				// Handle mark read
 				OnMessageReceived_MarkRead(wsVariant, opCode, ConversationId);
-			}
-			else
-			{
-				FSocket::EarlyExit(wsVariant, "missing data", opCode);
-			}
-
-			break;
-		}
-
-		case ESocketMessagePrivateType::UserStatus:
-		{
-			if (JsonMessage["data"].contains("user_id"))
-			{
-				Uint64 UserId = JsonMessage["data"]["user_id"];
-
-				// Handle mark read
-				OnMessageReceived_UserStatus(wsVariant, opCode, UserId);
 			}
 			else
 			{
@@ -336,6 +320,23 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
+		case ESocketMessagePrivateType::DataStreamChannel:
+		{
+			if (JsonMessage["data"].contains("other_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_DataStreamChannel(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
 		/** Errors */
 		case ESocketMessagePrivateType::Unknown:
 		default:
@@ -521,33 +522,6 @@ void FPrivateSocketData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS:
 			}
 		}
 	}, wsVariant);
-}
-
-void FPrivateSocketData::OnMessageReceived_UserStatus(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 UserId)
-{
-	/*
-	std::visit([&](auto* ws)
-	{
-		FUserManager* UserManager = ProjectEngine->GetUserManager();
-
-		std::vector<std::shared_ptr<FUser>> UserPtrArray;
-		if (UserManager->GetUsersByIds({ UserId }, UserPtrArray) && UserPtrArray.size() == 1)
-		{
-			const std::shared_ptr<FUser>& UserPtr = UserPtrArray[0];
-
-			nlohmann::json MessageJson;
-			MessageJson["user_id"] = UserPtr->GetUserId();
-			MessageJson["status"] = UserStatusToString(UserPtr->GetUserStatus());
-
-			nlohmann::json JsonRoot;
-			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::UserStatus);
-			JsonRoot["message"] = MessageJson;
-
-			// Publish does not work for self, so we need special case
-			ws->send(JsonRoot.dump(), uWS::OpCode::TEXT);
-		}
-	}, wsVariant);
-	*/
 }
 
 void FPrivateSocketData::OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern)
@@ -964,44 +938,6 @@ void FPrivateSocketData::OnMessageReceived_CancelFriendRequest(AnyWebSocket wsVa
 }, wsVariant);
 }
 
-void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
-{
-	std::visit([&](auto* ws)
-	{
-		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
-		if (WebSocketSessionData != nullptr && OtherUserId > 0)
-		{
-			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
-
-			if (CurrentUserId == OtherUserId)
-			{
-				FSocket::EarlyExit(wsVariant, "cannot remove yourself", opCode);
-				return;
-			}
-
-			const ERemoveFriendStatus Status = ProjectEngine->GetFriendListManager()->RemoveFriend(CurrentUserId, OtherUserId);
-			if (Status == ERemoveFriendStatus::FriendRemoved)
-			{
-				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RemoveFriend, "friend removed");
-				ws->send(JSON.dump(), opCode);
-			}
-			else if (Status == ERemoveFriendStatus::FriendNotExists)
-			{
-				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RemoveFriend, "friend not found");
-				ws->send(JSON.dump(), opCode);
-			}
-			else
-			{
-	#if DEBUG
-				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
-	#endif
-				FSocket::EarlyExit(wsVariant, "request failed", opCode);
-				return;
-			}
-		}
-	}, wsVariant);
-}
-
 void FPrivateSocketData::OnMessageReceived_GetFriendRequestsList(AnyWebSocket wsVariant, const uWS::OpCode opCode, const int32 Offset, const int32 Limit)
 {
 	std::visit([&](auto* ws)
@@ -1107,6 +1043,89 @@ void FPrivateSocketData::OnMessageReceived_GetFriendList(AnyWebSocket wsVariant,
 		{
 			FSocket::EarlyExit(wsVariant, "user not found", opCode);
 			return;
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			if (CurrentUserId == OtherUserId)
+			{
+				FSocket::EarlyExit(wsVariant, "cannot remove yourself", opCode);
+				return;
+			}
+
+			const ERemoveFriendStatus Status = ProjectEngine->GetFriendListManager()->RemoveFriend(CurrentUserId, OtherUserId);
+			if (Status == ERemoveFriendStatus::FriendRemoved)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RemoveFriend, "friend removed");
+				ws->send(JSON.dump(), opCode);
+			}
+			else if (Status == ERemoveFriendStatus::FriendNotExists)
+			{
+				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RemoveFriend, "friend not found");
+				ws->send(JSON.dump(), opCode);
+			}
+			else
+			{
+	#if DEBUG
+				LOG_ERROR("Unknown friend request status: " << static_cast<int32>(Status));
+	#endif
+				FSocket::EarlyExit(wsVariant, "request failed", opCode);
+				return;
+			}
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_DataStreamChannel(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0 && OtherUserId != WebSocketSessionData->UserId)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			// Check if both users are friends
+			FFriendListManager* FriendListManager = ProjectEngine->GetFriendListManager();
+			if (!FriendListManager->IsFriend(CurrentUserId, OtherUserId))
+			{
+				return FSocket::EarlyExit(wsVariant, "not friends", opCode);
+			}
+
+			const std::string RoomName = FSocket::GenerateVoiceRoomNameFromIds({CurrentUserId, OtherUserId});
+
+			const ERoomExistenceStatus CheckRoomResult = ProjectEngine->GetRoomsManager()->CheckRoom(RoomName);
+			if (CheckRoomResult == ERoomExistenceStatus::NotExists)
+			{
+				// Create room if missing
+				const bool bIsRoomCreated = ProjectEngine->GetRoomsManager()->CreateRoom(RoomName);
+				if (!bIsRoomCreated)
+				{
+					LOG_ERROR("Failed to create room");
+					return;
+				}
+			}
+
+			const std::string RoomToken = ProjectEngine->GetRoomsManager()->GetRoomToken(RoomName);
+
+			nlohmann::json JsonData;
+			JsonData["name"] = RoomName;
+			JsonData["token"] = RoomToken;
+
+			nlohmann::json JsonRoot;
+			JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::DataStreamChannel);
+			JsonRoot["data"] = JsonData;
+
+			ws->send(JsonRoot.dump(), opCode);
 		}
 	}, wsVariant);
 }

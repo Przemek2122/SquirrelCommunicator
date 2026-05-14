@@ -407,6 +407,21 @@ std::string FSocket::GenerateUserTopic(const Uint64 UserId)
 	return "user_" + std::to_string(UserId);
 }
 
+std::string FSocket::GenerateVoiceRoomNameFromIds(std::vector<Uint64> IdArray)
+{
+	// Sort array to get always same order of ids and same name regardless of which Id is first
+	std::ranges::sort(IdArray);
+
+	std::string OutString = "priv_voice_";
+
+	for (const Uint64 Id : IdArray)
+	{
+		OutString += std::to_string(Id);
+	}
+
+	return OutString;
+}
+
 void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::OpCode opCode)
 {
 #if DEBUG

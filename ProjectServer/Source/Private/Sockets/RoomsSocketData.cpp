@@ -110,9 +110,8 @@ void FRoomsSocketData::CreateRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, co
         const std::string EncryptionToken = FEncryptionUtil::EncryptDataCustom(RoomNameFull, EncryptionKey);
         const std::string GeneratedToken = "tkn_" + EncryptionToken;
 
-
         AbuseProtection->AddCreateRoomAttempt(ClientIP);
-        const bool bSuccess = RoomsManager->CreateRoom(RoomName, GeneratedToken);
+        const bool bSuccess = RoomsManager->CreateRoom(RoomName);
 
         nlohmann::json response;
         response["section"] = "rooms";
