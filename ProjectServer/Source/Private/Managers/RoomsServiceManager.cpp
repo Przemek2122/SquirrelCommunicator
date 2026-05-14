@@ -161,7 +161,7 @@ std::string FRoomsServiceManager::CreateRoomToken(const std::string& RoomName)
         std::shared_lock<std::shared_mutex> Lock(RoomNameToTokenMutex);
 
         auto TokenIter = RoomNameToToken.find(RoomName);
-        if (TokenIter != RoomNameToToken.end())
+        if (TokenIter != RoomNameToToken.end() && TokenIter->second != "")
         {
             bTokenExists = true;
             Token = TokenIter->second;
