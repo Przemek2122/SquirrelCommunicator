@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 ARCH=${1:-x64}
 INITIAL_SAVED_DIR=$(pwd)
