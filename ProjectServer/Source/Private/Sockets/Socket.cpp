@@ -67,8 +67,13 @@ FSocket::~FSocket()
 
 void FSocket::AddDeferTaskForConnectionId(const Uint64 UserId, FFunctorLambda<void, void*>& FunctionToCallOnSocket)
 {
-	std::shared_lock<std::shared_mutex> Lock(UserIdToWebSocketPtrMapMutex);
-	const std::optional<AnyWebSocket> WebSocketOptionalPtr = UserIdToWebSocketPtrMap.FindValueByKey(UserId);
+	std::optional<AnyWebSocket> WebSocketOptionalPtr;
+
+	{
+		std::shared_lock<std::shared_mutex> Lock(UserIdToWebSocketPtrMapMutex);
+		WebSocketOptionalPtr = UserIdToWebSocketPtrMap.FindValueByKey(UserId);
+	}
+
 	if (WebSocketOptionalPtr.has_value())
 	{
 		std::visit([&](auto* ws)
@@ -531,14 +536,12 @@ void FSocket::BroadcastUserStatus(FUserManager* UserManger, const Uint64 Connect
 
 	for (const Uint64 FriendID : FriendListArray)
 	{
-		std::shared_ptr<FUser> UserPtr = FriendListMap[FriendID];
-
-		FFunctorLambda<void, void*> SocketAccessFunctor = [NewUserStatus, UserPtr](void* ws2)
+		FFunctorLambda<void, void*> SocketAccessFunctor = [ConnectedUserId, NewUserStatus](void* ws2)
 		{
 			auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws2);
 
 			nlohmann::json MessageJson;
-			MessageJson["user_id"] = UserPtr->GetUserId();
+			MessageJson["user_id"] = ConnectedUserId;
 			MessageJson["status"] = UserStatusToString(NewUserStatus);
 
 			nlohmann::json JsonRoot;
@@ -552,6 +555,8 @@ void FSocket::BroadcastUserStatus(FUserManager* UserManger, const Uint64 Connect
 
 		AddDeferTaskForConnectionId(FriendID, SocketAccessFunctor);
 		FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+
+		const std::shared_ptr<FUser> UserPtr = FriendListMap[FriendID];
 		SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), FriendID, SocketAccessFunctor);
 	}
 }

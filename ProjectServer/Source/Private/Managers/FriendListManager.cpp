@@ -386,6 +386,12 @@ FFriendList FFriendListManager::GetUserFriendListWholeByUserId(const Uint64 User
 
 FFriendRequestList FFriendListManager::GetUserFriendRequestListWholeByUserId(Uint64 UserId)
 {
+    // @TODO: Should be async for more users with proper callback
+    if (!HasFriendListForUserId(UserId))
+    {
+        DownloadFriendListFromDB(UserId);
+    }
+
     std::shared_lock<std::shared_mutex> Lock(FriendRequestListMutex);
 
     if (UserIdToFriendRequestList.contains(UserId))
@@ -398,6 +404,12 @@ FFriendRequestList FFriendListManager::GetUserFriendRequestListWholeByUserId(Uin
 
 std::vector<Uint64> FFriendListManager::GetFriendsListArrayByUserId(Uint64 UserId)
 {
+    // @TODO: Should be async for more users with proper callback
+    if (!HasFriendListForUserId(UserId))
+    {
+        DownloadFriendListFromDB(UserId);
+    }
+
     std::shared_lock<std::shared_mutex> Lock(FriendListMutex);
 
     if (UserIdToFriendList.contains(UserId))
@@ -486,6 +498,8 @@ std::vector<Uint64> FFriendListManager::GetFriendRequestListInRange(const Uint64
 
 std::vector<Uint64> FFriendListManager::GetIncomingFriendRequestListInRange(const Uint64 UserId, const Uint64 Offset, const Uint64 Limit)
 {
+    // @TODO: This function could be done better. But is good enough for now
+
     std::vector<Uint64> OutVector;
 
     // For incoming requests, we need to iterate over all users' sent requests
