@@ -172,12 +172,50 @@ std::string FRoomsServiceManager::CreateRoomToken(const std::string& RoomName)
     {
         // @TODO: What should be actual length of Token?
         // Create token
-        Token = FEncryptionUtil::GenerateSecureSalt(48);
-        Token = FEncryptionUtil::ToBaseN_Irreversible(Token, FPredefinedCharsets::BASE62);
+        Token = GenerateRandomBase64(64);
 
         std::unique_lock<std::shared_mutex> Lock(RoomNameToTokenMutex);
         RoomNameToToken[RoomName] = Token;
     }
 
     return Token;
+}
+
+std::string FRoomsServiceManager::GenerateRandomBase64(const size_t OutLength)
+{
+    static constexpr std::string_view B64_CHARS =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    const size_t RequiredBytes = (OutLength * 3) / 4;
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dis(0, 255);
+
+    std::vector<unsigned char> RawData(RequiredBytes);
+    for (size_t i = 0; i < RequiredBytes; ++i) {
+        RawData[i] = static_cast<unsigned char>(dis(gen));
+    }
+
+    std::string Encoded;
+    Encoded.reserve(OutLength);
+
+    size_t i = 0;
+    while (i < RequiredBytes) {
+        uint32_t OctetA = RawData[i++];
+        uint32_t OctetB = (i < RequiredBytes) ? RawData[i++] : 0;
+        uint32_t OctetC = (i < RequiredBytes) ? RawData[i++] : 0;
+
+        uint32_t Triple = (OctetA << 16) + (OctetB << 8) + OctetC;
+
+        Encoded += B64_CHARS[(Triple >> 18) & 0x3F];
+        Encoded += B64_CHARS[(Triple >> 12) & 0x3F];
+
+        if (Encoded.length() < OutLength)
+            Encoded += B64_CHARS[(Triple >> 6) & 0x3F];
+        if (Encoded.length() < OutLength)
+            Encoded += B64_CHARS[Triple & 0x3F];
+    }
+
+    return Encoded;
 }

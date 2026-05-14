@@ -46,6 +46,8 @@ private:
     /** Creates token for given room. It's like password for room access */
     std::string CreateRoomToken(const std::string& RoomName);
 
+    static std::string GenerateRandomBase64(const size_t OutLength);
+
 private:
     std::string ServicePassword;
     std::string ServiceAddress;
