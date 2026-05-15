@@ -124,7 +124,7 @@ ERegisterUserStatus FUserManager::RegisterIntegration(const std::string& InUserN
 	{
 		bool bUserExists;
 		EDatabaseOperationResult CheckOpResult = DoesUserWithMailExists(InUserEMail, bUserExists);
-		if (CheckOpResult == EDatabaseOperationResult::Success && bUserExists)
+		if (CheckOpResult == EDatabaseOperationResult::Success && !bUserExists)
 		{
 			const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
 			FUser* User = UserPtr.get();
@@ -148,7 +148,7 @@ ERegisterUserStatus FUserManager::RegisterIntegration(const std::string& InUserN
 		{
 			RegisterUserStatus = ERegisterUserStatus::DataBaseConnectionFailed;
 		}
-		else
+		else if (bUserExists)
 		{
 			RegisterUserStatus = ERegisterUserStatus::MailTaken;
 		}
