@@ -9,6 +9,9 @@ services:
       - .env.backend
       - .env.voice
 
+    devices:
+        - "/dev/urandom:/dev/urandom"
+
     ports:
       - "8080:8080" # Backend rest
       - "8081:8081" # Backend socket
