@@ -39,8 +39,16 @@ RUN git clone -b communicator https://github.com/Przemek2122/Engine.git
 # Random argument to ensure we have next steps rebuild each time we call build instead of caching them
 ARG CACHE_BUST=1
 
-# Engine submodules
+# Update engine module
 WORKDIR /var/repos/Engine
+RUN git fetch
+RUN git pull
+RUN git submodule update --init --recursive
+
+# Update communicator module
+WORKDIR /var/repos/SquirrelCommunicator
+RUN git fetch
+RUN git pull
 RUN git submodule update --init --recursive
 
 # Compile

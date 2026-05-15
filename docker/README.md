@@ -27,7 +27,7 @@ SQRLL_COMM_MAIL_API_KEY=
 
 ```
 # Address for backend app
-SQRLL_VOICE_ADDRESS=localhost
+SQRLL_VOICE_ADDRESS=127.0.0.1
 
 # The port the Go service runs on for Voice and Backend app server
 SQRLL_VOICE_PORT=8082

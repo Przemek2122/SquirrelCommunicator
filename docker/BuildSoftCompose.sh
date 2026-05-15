@@ -43,7 +43,6 @@ fi
 echo "Configuration files found. Starting container build..."
 
 # Build and start
-docker compose build --build-arg CACHE_BUST=$(date +%s) backend
 $DOCKER_COMPOSE up --build -d
 
 echo "======================================================="
