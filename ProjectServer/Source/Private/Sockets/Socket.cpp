@@ -568,7 +568,7 @@ void FSocket::BroadcastUserStatus(FUserManager* UserManger, const Uint64 Connect
 			WebSocket->send(JsonRoot.dump(), uWS::TEXT);
 		};
 
-		AddDeferTaskForConnectionId(FriendID, SocketAccessFunctor);
+		//AddDeferTaskForConnectionId(FriendID, SocketAccessFunctor);
 		FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
 
 		const std::shared_ptr<FUser> UserPtr = FriendListMap[FriendID];

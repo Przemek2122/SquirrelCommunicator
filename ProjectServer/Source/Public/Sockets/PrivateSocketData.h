@@ -66,6 +66,9 @@ public:
     /** Used to join voice chat */
     void OnMessageReceived_DataStreamChannel(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
 
+    /** Used to handle incoming call */
+    void OnMessageReceived_OnUserCalling(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId);
+
 private:
     /** returns conversation json aray */
     nlohmann::json FormatConversationIntoJson(const CArray<Uint64>& ConversationIds);

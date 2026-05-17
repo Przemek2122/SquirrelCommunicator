@@ -55,6 +55,7 @@ enum class ESocketMessagePrivateType : uint8
     CancelFriendRequest,
     RemoveFriend,
     DataStreamChannel,
+    UserCalling,
 
     Error = 255
 };

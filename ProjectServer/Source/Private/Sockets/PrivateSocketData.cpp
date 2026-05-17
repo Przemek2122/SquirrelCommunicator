@@ -337,6 +337,23 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
+		case ESocketMessagePrivateType::UserCalling:
+		{
+			if (JsonMessage["data"].contains("other_id"))
+			{
+				const std::string OtherUserIdAsString = JsonMessage["data"]["other_id"];
+				const Uint64 OtherUserId = atoi(OtherUserIdAsString.c_str());
+
+				OnMessageReceived_OnUserCalling(wsVariant, opCode, OtherUserId);
+			}
+			else
+			{
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
 		/** Errors */
 		case ESocketMessagePrivateType::Unknown:
 		default:
@@ -1126,6 +1143,44 @@ void FPrivateSocketData::OnMessageReceived_DataStreamChannel(AnyWebSocket wsVari
 			JsonRoot["data"] = JsonData;
 
 			ws->send(JsonRoot.dump(), opCode);
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_OnUserCalling(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 OtherUserId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr && OtherUserId > 0)
+		{
+			const Uint64 CurrentUserId = WebSocketSessionData->UserId;
+
+			FFriendListManager* FriendManager = ProjectEngine->GetFriendListManager();
+			if (FriendManager->IsFriend(CurrentUserId, OtherUserId))
+			{
+				FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+				FUserManager* UserManager = ProjectEngine->GetUserManager();
+
+				FFunctorLambda<void, void*> SocketAccessFunctor = [CurrentUserId](void* ws2)
+				{
+					auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws2);
+
+					nlohmann::json MessageJson;
+					MessageJson["user_id"] = CurrentUserId;
+
+					nlohmann::json JsonRoot;
+					JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::UserCalling);
+					JsonRoot["section"] = SocketMessageSectionToString(ESocketMessageSection::Priv);
+					JsonRoot["data"] = MessageJson;
+
+					// Send initial client data
+					WebSocket->send(JsonRoot.dump(), uWS::TEXT);
+				};
+
+				const std::shared_ptr<FUser> UserPtr = UserManager->GetUserById(OtherUserId);
+				SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), OtherUserId, SocketAccessFunctor);
+			}
 		}
 	}, wsVariant);
 }

@@ -60,6 +60,7 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
 		case HashString("cancel_friend_request"):	return ESocketMessagePrivateType::CancelFriendRequest;
 		case HashString("remove_friend"):			return ESocketMessagePrivateType::RemoveFriend;
 		case HashString("data_stream_channel"):		return ESocketMessagePrivateType::DataStreamChannel;
+		case HashString("user_calling"):			return ESocketMessagePrivateType::UserCalling;
 
 		case HashString("error"):					return ESocketMessagePrivateType::Error;
 		default:										return ESocketMessagePrivateType::Unknown;
@@ -88,6 +89,7 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
 		case ESocketMessagePrivateType::CancelFriendRequest:	return "cancel_friend_request";
 		case ESocketMessagePrivateType::RemoveFriend:			return "remove_friend";
 		case ESocketMessagePrivateType::DataStreamChannel:		return "data_stream_channel";
+		case ESocketMessagePrivateType::UserCalling:			return "user_calling";
 
 		case ESocketMessagePrivateType::Error:					return "error";
 		case ESocketMessagePrivateType::Unknown:
