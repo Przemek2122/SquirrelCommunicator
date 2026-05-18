@@ -575,7 +575,7 @@ void FSocket::BroadcastUserStatus(FUserManager* UserManger, const Uint64 Connect
 		FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
 
 		const std::shared_ptr<FUser> UserPtr = FriendListMap[FriendID];
-		if (UserPtr != nullptr && UserPtr->GetUserStatus() != EUserStatus::Offline)
+		if (UserPtr != nullptr && UserPtr->GetUserStatus() == EUserStatus::Online)
 		{
 			SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), FriendID, SocketAccessFunctor);
 		}
