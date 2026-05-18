@@ -541,6 +541,9 @@ void FSocket::BroadcastUserStatus(FUserManager* UserManger, const Uint64 Connect
 
 	std::vector<std::shared_ptr<FUser>> OutUsers;
 	OutUsers.reserve(FriendListArray.size());
+
+	// @TODO: It would be better to just keep this map than iterate each time
+	// But this is not really important for now
 	std::unordered_map<Uint64, std::shared_ptr<FUser>> FriendListMap;
 	UserManger->GetUsersByIds(FriendListArray, OutUsers);
 
@@ -572,6 +575,9 @@ void FSocket::BroadcastUserStatus(FUserManager* UserManger, const Uint64 Connect
 		FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
 
 		const std::shared_ptr<FUser> UserPtr = FriendListMap[FriendID];
-		SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), FriendID, SocketAccessFunctor);
+		if (UserPtr != nullptr && UserPtr->GetUserStatus() != EUserStatus::Offline)
+		{
+			SocketManager->EnqueueTaskForUserAtSocket(UserPtr->GetSocketId(), FriendID, SocketAccessFunctor);
+		}
 	}
 }
