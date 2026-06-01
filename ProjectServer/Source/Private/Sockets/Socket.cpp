@@ -11,6 +11,8 @@
 #include <nlohmann/json_fwd.hpp>
 #include <utility>
 
+#include "Managers/ConversationsManager.h"
+
 FSocket::FSocket(const int32 InSocketIndex, std::string InHost, const int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath)
 	: SocketIndex(InSocketIndex)
 	, Host(std::move(InHost))

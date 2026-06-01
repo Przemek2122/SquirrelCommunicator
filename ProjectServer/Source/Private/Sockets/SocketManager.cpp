@@ -1,9 +1,46 @@
 #include "Sockets/SocketManager.h"
 #include "Threads/ThreadsManager.h"
+#include "ProjectEngine.h"
 
 FSocketThreadData::FSocketThreadData(FThreadsManager* InThreadsManager, const std::string& InNewThreadName)
 	: FThreadData(InThreadsManager, InNewThreadName)
 {
+}
+
+void FSocketManagerHelper::BroadcastDataToUsers(const FProjectEngine* ProjectEngine, const std::vector<Uint64>& ConversationUsersIds, const std::string& SerializedPayload)
+{
+	FUserManager* UserManager = ProjectEngine->GetUserManager();
+	FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+
+	std::vector<std::shared_ptr<FUser>> OutIds;
+	UserManager->GetUsersByIds(ConversationUsersIds, OutIds);
+
+	for (std::shared_ptr<FUser>& UserPtr : OutIds)
+	{
+		if (UserPtr != nullptr)
+		{
+			const FUser* User = UserPtr.get();
+			const Uint64 UserId = User->GetUserId();
+
+			FFunctorLambda<void, void*> SocketAccessFunctor = [SerializedPayload, UserId](void* targetWs)
+			{
+				auto* WebSocket = static_cast<uWS::WebSocket<false, true, FWebSocketSessionData>*>(targetWs);
+
+				// @TODO: Do we actually need to check if the user is subscribed to the topic?
+				const std::string UserTopic = FSocket::GenerateUserTopic(UserId);
+				if (WebSocket->isSubscribed(UserTopic))
+				{
+					WebSocket->send(SerializedPayload, uWS::OpCode::TEXT);
+				}
+				else
+				{
+					LOG_DEBUG("Not supported topic means something is wrong");
+				}
+			};
+
+			SocketManager->EnqueueTaskForUserAtSocket(User->GetSocketId(), UserId, SocketAccessFunctor);
+		}
+	}
 }
 
 FSocketManager::~FSocketManager()

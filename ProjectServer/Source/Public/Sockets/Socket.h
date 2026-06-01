@@ -57,6 +57,9 @@ private:
 
 	void BroadcastUserStatus(FUserManager* UserManger, Uint64 ConnectedUserId, EUserStatus NewUserStatus);
 
+	void BroadcastToConversation(AnyWebSocket SenderWsVariant, const std::shared_ptr<FConversationData>& Conversation,
+		Uint64 SenderUserId, const std::string& SerializedPayload);
+
 private:
 	/** per socket index to find which socket is user connected to */
 	int32 SocketIndex;

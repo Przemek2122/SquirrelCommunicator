@@ -33,6 +33,15 @@ Squirrel Communicator offers the following features:
 
 ---
 
+## TODO list:
+
+### Improvements
+- Add confirmation mail when creating account.
+
+### Optimization
+- Add clearing messages every day and leaving fixed configurable ammount like 100 per user
+- Add clearing user inactive for like 3 days (also configurable) +
+
 ## How to Build
 
 ### Supported Platforms

@@ -24,11 +24,14 @@ public:
     /** Called when user is sending a message */
     void OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, const std::string& Content);
 
+    /** Called when user is editing a message */
+    void OnMessageReceived_MessageEdit(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 MessageId, const std::string& Content);
+
     /** Called when user is typing */
     void OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId);
 
     /** Called when user is reading message */
-    void OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId);
+    void OnMessageReceived_MessageRead(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId);
 
     /** Called when user is searching for another user */
     void OnMessageReceived_SearchUser(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& Pattern);

@@ -68,6 +68,26 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
+		case ESocketMessagePrivateType::MessageEdit:
+		{
+			if (JsonMessage["data"].contains("conversation_id") && JsonMessage["data"].contains("message_id") && JsonMessage["data"].contains("content"))
+			{
+				const std::string ConversationIdString = JsonMessage["data"]["conversation_id"];
+				const Uint64 ConversationId = std::stoull(ConversationIdString);
+				const std::string Content = JsonMessage["data"]["content"];
+				const std::string MessageIdString = JsonMessage["data"]["message_id"];
+				const Uint64 MessageId = std::stoull(MessageIdString);
+
+				OnMessageReceived_MessageEdit(wsVariant, opCode, ConversationId, MessageId, Content);
+			}
+			else
+			{
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
 		case ESocketMessagePrivateType::Typing:
 		{
 			if (JsonMessage["data"].contains("conversationId"))
@@ -85,14 +105,14 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
-		case ESocketMessagePrivateType::MarkRead:
+		case ESocketMessagePrivateType::MessageRead:
 		{
 			if (JsonMessage["data"].contains("conversationId"))
 			{
 				Uint64 ConversationId = JsonMessage["data"]["conversationId"];
 
 				// Handle mark read
-				OnMessageReceived_MarkRead(wsVariant, opCode, ConversationId);
+				OnMessageReceived_MessageRead(wsVariant, opCode, ConversationId);
 			}
 			else
 			{
@@ -382,61 +402,60 @@ void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::
 		if (WebSocketSessionData != nullptr)
 		{
 			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
-			FUserManager* UserManager = ProjectEngine->GetUserManager();
-			FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
 			std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
 			const Uint64& ConnectionUserId = WebSocketSessionData->UserId;
 			if (Conversation != nullptr)
 			{
-				ConversationsManager->AddMessage(ConversationId, ConnectionUserId, Content);
+				const Uint64 OutId = ConversationsManager->AddMessage(ConversationId, ConnectionUserId, Content);
 
-				// Broadcast new message
-				for (Uint64 UserId : Conversation->UsersIds)
+				nlohmann::json MessageJson;
+				MessageJson["sender_id"] = ConnectionUserId;
+				MessageJson["message_id"] = OutId;
+				MessageJson["conversation_id"] = ConversationId;
+				MessageJson["conversation_message"] = Content;
+
+				nlohmann::json JsonRoot;
+				JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Message);
+				JsonRoot["message"] = MessageJson;
+
+				FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector, JsonRoot.dump());
+			}
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_MessageEdit(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId, Uint64 MessageId, const std::string& Content)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
+		{
+			FConversationsManager* ConversationManager = ProjectEngine->GetConversationsManager();
+			const Uint64 ConnectionUserId = WebSocketSessionData->UserId;
+
+			// Check if ConnectionUserId belongs to conversation by ConversationId (also check if conversation even exists)
+			if (ConversationManager->IsUserInConversation(ConnectionUserId, ConversationId))
+			{
+				// Check if message belongs to given conversation
+				if (ConversationManager->IsMessageInConversation(MessageId, ConversationId))
 				{
-					nlohmann::json MessageJson;
-					MessageJson["sender_id"] = ConnectionUserId;
-					MessageJson["conversation_id"] = ConversationId;
-					MessageJson["conversation_message"] = Content;
+					ConversationManager->EditMessage(ConnectionUserId, ConversationId, MessageId, Content);
 
-					nlohmann::json JsonRoot;
-					JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Message);
-					JsonRoot["message"] = MessageJson;
+					std::shared_ptr<FConversationData> Conversation = ConversationManager->GetConversation(ConversationId);
+	                if (Conversation != nullptr)
+	                {
+						nlohmann::json MessageJson;
+						MessageJson["message_id"] = MessageId;
+						MessageJson["conversation_id"] = ConversationId;
+						MessageJson["conversation_message"] = Content;
 
-					if (UserId == ConnectionUserId)
-					{
-						// Publish does not work for self, so we need special case
-						ws->send(JsonRoot.dump(), uWS::OpCode::TEXT);
-					}
-					else
-					{
-						std::vector<std::shared_ptr<FUser>> OutIds;
-						UserManager->GetUsersByIds({ UserId }, OutIds);
-						if (!OutIds.empty())
-						{
-							FUser* User = OutIds[0].get();
+						nlohmann::json JsonRoot;
+						JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::MessageEdit);
+						JsonRoot["message"] = MessageJson;
 
-							FFunctorLambda<void, void*> SocketAccessFunctor = [this, JsonRoot, UserId](void* ws)
-							{
-								auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
-
-								// To send message to a specific user
-								const std::string UserTopic = FSocket::GenerateUserTopic(UserId);
-								if (WebSocket->isSubscribed(UserTopic))
-								{
-									const bool bSentPublish = WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
-
-#if DEBUG
-									LOG_INFO("Backpressure: " << WebSocket->getBufferedAmount());
-									LOG_INFO("Topic: '" << UserTopic << "', subscribed: '" << WebSocket->isSubscribed(UserTopic) << "'");
-									LOG_INFO("Topic: '" << UserTopic << "', sent publish: '" << bSentPublish << "'");
-#endif
-								}
-							};
-							SocketManager->EnqueueTaskForUserAtSocket(User->GetSocketId(), UserId, SocketAccessFunctor);
-						}
-					}
-
-					UserManager->UpdateUserActivity(ConnectionUserId);
+						FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector, JsonRoot.dump());
+	                }
 				}
 			}
 		}
@@ -488,7 +507,7 @@ void FPrivateSocketData::OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::O
 	}, wsVariant);
 }
 
-void FPrivateSocketData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
+void FPrivateSocketData::OnMessageReceived_MessageRead(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId)
 {
 	std::visit([&](auto* ws)
 	{
@@ -514,7 +533,7 @@ void FPrivateSocketData::OnMessageReceived_MarkRead(AnyWebSocket wsVariant, uWS:
 							MessageJson["typing_id"] = ConnectionUserId;
 
 							nlohmann::json JsonRoot;
-							JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::MarkRead);
+							JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::MessageRead);
 							JsonRoot["message"] = MessageJson;
 
 							const std::shared_ptr<FUser> User = ProjectEngine->GetUserManager()->GetUserById(ConnectionUserId);
@@ -1209,15 +1228,13 @@ nlohmann::json FPrivateSocketData::FormatConversationIntoJson(const CArray<Uint6
 
 				for (std::shared_ptr<FUser>& UserPtr : OutUsers)
 				{
-					{
-						nlohmann::json NewUser;
+					nlohmann::json NewUser;
 
-						NewUser["id"] = UserPtr->GetUserId();
-						NewUser["name"] = UserPtr->GetUserNameString();
-						NewUser["status"] = UserStatusToString(UserPtr->GetUserStatus());
+					NewUser["id"] = UserPtr->GetUserId();
+					NewUser["name"] = UserPtr->GetUserNameString();
+					NewUser["status"] = UserStatusToString(UserPtr->GetUserStatus());
 
-						UsersJsonArray.push_back(NewUser);
-					}
+					UsersJsonArray.push_back(NewUser);
 				}
 
 				NewConversation["users"] = UsersJsonArray;
@@ -1228,14 +1245,17 @@ nlohmann::json FPrivateSocketData::FormatConversationIntoJson(const CArray<Uint6
 
 			// Add messages
 			{
-				std::vector<FConversationMessageData> LastMessages = Conversation->MessagesMap.PeekFirst(25);
+				std::vector<FConversationMessageData> LastMessages = Conversation->MessagesDeque.PeekFirst(25);
 				nlohmann::json MessagesJsonArray = nlohmann::json::array();
 
 				for (FConversationMessageData& Message : LastMessages | std::views::reverse)
 				{
 					nlohmann::json NewMessage;
 					NewMessage["message"] = Message.Message;
+					NewMessage["message_id"] = Message.MessageId;
 					NewMessage["sender_id"] = Message.SenderId;
+					NewMessage["time"] = Message.CreatedAt;
+					NewMessage["status"] = Message.Status;
 
 					MessagesJsonArray.push_back(NewMessage);
 				}

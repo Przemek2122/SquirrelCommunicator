@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Apr 17, 2026 at 06:48 AM
+-- Generation Time: May 27, 2026 at 12:07 PM
 -- Server version: 11.8.3-MariaDB-0+deb13u1 from Debian
 -- PHP Version: 8.4.11
 
@@ -33,13 +33,15 @@ CREATE TABLE `messages` (
   `sender_id` bigint(20) UNSIGNED NOT NULL,
   `text` varchar(4096) NOT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `text_encrypt_type` int(8) DEFAULT NULL,
-  `text_encryption_value` text DEFAULT NULL
+  `text_encrypt_type` int(8) UNSIGNED DEFAULT NULL,
+  `text_encryption_value` text DEFAULT NULL,
+  `text_status` int(8) UNSIGNED DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `messages`
 --
+
 
 --
 -- Indexes for dumped tables
@@ -61,7 +63,7 @@ ALTER TABLE `messages`
 -- AUTO_INCREMENT for table `messages`
 --
 ALTER TABLE `messages`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=263;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1;
 
 --
 -- Constraints for dumped tables

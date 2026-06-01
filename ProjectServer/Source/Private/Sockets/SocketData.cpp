@@ -43,8 +43,10 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
 	switch (HashString(InTypeString))
 	{
 		case HashString("message"):					return ESocketMessagePrivateType::Message;
+		case HashString("message_edit"):				return ESocketMessagePrivateType::MessageEdit;
 		case HashString("typing"):					return ESocketMessagePrivateType::Typing;
-		case HashString("mark_read"):				return ESocketMessagePrivateType::MarkRead;
+		case HashString("message_delivered"):		return ESocketMessagePrivateType::MessageDelivered;
+		case HashString("message_read"):				return ESocketMessagePrivateType::MessageRead;
 		case HashString("user_status"):				return ESocketMessagePrivateType::UserStatus;
 		case HashString("search_user"):				return ESocketMessagePrivateType::SearchUser;
 		case HashString("load_more_messages"):		return ESocketMessagePrivateType::LoadMoreMessages;
@@ -60,7 +62,7 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
 		case HashString("cancel_friend_request"):	return ESocketMessagePrivateType::CancelFriendRequest;
 		case HashString("remove_friend"):			return ESocketMessagePrivateType::RemoveFriend;
 		case HashString("data_stream_channel"):		return ESocketMessagePrivateType::DataStreamChannel;
-		case HashString("user_calling"):			return ESocketMessagePrivateType::UserCalling;
+		case HashString("user_calling"):				return ESocketMessagePrivateType::UserCalling;
 
 		case HashString("error"):					return ESocketMessagePrivateType::Error;
 		default:										return ESocketMessagePrivateType::Unknown;
@@ -72,8 +74,10 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
 	switch (InTypeEnum)
 	{
 		case ESocketMessagePrivateType::Message:				return "message";
+		case ESocketMessagePrivateType::MessageEdit:			return "message_edit";
 		case ESocketMessagePrivateType::Typing:					return "typing";
-		case ESocketMessagePrivateType::MarkRead:				return "mark_read";
+		case ESocketMessagePrivateType::MessageDelivered:		return "message_delivered";
+		case ESocketMessagePrivateType::MessageRead:			return "message_read";
 		case ESocketMessagePrivateType::UserStatus:				return "user_status";
 		case ESocketMessagePrivateType::SearchUser:				return "search_user";
 		case ESocketMessagePrivateType::LoadMoreMessages:		return "load_more_messages";

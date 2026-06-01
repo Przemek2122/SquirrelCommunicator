@@ -14,13 +14,18 @@ namespace soci
 enum class EConversationEncryptionType : Uint8
 {
 	/** This means exactly NO ENCRYPTION */
-	Null,
+	Null = 0,
 
-	/** User defined encryption */
-	User,
-
-	/** Default */
+	/** Default - SQRLL fast algorithm */
 	Default,
+};
+
+/** What is the status of certain message */
+enum class EConversationMessageStatus : Uint8
+{
+	Sent = 0,
+	Edited,
+	Deleted,
 };
 
 /** Struct for conversation each message */
@@ -29,6 +34,7 @@ struct FConversationMessageData
 	FConversationMessageData()
 		: MessageId(0)
 		, SenderId(0)
+		, Status(EConversationMessageStatus::Sent)
 		, EncryptionType(EConversationEncryptionType::Null)
 	{
 	}
@@ -44,8 +50,14 @@ struct FConversationMessageData
 	/** Creation time */
 	std::string CreatedAt;
 
+	/** Was edited */
+	EConversationMessageStatus Status;
+
 	/** Encryption type */
 	EConversationEncryptionType EncryptionType;
+
+	/** Encryption text value */
+	std::string EncryptionValue;
 
 };
 
@@ -60,8 +72,11 @@ struct FConversationData
 	/** Map with user mapped to last read message id */
 	CUnorderedMap<Uint64, Uint64> UserIdToMessageLastRead;
 
-	/** Messages map. */
-	CDeque<FConversationMessageData> MessagesMap;
+	/** Messages deque (Deque to used to easily get last X messages in range). */
+	CDeque<FConversationMessageData> MessagesDeque;
+
+	/** Lock for conversation access */
+	std::shared_mutex Lock;
 
 };
 
@@ -84,6 +99,8 @@ struct FConversationInfo
  * Stores users of conversations to sent quickly any message received
  * Conversations are added into ConversationIdToConversationData when any user creates one or sent messages
  * ALL downloading and managing conversations should be done using this class
+ *
+ * @TODO: Async database queries would be way better.
  */
 class FConversationsManager
 {
@@ -94,7 +111,12 @@ public:
 	std::shared_ptr<FConversationData> GetConversation(Uint64 InConversationId);
 	bool HasConversation(Uint64 InConversationId);
 
-	void AddMessage(Uint64 InConversationId, Uint64 InSenderId, const std::string& InMessage);
+	bool IsUserInConversation(Uint64 InUserId, Uint64 InConversationId);
+	bool IsMessageInConversation(Uint64 InMessageId, Uint64 InConversationId);
+
+	Uint64 AddMessage(Uint64 InConversationId, Uint64 InSenderId, const std::string& InMessage);
+	void EditMessage(Uint64 InRequesterId, Uint64 InConversationId, Uint64 InMessageId, const std::string& InNewMessage);
+	void DeleteMessage(Uint64 InRequesterId, Uint64 InConversationId, Uint64 InMessageId);
 
 	void GetLastConversationByUserId(Uint64 InUserId, int32 Offset, int32 Limit, CArray<Uint64>& OutConversationIds);
 
@@ -113,6 +135,9 @@ private:
 
 	/** Query DB for messages */
 	std::vector<FConversationMessageData> DownloadConversationMessages(Uint64 InConversationId, int32 InOffset, int32 InLimit);
+
+	EDatabaseOperationResult UpdateMessageEditInDB(Uint64 RequesterUserId, Uint64 InConversationId, Uint64 InMessageId, const std::string& InNewMessage);
+	EDatabaseOperationResult UpdateMessageDeleteInDB(Uint64 RequesterUserId, Uint64 InConversationId, Uint64 InMessageId);
 
 	/**
 	 * Conditional add conversation to DB

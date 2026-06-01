@@ -27,7 +27,75 @@ bool FConversationsManager::HasConversation(const Uint64 InConversationId)
 	return (ConversationIdToConversationData.ContainsKey(InConversationId));
 }
 
-void FConversationsManager::AddMessage(const Uint64 InConversationId, const Uint64 InSenderId, const std::string& InMessage)
+bool FConversationsManager::IsUserInConversation(const Uint64 InUserId, const Uint64 InConversationId)
+{
+	const bool bConversationExists = HasConversation(InConversationId);
+	if (bConversationExists)
+	{
+		std::shared_ptr<FConversationData> ConversationDataSharedPtr;
+
+		// Get conversation data with lock
+		{
+			std::shared_lock Lock(ConversationIdToConversationDataMutex);
+			ConversationDataSharedPtr = ConversationIdToConversationData[InConversationId];
+		}
+
+		// Access data with lock
+		{
+			std::shared_lock Lock(ConversationDataSharedPtr->Lock);
+			return ConversationDataSharedPtr->UsersIds.Contains(InUserId);
+		}
+	}
+
+	return false;
+}
+
+bool FConversationsManager::IsMessageInConversation(Uint64 InMessageId, Uint64 InConversationId)
+{
+	const bool bConversationExists = HasConversation(InConversationId);
+	if (bConversationExists)
+	{
+		std::shared_ptr<FConversationData> ConversationDataSharedPtr;
+
+		// Get conversation data with lock
+		{
+			std::shared_lock Lock(ConversationIdToConversationDataMutex);
+			ConversationDataSharedPtr = ConversationIdToConversationData[InConversationId];
+		}
+
+		// Access data with lock
+		// Linear search from the end
+		{
+			std::shared_lock Lock(ConversationDataSharedPtr->Lock);
+			const std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque;
+
+			uint16 CheckedCount = 0;
+			const uint16 MaxLookback = 50;
+
+			// Go from latest messages
+			for (auto It = Deque.begin(); It != Deque.end(); ++It)
+			{
+				if (It->MessageId == InMessageId)
+				{
+					return true; // Found
+				}
+
+				CheckedCount++;
+
+				// We only allow to edit last 50? Message
+				// tbh 50 is generous anyway
+				if (It->MessageId < InMessageId || CheckedCount > MaxLookback)
+				{
+					return false;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+Uint64 FConversationsManager::AddMessage(const Uint64 InConversationId, const Uint64 InSenderId, const std::string& InMessage)
 {
 	std::shared_ptr<FConversationData> ConversationPtr = GetConversation(InConversationId);
 
@@ -41,13 +109,113 @@ void FConversationsManager::AddMessage(const Uint64 InConversationId, const Uint
 		ConversationMessageData.Message = InMessage;
 
 		// Lock conversation for adding message
-		std::unique_lock Lock(ConversationIdToConversationDataMutex);
+		std::unique_lock Lock(ConversationPtr->Lock);
 
 		// Add message at begging of table as it's newest
-		ConversationPtr->MessagesMap.PushFront(ConversationMessageData);
+		ConversationPtr->MessagesDeque.PushFront(ConversationMessageData);
 	}
+
+	return OutId;
 }
 
+void FConversationsManager::EditMessage(const Uint64 InRequesterId, const Uint64 InConversationId, const Uint64 InMessageId, const std::string& InNewMessage)
+{
+    // 1. Database Update First
+    const EDatabaseOperationResult Result = UpdateMessageEditInDB(InRequesterId, InConversationId, InMessageId, InNewMessage);
+
+    if (Result == EDatabaseOperationResult::Success)
+    {
+        std::shared_ptr<FConversationData> ConversationDataSharedPtr;
+
+        // 2. Find the conversation (Safe read from the global map)
+        {
+            std::shared_lock Lock(ConversationIdToConversationDataMutex);
+            auto ConvIt = ConversationIdToConversationData.Map.find(InConversationId);
+            if (ConvIt == ConversationIdToConversationData.end() || ConvIt->second == nullptr)
+            {
+                return; // Conversation does not exist
+            }
+            ConversationDataSharedPtr = ConvIt->second;
+        }
+
+        // 3. Edit the message (WRITE lock at the conversation level)
+        {
+            // Using unique_lock! No other thread can read or write to this deque right now.
+            std::unique_lock WriteLock(ConversationDataSharedPtr->Lock);
+            std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque;
+
+        	int32 CurrentLoopback = 0;
+        	const int32 MaxLoopback = 50;
+
+            // Reverse linear search, because users usually edit recent messages.
+            for (auto It = Deque.begin(); It != Deque.end(); ++It)
+            {
+                if (It->MessageId == InMessageId)
+                {
+                    // Found it! Replace the content.
+                    It->Message = InNewMessage;
+                    It->Status = EConversationMessageStatus::Edited;
+
+                    break;
+                }
+
+                // Optimization: If we hit a smaller ID, the message cannot be here anymore.
+                if (It->MessageId < InMessageId || CurrentLoopback >= MaxLoopback)
+                {
+                    break;
+                }
+            }
+        }
+
+        // Remember to broadcast change when using this function
+    }
+}
+
+void FConversationsManager::DeleteMessage(const Uint64 InRequesterId, const Uint64 InConversationId, const Uint64 InMessageId)
+{
+    // 1. Database Update First
+    const EDatabaseOperationResult Result = UpdateMessageDeleteInDB(InRequesterId, InConversationId, InMessageId);
+
+    if (Result == EDatabaseOperationResult::Success)
+    {
+        std::shared_ptr<FConversationData> ConversationDataSharedPtr;
+
+        // 2. Find the conversation
+        {
+            std::shared_lock Lock(ConversationIdToConversationDataMutex);
+            auto ConvIt = ConversationIdToConversationData.Map.find(InConversationId);
+            if (ConvIt == ConversationIdToConversationData.end() || ConvIt->second == nullptr)
+            {
+                return;
+            }
+            ConversationDataSharedPtr = ConvIt->second;
+        }
+
+        // 3. Delete the message (WRITE lock at the conversation level)
+        {
+            std::unique_lock WriteLock(ConversationDataSharedPtr->Lock);
+            std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque;
+
+            auto It = std::lower_bound(
+                Deque.begin(),
+                Deque.end(),
+                InMessageId,
+                [](const FConversationMessageData& Msg, const Uint64 Id) {
+                    return Msg.MessageId < Id;
+                }
+            );
+
+            if (It != Deque.end() && It->MessageId == InMessageId)
+            {
+                // std::deque::erase removes the element and shifts the rest.
+                // This is a relatively fast operation for std::deque.
+                Deque.erase(It);
+            }
+        }
+
+        // Remember to broadcast change when using this function
+    }
+}
 void FConversationsManager::GetLastConversationByUserId(const Uint64 InUserId, const int32 Offset, const int32 Limit, CArray<Uint64>& OutConversationIds)
 {
 	// @TODO We could for sure optimize this.
@@ -70,7 +238,7 @@ std::vector<FConversationMessageData> FConversationsManager::GetConversationMess
 {
 	std::vector<FConversationMessageData> ConversationMessage;
 
-	const int32 CurrentMessagesCount = Conversation->MessagesMap.Size();
+	const int32 CurrentMessagesCount = Conversation->MessagesDeque.Size();
 	const int32 TargetMessagesCount = Offset + Count;
 	if (CurrentMessagesCount < TargetMessagesCount)
 	{
@@ -83,13 +251,13 @@ std::vector<FConversationMessageData> FConversationsManager::GetConversationMess
 		// Add messages to cache
 		for (const FConversationMessageData& Message : ConversationMessage)
 		{
-			Conversation->MessagesMap.PushBack(Message);
+			Conversation->MessagesDeque.PushBack(Message);
 		}
 
 		// Add any present in memory but skipped in download
 		if (TargetOffset != Offset)
 		{
-			std::vector<FConversationMessageData> ConversationMessageInMemoryPart = Conversation->MessagesMap.GetRange(Offset, TargetOffset);
+			std::vector<FConversationMessageData> ConversationMessageInMemoryPart = Conversation->MessagesDeque.GetRange(Offset, TargetOffset);
 
 			for (FConversationMessageData& MessageInMemoryPart : ConversationMessageInMemoryPart)
 			{
@@ -99,7 +267,7 @@ std::vector<FConversationMessageData> FConversationsManager::GetConversationMess
 	}
 	else
 	{
-		ConversationMessage = Conversation->MessagesMap.GetRange(Offset, Count);
+		ConversationMessage = Conversation->MessagesDeque.GetRange(Offset, Count);
 	}
 
 	return ConversationMessage;
@@ -175,10 +343,19 @@ void FConversationsManager::DownloadConversationsFromRange(const Uint64 UserId, 
 		AddConversationToCache(Conversation.ConversationId, Participants, LastReadMessageIds);
 
 		const std::shared_ptr<FConversationData> ConversationPtr = GetConversation(Conversation.ConversationId);
-		const std::vector<FConversationMessageData> Messages = DownloadConversationMessages(Conversation.ConversationId, 0, 40);
-		for (const FConversationMessageData& Message : Messages)
+
+		std::vector<FConversationMessageData> Messages;
 		{
-			ConversationPtr->MessagesMap.PushBack(Message);
+			std::shared_lock<std::shared_mutex> Lock(ConversationPtr->Lock);
+			Messages = DownloadConversationMessages(Conversation.ConversationId, 0, 40);
+		}
+
+		{
+			std::unique_lock Lock(ConversationPtr->Lock);
+			for (const FConversationMessageData& Message : Messages)
+			{
+				ConversationPtr->MessagesDeque.PushBack(Message);
+			}
 		}
 	}
 }
@@ -285,6 +462,97 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 	}
 
 	return ConversationData;
+}
+
+EDatabaseOperationResult FConversationsManager::UpdateMessageEditInDB(const Uint64 RequesterUserId, const Uint64 InConversationId, const Uint64 InMessageId, const std::string& InNewMessage)
+{
+	try
+	{
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			// cast to int for safety
+			int32 StatusInt = static_cast<int32>(EConversationMessageStatus::Edited);
+
+			soci::statement St = (DataBaseSession.prepare <<
+				"UPDATE messages SET text = :text, text_status = :status "
+				"WHERE id = :msgId AND conversation_id = :convId AND sender_id = :senderId",
+				soci::use(InNewMessage, "text"),
+				soci::use(StatusInt, "status"),
+				soci::use(InMessageId, "msgId"),
+				soci::use(InConversationId, "convId"),
+				soci::use(RequesterUserId, "senderId")
+			);
+
+			St.execute();
+
+			// Check how many rows were affected
+			if (St.get_affected_rows() == 0)
+			{
+				LOG_ERROR("No rows affected");
+
+				return EDatabaseOperationResult::DatabaseFailed;
+			}
+
+			return EDatabaseOperationResult::Success;
+		}
+	}
+	catch (const soci::soci_error& e)
+	{
+		LOG_ERROR("Database error during message edit: " << e.what());
+
+		return EDatabaseOperationResult::OperationFailed;
+	}
+
+	return EDatabaseOperationResult::Unknown;
+}
+
+EDatabaseOperationResult FConversationsManager::UpdateMessageDeleteInDB(const Uint64 RequesterUserId, const Uint64 InConversationId, const Uint64 InMessageId)
+{
+	try
+	{
+		FDataBaseConnect Connect;
+		if (Connect.IsConnected())
+		{
+			soci::session& DataBaseSession = Connect.GetSession();
+
+			int32 StatusInt = static_cast<int32>(EConversationMessageStatus::Deleted);
+
+			soci::indicator NullIndicator = soci::i_null;
+			std::string EmptyText = "";
+			int32 EmptyEncryptType = 0; // Ignored, using indicator
+
+			soci::statement St = (DataBaseSession.prepare <<
+				"UPDATE messages SET "
+				"text = :text, "
+				"text_status = :status, "
+				"text_encrypt_type = :encType, "
+				"text_encryption_value = :encVal "
+				"WHERE id = :msgId AND conversation_id = :convId AND sender_id = :senderId",
+				soci::use(EmptyText, "text"),
+				soci::use(StatusInt, "status"),
+				soci::use(EmptyEncryptType, NullIndicator, "encType"), // Set NULL
+				soci::use(EmptyText, NullIndicator, "encVal"),       // Set NULL
+				soci::use(InMessageId, "msgId"),
+				soci::use(InConversationId, "convId"),
+				soci::use(RequesterUserId, "senderId")
+			);
+
+			St.execute();
+
+			return EDatabaseOperationResult::Success;
+		}
+	}
+	catch (const soci::soci_error& e)
+	{
+		LOG_ERROR("Database error during message deletion: " << e.what());
+
+		return EDatabaseOperationResult::OperationFailed;
+	}
+
+	return EDatabaseOperationResult::Unknown;
 }
 
 Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>& UserIds, bool& bIsNewConversation)
