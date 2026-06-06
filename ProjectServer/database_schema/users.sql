@@ -41,9 +41,6 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `username`, `password`, `email`, `displayedname`, `lastactive`) VALUES
-(2, 'Przemysław Wiewióra', '$argon2id$v=19$m=16384,t=2,p=1$fdiNx7qY3RfSvBoRxcrEyg$ZS4hufqcxBajNpfuOEQV4VjU8FlCK2ZuiZp6NLj2Al4\0', 'przemek1234wiewiora@gmail.com', 'Przemysław Wiewióra', NULL),
-(3, 'SuperStrong123!', '$argon2id$v=19$m=16384,t=2,p=1$ov/3mXCQpvr45jRhZAauow$gtAQhQ1gjSrX+/SCyWbTK1aUq764ZcWOuvM5BGbZK/E\0', 'bob@bobrowniczy.com', 'SuperStrong123!', '2025-11-21'),
-(4, 'postmanuser', '$argon2id$v=19$m=16384,t=2,p=1$YouU1ASS77+eK9AN0lZDnA$t/lgl2gPfQ7xm/hSVA1tfAN7gkYwm9fLq4QnCRQzhb8\0', 'postmanuser@sqrll.net', 'postmanuser', '2025-11-06');
 
 --
 -- Indeksy dla zrzutów tabel
@@ -63,7 +60,7 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT dla tabeli `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

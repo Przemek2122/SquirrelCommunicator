@@ -9,6 +9,7 @@
 #include "crow/app.h"
 #include "Managers/FriendListManager.h"
 
+class FTransferTokenManager;
 class FRoomsServiceManager;
 class FPasswordResetManager;
 class FConversationsManager;
@@ -33,11 +34,30 @@ public:
 
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 	void AddCookies(crow::response& CurrentResponse, const std::string& AuthToken);
+	std::string ExtractCookieValue(const std::string& CookieHeader, const std::string& CookieName)
+	{
+		const std::string SearchString = CookieName + "=";
+		const size_t StartPos = CookieHeader.find(SearchString);
+		if (StartPos == std::string::npos)
+		{
+			return "";
+		}
+
+		const size_t ValueStart = StartPos + SearchString.length();
+		size_t EndPos = CookieHeader.find(';', ValueStart);
+		if (EndPos == std::string::npos)
+		{
+			EndPos = CookieHeader.length();
+		}
+
+		return CookieHeader.substr(ValueStart, EndPos - ValueStart);
+	}
 
 	void CacheProperties(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 	void TestDataBaseConnection();
 
 	FUserManager* GetUserManager() const { return UserManager.get(); }
+	FTransferTokenManager* GetTransferTokenManager() const { return TransferTokenManager.get(); }
 	FConversationsManager* GetConversationsManager() const { return ConversationsManager.get(); }
 	FSocketManager* GetSocketManager() const { return SocketManager.get(); }
 
@@ -62,6 +82,9 @@ protected:
 
 	/** Class for managing users */
 	std::unique_ptr<FUserManager> UserManager;
+
+	/** Class for managing transfer tokens */
+	std::unique_ptr<FTransferTokenManager> TransferTokenManager;
 
 	/** Abuse protection, Rate limit, cors */
 	std::unique_ptr<FAbuseProtection> AbuseProtectionPtr;

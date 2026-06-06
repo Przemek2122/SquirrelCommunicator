@@ -1,3 +1,5 @@
+// Created by https://www.linkedin.com/in/przemek2122/ 2026
+
 #pragma once
 
 #include <shared_mutex>
@@ -82,6 +84,9 @@ public:
 
 	/** Internal login use - Make sure to check if integration is valid as this just logins without any checks. */
 	ELoginStatus LoginIntegration(const std::string& InUserEmail, std::string& OutSessionToken);
+
+	/** Use for login with transfer token */
+	ELoginStatus LoginFromId(const Uint64 Id, std::string& OutSessionToken);
 
 	/** @return true if successfully logged out */
 	bool Logout(const std::string& InSessionToken);

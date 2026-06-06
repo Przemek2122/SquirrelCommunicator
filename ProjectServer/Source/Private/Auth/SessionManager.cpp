@@ -1,3 +1,5 @@
+// Created by https://www.linkedin.com/in/przemek2122/ 2026
+
 #include "Auth/SessionManager.h"
 
 #include "Misc/EncryptionUtil.h"
@@ -72,15 +74,19 @@ void FSessionManager::Init()
 	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
 	SessionManagerThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(SessionManagerThreadName);
 	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(SessionManagerThreadData->GetThread());
-	GenericThread->SetShouldRemoveDoneJobs(false);
 	if (GenericThread != nullptr)
 	{
+		GenericThread->SetShouldRemoveDoneJobs(false);
 		GenericThread->AddTask([this]()
 		{
 			AsyncWork();
 		});
 
 		GenericThread->BeginAsyncWork();
+	}
+	else
+	{
+		LOG_ERROR("Failed to create session manager thread");
 	}
 }
 
@@ -96,23 +102,39 @@ void FSessionManager::AsyncWork()
 
 	if (AsyncWorkLastTime + TimeBetweenRuns > CurrentTime)
 	{
-		THREAD_WAIT_MS(1);
+		THREAD_WAIT_MS(1000);
 	}
 	else
 	{
 		AsyncWorkLastTime = CurrentTime;
 
-		CheckForDeadSessions();
+		AsyncCheckForDeadSessions();
 	}
 }
 
-void FSessionManager::CheckForDeadSessions()
+void FSessionManager::AsyncCheckForDeadSessions()
 {
-	for (std::pair<const std::string, FUserSessionData>& Session : SessionIdToUserIdMap)
+	// @TODO: In future it would be smart to implement priority_queue as it would be O(1)
+
+	std::vector<std::string> SessionIds;
+
+	// Make copy
 	{
-		if (!IsSessionTokenAlive(Session.first))
+		std::shared_lock ReadLock(SessionIdToUserIdMapMutex);
+
+		SessionIds.reserve(SessionIdToUserIdMap.Size());
+
+		for (std::pair<const std::string, FUserSessionData>& Session : SessionIdToUserIdMap)
 		{
-			DeactivateSession(Session.first);
+			SessionIds.push_back(Session.first);
+		}
+	}
+
+	for (const std::string& SessionId : SessionIds)
+	{
+		if (!IsSessionTokenAlive(SessionId))
+		{
+			DeactivateSession(SessionId);
 		}
 	}
 }
@@ -122,7 +144,7 @@ std::string FSessionManager::CreateSession(const Uint64 InUserId)
 	const std::string SessionToken = CreateTokenFromId(InUserId);
 	FUserSessionData UserSessionData(InUserId, CurrentTimeCached);
 
-	std::lock_guard<std::mutex> MutexScopeLock(SessionIdToUserIdMapMutex);
+	std::lock_guard<std::shared_mutex> MutexScopeLock(SessionIdToUserIdMapMutex);
 	SessionIdToUserIdMap.Emplace(SessionToken, UserSessionData);
 	UserIdToSessionTokenMap.Emplace(InUserId, SessionToken);
 
@@ -133,14 +155,19 @@ Uint64 FSessionManager::GetUserIdFromSessionId(const std::string& InSessionToken
 {
 	Uint64 OutId = 0;
 
-	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
-	{
-		FUserSessionData& SessionData = SessionIdToUserIdMap[InSessionToken];
+	bool bSessionExists = false;
 
-		if (IsSessionTokenAlive(InSessionToken))
-		{
-			OutId = SessionData.UserId;
-		}
+	{
+		std::shared_lock<std::shared_mutex> ReadLock(SessionIdToUserIdMapMutex);
+		bSessionExists = SessionIdToUserIdMap.ContainsKey(InSessionToken);
+	}
+
+	if (bSessionExists && IsSessionTokenAlive(InSessionToken))
+	{
+		std::shared_lock<std::shared_mutex> ReadLock(SessionIdToUserIdMapMutex);
+		FUserSessionData SessionData = SessionIdToUserIdMap[InSessionToken];
+
+		OutId = SessionData.UserId;
 	}
 
 	return OutId;
@@ -150,12 +177,18 @@ bool FSessionManager::RefreshSessionToken(const std::string& InSessionToken)
 {
 	bool bIsAlive = false;
 
-	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
+	bool bSessionExists = false;
 	{
-		FUserSessionData& SessionData = SessionIdToUserIdMap[InSessionToken];
+		std::shared_lock ReadLock(SessionIdToUserIdMapMutex);
+		bSessionExists = SessionIdToUserIdMap.ContainsKey(InSessionToken);
+	}
 
+	if (bSessionExists)
+	{
 		if (IsSessionTokenAlive(InSessionToken))
 		{
+			std::lock_guard<std::shared_mutex> MutexScopeLock(SessionIdToUserIdMapMutex);
+			FUserSessionData& SessionData = SessionIdToUserIdMap[InSessionToken];
 			SessionData.SetSessionStartTime(CurrentTimeCached);
 
 			bIsAlive = true;
@@ -174,7 +207,13 @@ bool FSessionManager::DeactivateSession(const std::string& InSessionToken)
 {
 	bool bDeactivatedSession = false;
 
-	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
+	bool bSessionExists = false;
+	{
+		std::shared_lock ReadLock(SessionIdToUserIdMapMutex);
+		bSessionExists = SessionIdToUserIdMap.ContainsKey(InSessionToken);
+	}
+
+	if (bSessionExists)
 	{
 		{
 			const std::optional<FUserSessionData> UserSessionData = SessionIdToUserIdMap.FindValueByKey(InSessionToken);
@@ -195,7 +234,13 @@ bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)
 {
 	bool bIsSessionTokenAlive = false;
 
-	if (SessionIdToUserIdMap.ContainsKey(InSessionToken))
+	bool bSessionExists = false;
+	{
+		std::shared_lock ReadLock(SessionIdToUserIdMapMutex);
+		bSessionExists = SessionIdToUserIdMap.ContainsKey(InSessionToken);
+	}
+
+	if (bSessionExists)
 	{
 		bIsSessionTokenAlive = true;
 	}

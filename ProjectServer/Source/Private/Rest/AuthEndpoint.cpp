@@ -119,8 +119,9 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 						}
 						case ELoginStatus::Successful:
 						{
-							OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
 							ProjectEngine->AddCookies(OutResponse, OutSessionToken);
+
+							OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
 
 							break;
 						}

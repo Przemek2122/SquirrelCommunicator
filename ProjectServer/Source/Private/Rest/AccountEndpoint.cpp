@@ -1,5 +1,7 @@
 #include "Rest/AccountEndpoint.h"
 
+#include <boost/exception/exception.hpp>
+
 #include "PredefinedMessages.h"
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
@@ -127,18 +129,19 @@ void FAccountEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
         try
         {
-            const crow::json::rvalue JsonData = crow::json::load(req.body);
-            if (JsonData)
-            {
-                TargetMail = JsonData["target_mail"].s();
-            }
+            const nlohmann::json JsonData = nlohmann::json::parse(req.body);
+            TargetMail = JsonData.at("target_mail").get<std::string>();
         }
         catch (const nlohmann::json::exception& e)
         {
             LOG_ERROR("Change pass error: " << e.what());
-            OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
-                { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-                    { "message", std::string("error :") + e.what()} }
+
+            return FCrowUtils::CreateResponse(
+                crow::status::BAD_REQUEST,
+                {
+                    { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+                    { "message", "Invalid request format or missing parameters." }
+                }
             );
         }
 
@@ -203,20 +206,22 @@ void FAccountEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
         try
         {
-            const crow::json::rvalue JsonData = crow::json::load(req.body);
-            if (JsonData)
-            {
-                TargetMail = JsonData["target_mail"].s();
-                ResetCode = JsonData["reset_code"].s();
-                NewPassword = JsonData["new_password"].s();
-            }
+            const nlohmann::json JsonData = nlohmann::json::parse(req.body);
+
+            TargetMail = JsonData.at("target_mail").get<std::string>();
+            ResetCode = JsonData.at("reset_code").get<std::string>();
+            NewPassword = JsonData.at("new_password").get<std::string>();
         }
         catch (const nlohmann::json::exception& e)
         {
-            LOG_ERROR("Change pass error: " << e.what());
-            OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR,
-                { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
-                    { "message", std::string("error :") + e.what()} }
+            LOG_WARN("Password reset JSON error: " << e.what());
+
+            OutResponse = FCrowUtils::CreateResponse(
+                crow::status::BAD_REQUEST,
+                {
+                    { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+                    { "message", "Invalid request format or missing required fields." }
+                }
             );
         }
 

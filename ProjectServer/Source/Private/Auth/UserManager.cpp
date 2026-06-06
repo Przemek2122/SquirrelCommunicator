@@ -1,3 +1,5 @@
+// Created by https://www.linkedin.com/in/przemek2122/ 2026
+
 #include "Auth/UserManager.h"
 
 #include <nlohmann/json.hpp>
@@ -259,13 +261,30 @@ ELoginStatus FUserManager::LoginIntegration(const std::string& InUserEmail, std:
 	return LoginStatus;
 }
 
+ELoginStatus FUserManager::LoginFromId(const Uint64 Id, std::string& OutSessionToken)
+{
+	ELoginStatus LoginStatus = ELoginStatus::IncorrectCredentialsOrUserDoesNotExist;
+
+	const std::shared_ptr<FUser> UserPtr = GetUserById(Id);
+	if (UserPtr->IsValid())
+	{
+		OnLoginSuccessful(UserPtr, false);
+
+		OutSessionToken = SessionManager->CreateSession(Id);
+
+		LoginStatus = ELoginStatus::Successful;
+	}
+	else
+	{
+		LOG_DEBUG("User with ID: " << Id << " does not exist or is invalid");
+	}
+
+	return LoginStatus;
+}
+
 bool FUserManager::Logout(const std::string& InSessionToken)
 {
-	bool bLogoutSuccessful;
-
-	bLogoutSuccessful = SessionManager->DeactivateSession(InSessionToken);
-
-	return bLogoutSuccessful;
+	return SessionManager->DeactivateSession(InSessionToken);
 }
 
 bool FUserManager::AreLoginCredentialsCorrect(const std::string& InUserName, const std::string& InUserPassword)

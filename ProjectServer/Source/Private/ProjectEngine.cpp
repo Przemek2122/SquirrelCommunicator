@@ -3,6 +3,7 @@
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
 #include "Assets/IniReader/IniObject.h"
+#include "Auth/TransferTokenManager.h"
 #include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
@@ -13,6 +14,7 @@
 #include "Rest/IntegrationEndpoint.h"
 #include "Rest/TestEndpoint.h"
 #include "Rest/AuthEndpoint.h"
+#include "Rest/TransferTokenEndpoint.h"
 #include "Sockets/SocketManager.h"
 
 #define ENDPOINT_CLASS(EndpointName) FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<EndpointName>()
@@ -30,6 +32,7 @@ FProjectEngine::FProjectEngine()
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTestEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAuthEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
+	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTransferTokenEndpoint));
 	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAccountEndpoint));
 }
 
@@ -43,6 +46,7 @@ void FProjectEngine::Init()
 	LOG_DEBUG("Server init");
 
 	UserManager = std::make_unique<FUserManager>();
+	TransferTokenManager = std::make_unique<FTransferTokenManager>();
 
 	BackendSettings->LoadBackendSettings();
 	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
@@ -167,6 +171,7 @@ void FProjectEngine::PostSecondTick()
 	FEngine::PostSecondTick();
 
 	UserManager->PostSecondTick();
+	TransferTokenManager->PostSecondTick();
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)

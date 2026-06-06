@@ -1,15 +1,16 @@
+// Created by https://www.linkedin.com/in/przemek2122/ 2026
+
 #pragma once
 
-#include <shared_mutex>
-
 #include "CoreMinimal.h"
+#include <shared_mutex>
 
 class FGenericThread;
 
 struct FUserSessionData
 {
 	FUserSessionData();
-	FUserSessionData(const Uint64 InUserId, const Uint64 InSessionStartTime);
+	FUserSessionData(Uint64 InUserId, Uint64 InSessionStartTime);
 	FUserSessionData(FUserSessionData& UserSessionData);
 	FUserSessionData(FUserSessionData&& UserSessionData) noexcept;
 
@@ -40,11 +41,9 @@ public:
 	void PostSecondTick();
 
 	void AsyncWork();
+	void AsyncCheckForDeadSessions();
 
-	/** Single thread to iterate sessions to find which are dead */
-	void CheckForDeadSessions();
-
-	std::string CreateSession(const Uint64 InUserId);
+	std::string CreateSession(Uint64 InUserId);
 
 	/** Return user ID or 0 on fail */
 	Uint64 GetUserIdFromSessionId(const std::string& InSessionToken);
@@ -52,14 +51,14 @@ public:
 	/** Refreshes session token by changing its internal time */
 	bool RefreshSessionToken(const std::string& InSessionToken);
 
-	bool DoesUserHaveSession(const Uint64 InUserId);
+	bool DoesUserHaveSession(Uint64 InUserId);
 
 	/** @return true if session were found and removed */
 	bool DeactivateSession(const std::string& InSessionToken);
 	bool IsSessionTokenAlive(const std::string& InSessionToken);
 
 private:
-	std::string CreateTokenFromId(const Uint64 InUserId) const;
+	std::string CreateTokenFromId(Uint64 InUserId) const;
 
 private:
 	/** Session to user Id map */
@@ -69,7 +68,7 @@ private:
 	CUnorderedMap<Uint64, std::string, Uint64> UserIdToSessionTokenMap;
 
 	/** Mutex for UserDataBase */
-	std::mutex SessionIdToUserIdMapMutex;
+	std::shared_mutex SessionIdToUserIdMapMutex;
 
 	/** Last updated time in async work */
 	Uint64 AsyncWorkLastTime;
