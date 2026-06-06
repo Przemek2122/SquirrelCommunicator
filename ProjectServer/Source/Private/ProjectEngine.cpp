@@ -45,13 +45,20 @@ void FProjectEngine::Init()
 
 	LOG_DEBUG("Server init");
 
-	UserManager = std::make_unique<FUserManager>();
-	TransferTokenManager = std::make_unique<FTransferTokenManager>();
-
 	BackendSettings->LoadBackendSettings();
 	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
 	if (ServerSettingsIni->DoesIniExist())
 	{
+		const FIniField SessionLifeTimeField = ServerSettingsIni->FindFieldByName("SessionLifeTime");
+		Uint64 SessionLifeTime = 1000;
+		if (SessionLifeTimeField.IsValid())
+		{
+			SessionLifeTime = SessionLifeTimeField.GetValueAsInt();
+		}
+
+		UserManager = std::make_unique<FUserManager>(SessionLifeTime);
+		TransferTokenManager = std::make_unique<FTransferTokenManager>();
+
 		// Read limits from settings or use defaults
 		int32 MaxSentRequests = 10;
 		int32 MaxIncomingRequests = 10;
@@ -305,6 +312,25 @@ void FProjectEngine::AddCookies(crow::response& CurrentResponse, const std::stri
 		// HTTPS
 		CurrentResponse.add_header("Set-Cookie", "auth_token=" + AuthToken + "; Domain=" + DomainName + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
 	}
+}
+
+std::string FProjectEngine::ExtractCookieValue(const std::string& CookieHeader, const std::string& CookieName)
+{
+	const std::string SearchString = CookieName + "=";
+	const size_t StartPos = CookieHeader.find(SearchString);
+	if (StartPos == std::string::npos)
+	{
+		return "";
+	}
+
+	const size_t ValueStart = StartPos + SearchString.length();
+	size_t EndPos = CookieHeader.find(';', ValueStart);
+	if (EndPos == std::string::npos)
+	{
+		EndPos = CookieHeader.length();
+	}
+
+	return CookieHeader.substr(ValueStart, EndPos - ValueStart);
 }
 
 void FProjectEngine::CacheProperties(const std::shared_ptr<FIniObject>& ServerSettingsIni)

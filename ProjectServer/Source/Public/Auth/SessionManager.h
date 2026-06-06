@@ -11,7 +11,7 @@ struct FUserSessionData
 {
 	FUserSessionData();
 	FUserSessionData(Uint64 InUserId, Uint64 InSessionStartTime);
-	FUserSessionData(FUserSessionData& UserSessionData);
+	FUserSessionData(const FUserSessionData& UserSessionData);
 	FUserSessionData(FUserSessionData&& UserSessionData) noexcept;
 
 	bool IsValid() const;
@@ -34,7 +34,7 @@ private:
 class FSessionManager
 {
 public:
-	FSessionManager();
+	FSessionManager(Uint64 InSessionExpirationTime);
 	~FSessionManager();
 
 	void Init();
@@ -75,6 +75,9 @@ private:
 
 	/** Time saved for performance */
 	Uint64 CurrentTimeCached;
+
+	/** Session expiration time in seconds */
+	Uint64 SessionExpirationTime;
 
 	/** Key for generating sessions */
 	std::string EncryptionKey;

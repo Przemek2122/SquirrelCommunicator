@@ -26,6 +26,8 @@ void FTransferTokenEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
         {
             crow::response OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "error."} });
 
+            // @TODO: Add limiting of requests per IP address
+
             const std::string CookieHeader = req.get_header_value("Cookie");
             const std::string AuthToken = ProjectEngine->ExtractCookieValue(CookieHeader, "auth_token");
 
@@ -104,9 +106,10 @@ void FTransferTokenEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
                     if (LoginResult == ELoginStatus::Successful && !OutSessionToken.empty())
                     {
-                        ProjectEngine->AddCookies(OutResponse, OutSessionToken);
-
                         OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Transfer token redeemed."} });
+
+                        // This is overrided by CreateResponse so use after setting OutResponse
+                        ProjectEngine->AddCookies(OutResponse, OutSessionToken);
                     }
                     else
                     {

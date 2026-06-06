@@ -8,11 +8,11 @@
 #include "Misc/EncryptionManager.h"
 #include "Misc/EncryptionUtil.h"
 
-FUserManager::FUserManager()
-	: SessionManager(new FSessionManager())
-	, NextAvailableIndex(0)
+FUserManager::FUserManager(Uint64 InSessionExpirationTime)
+	: NextAvailableIndex(0)
 	, CurrentTimeCached(0)
 {
+	SessionManager = std::make_unique<FSessionManager>(InSessionExpirationTime);
 }
 
 FUserManager::~FUserManager()

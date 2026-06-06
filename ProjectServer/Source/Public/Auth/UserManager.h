@@ -59,7 +59,7 @@ enum class EUpdateUserPasswordStatus : Uint8
 class FUserManager
 {
 public:
-	FUserManager();
+	FUserManager(Uint64 InSessionExpirationTime);
 	~FUserManager();
 
 	void Init();

@@ -34,24 +34,7 @@ public:
 
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 	void AddCookies(crow::response& CurrentResponse, const std::string& AuthToken);
-	std::string ExtractCookieValue(const std::string& CookieHeader, const std::string& CookieName)
-	{
-		const std::string SearchString = CookieName + "=";
-		const size_t StartPos = CookieHeader.find(SearchString);
-		if (StartPos == std::string::npos)
-		{
-			return "";
-		}
-
-		const size_t ValueStart = StartPos + SearchString.length();
-		size_t EndPos = CookieHeader.find(';', ValueStart);
-		if (EndPos == std::string::npos)
-		{
-			EndPos = CookieHeader.length();
-		}
-
-		return CookieHeader.substr(ValueStart, EndPos - ValueStart);
-	}
+	std::string ExtractCookieValue(const std::string& CookieHeader, const std::string& CookieName);
 
 	void CacheProperties(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 	void TestDataBaseConnection();
