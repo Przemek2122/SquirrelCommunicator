@@ -1,7 +1,4 @@
 #include "Rest/AccountEndpoint.h"
-
-#include <boost/exception/exception.hpp>
-
 #include "PredefinedMessages.h"
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
