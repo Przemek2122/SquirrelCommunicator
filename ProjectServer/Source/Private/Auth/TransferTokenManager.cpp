@@ -60,8 +60,40 @@ void FTransferTokenManager::AsyncWork()
 
 void FTransferTokenManager::AsyncClearOldTransferTokens()
 {
+    std::vector<std::string> ExpiredTokens;
 
+    {
+        std::shared_lock<std::shared_mutex> ReadLock(TransferTokensMapMutex);
+        const Uint64 CurrentTime = CurrentTimeCached;
 
+        for (const auto& [UserId, TokenData] : TransferTokensMap)
+        {
+            if (TokenData.ExpirationTime <= CurrentTime)
+            {
+                ExpiredTokens.push_back(TokenData.Token);
+            }
+        }
+    }
+
+    if (!ExpiredTokens.empty())
+    {
+        std::unique_lock<std::shared_mutex> WriteLock(TransferTokensMapMutex);
+
+        for (const std::string& Token : ExpiredTokens)
+        {
+            // We must double-check if the token still exists in the reverse map.
+            // Another thread might have overwritten or deleted it between our read and write locks.
+            auto TokenIt = TransferTokenToIdMap.find(Token);
+            if (TokenIt != TransferTokenToIdMap.end())
+            {
+                const Uint64 UserId = TokenIt->second;
+
+                // Safely erase from both maps
+                TransferTokensMap.erase(UserId);
+                TransferTokenToIdMap.erase(TokenIt);
+            }
+        }
+    }
 }
 
 std::string FTransferTokenManager::CreateTransferToken(const Uint64 UserId)

@@ -6,6 +6,7 @@
 
 #include "PredefinedMessages.h"
 #include "ProjectEngine.h"
+#include "AbuseProtection/AbuseProtection.h"
 #include "Auth/TransferTokenManager.h"
 #include "Auth/UserManager.h"
 #include "Misc/Util.h"
@@ -26,7 +27,9 @@ void FTransferTokenEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
         {
             crow::response OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "error."} });
 
-            // @TODO: Add limiting of requests per IP address
+            // @TODO: Add specific limiting of requests per IP address
+            const std::string& ClientIP = req.remote_ip_address;
+            ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
 
             const std::string CookieHeader = req.get_header_value("Cookie");
             const std::string AuthToken = ProjectEngine->ExtractCookieValue(CookieHeader, "auth_token");
@@ -55,6 +58,12 @@ void FTransferTokenEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
                 return FCrowUtils::CreateResponse(crow::status::OK,
                     { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "token", Token } });
+            }
+            else
+            {
+                return FCrowUtils::CreateResponse(crow::status::UNAUTHORIZED,
+                    { { "status", "error" }, { "message", "Token incorrect."} }
+                );
             }
 
             return OutResponse;
