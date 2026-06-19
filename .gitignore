@@ -49,3 +49,5 @@ ProjectServer/Assets/Config/cert.pem
 /ProjectServer/ThirdParty/json
 /ProjectServer/ThirdParty/soci
 /ProjectServer/ThirdParty/uWebSockets
+/ProjectServer/ThirdParty/uwebsockets
+/ProjectServer/ThirdParty/cpr

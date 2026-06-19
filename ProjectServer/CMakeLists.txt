@@ -164,6 +164,30 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/uwebsockets")
     )
 endif()
 
+# Download CPR (C++ HTTP requests library)
+set(CPR_USE_SYSTEM_CURL OFF CACHE BOOL "" FORCE)
+set(BUILD_CPR_TESTS OFF CACHE BOOL "" FORCE)
+set(BUILD_CPR_TESTS_SSL OFF CACHE BOOL "" FORCE)
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/cpr/CMakeLists.txt")
+    message(STATUS "Downloading CPR to ThirdParty/cpr...")
+    execute_process(
+        COMMAND git clone --depth 1 --branch 1.11.2
+            https://github.com/libcpr/cpr.git ThirdParty/cpr
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_RESULT
+    )
+    if(GIT_RESULT EQUAL 0)
+        message(STATUS "CPR downloaded successfully")
+    else()
+        message(FATAL_ERROR "Failed to download CPR")
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/cpr/CMakeLists.txt")
+    message(STATUS "Adding CPR from ThirdParty/cpr")
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/cpr ${CMAKE_BINARY_DIR}/cpr)
+endif()
+
 # Local submodules
 add_subdirectory(ThirdParty/IniReader)
 add_subdirectory(ThirdParty/Encryption)
@@ -359,11 +383,10 @@ if(TARGET usockets_static)
 endif()
 
 # Link cpr (C++ HTTP requests library)
-find_library(CPR_LIB cpr)
-if(CPR_LIB)
-    target_link_libraries("${PROJECT_NAME}" PRIVATE ${CPR_LIB})
+if(TARGET cpr::cpr)
+    target_link_libraries("${PROJECT_NAME}" PRIVATE cpr::cpr)
 else()
-    target_link_libraries("${PROJECT_NAME}" PRIVATE cpr)
+    message(WARNING "CPR not found - email features will not link properly")
 endif()
 
 #==============================================================================
