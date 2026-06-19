@@ -16,8 +16,9 @@ RUN dnf install -y \
         curl \
     && dnf clean all && rm -rf /var/cache/dnf
 
-# Database linking for runtime
-RUN ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
+# Database linking for runtime (binary built on Ubuntu needs libmysqlclient.so.21)
+RUN ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so && \
+    ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so.21
 
 # Download pre-built release from GitHub
 WORKDIR /app
