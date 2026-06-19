@@ -34,7 +34,7 @@ jobs:
             cmake \
             g++ \
             libssl-dev \
-            libmysqlclient-dev \
+            libmariadb-dev \
             zlib1g-dev
 
       - name: Get current version
