@@ -32,9 +32,9 @@ echo "All ports are free. Proceeding..."
 
 # Detect command as it can be 'docker compose' or 'docker-compose' in older versions
 if docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
+    DOCKER_COMPOSE="docker compose --env-file .env.backend"
 elif docker-compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
+    DOCKER_COMPOSE="docker-compose --env-file .env.backend"
 else
     echo "Error: Docker Compose is not installed."
     exit 1
@@ -42,8 +42,8 @@ fi
 
 echo "Configuration files found. Starting container build..."
 
-# Build and start (CACHE_BUST forces fresh git pull inside container)
-$DOCKER_COMPOSE build --build-arg CACHE_BUST=$(date +%s) backend
+# Build and start
+$DOCKER_COMPOSE build backend
 $DOCKER_COMPOSE up --build -d
 
 echo "======================================================="

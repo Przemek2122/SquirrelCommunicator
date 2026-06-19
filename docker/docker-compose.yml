@@ -4,7 +4,9 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.release
+      args:
+        VERSION: ${BACKEND_VERSION:?Set BACKEND_VERSION in .env.backend}
     env_file:
       - .env.backend
       - .env.voice

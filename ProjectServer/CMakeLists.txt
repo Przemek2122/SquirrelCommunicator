@@ -17,6 +17,9 @@ project("${PROJECT_NAME}" LANGUAGES C CXX VERSION ${PROJECT_VERSION})
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Force all libraries to link statically (no .so files needed at runtime)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
 # Crow requires these defines
 add_compile_definitions(CROW_ENABLE_SSL ASIO_STANDALONE)
 
@@ -92,6 +95,8 @@ endif()
 # Configure SOCI options before fetch
 set(SOCI_TESTS OFF CACHE BOOL "" FORCE)
 set(SOCI_CXX11 ON CACHE BOOL "" FORCE)
+set(SOCI_SHARED OFF CACHE BOOL "" FORCE)
+set(SOCI_STATIC ON CACHE BOOL "" FORCE)
 set(WITH_MYSQL ON CACHE BOOL "" FORCE)
 set(WITH_SQLITE3 OFF CACHE BOOL "" FORCE)
 set(WITH_POSTGRESQL OFF CACHE BOOL "" FORCE)
@@ -359,18 +364,13 @@ else()
     target_link_libraries("${PROJECT_NAME}" PRIVATE argon2)
 endif()
 
-# Link SOCI
-if(TARGET soci_core)
+# Link SOCI (static targets are named soci_*_static when SOCI_STATIC=ON)
+if(TARGET soci_core_static)
+    target_link_libraries("${PROJECT_NAME}" PRIVATE soci_core_static soci_mysql_static)
+elseif(TARGET soci_core)
     target_link_libraries("${PROJECT_NAME}" PRIVATE soci_core soci_mysql)
 else()
-    # Try system-installed SOCI
-    find_library(SOCI_CORE_LIB soci_core)
-    find_library(SOCI_MYSQL_LIB soci_mysql)
-    if(SOCI_CORE_LIB AND SOCI_MYSQL_LIB)
-        target_link_libraries("${PROJECT_NAME}" PRIVATE ${SOCI_CORE_LIB} ${SOCI_MYSQL_LIB})
-    else()
-        message(WARNING "SOCI not found - database features will not link properly")
-    endif()
+    message(WARNING "SOCI not found - database features will not link properly")
 endif()
 
 # Link uSockets

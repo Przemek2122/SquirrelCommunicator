@@ -4,9 +4,29 @@ This document explains how to properly configure the environment variables requi
 1. **C++ Backend** (REST CROWCPP & UWebSockets)
 2. **Go Voice Service** (SquirrelCommunicatorVoice)
 
-## 1.`.env.backend`
+## Dockerfiles
 
-- Database is separate for data safety. It could be added to services but it's management would be complicated
+| File | Purpose | Build time |
+|---|---|---|
+| `Dockerfile.release` | Downloads pre-built binary from GitHub Releases (recommended) | ~10 seconds |
+| `Dockerfile` | Compiles from source inside container (for development/debugging) | ~10 minutes |
+
+`docker-compose.yml` uses `Dockerfile.release` by default.
+
+## Configuration Files
+
+### `.env` (compose variables)
+
+This file is read by `docker-compose` itself for variable interpolation. Not committed to git.
+
+```
+# Version of the backend release to deploy
+BACKEND_VERSION=0.0.1
+```
+
+### `.env.backend` (backend container env)
+
+- Database is separate for data safety. It could be added to services but its management would be complicated
 - Brevo key can be generated at 'https://app.brevo.com/settings/keys/api'
 
 ```
@@ -21,7 +41,7 @@ SQRLL_COMM_DB_PASSWORD=
 SQRLL_COMM_MAIL_API_KEY=
 ```
 
-## 2.`.env.voice`
+### `.env.voice` (voice service container env)
 
 - SQRLL_VOICE_API_KEY - It is backend password to do not allow random calls to create random rooms.
 
