@@ -15,21 +15,15 @@ This document explains how to properly configure the environment variables requi
 
 ## Configuration Files
 
-### `.env` (compose variables)
-
-This file is read by `docker-compose` itself for variable interpolation. Not committed to git.
-
-```
-# Version of the backend release to deploy
-BACKEND_VERSION=0.0.1
-```
-
 ### `.env.backend` (backend container env)
 
 - Database is separate for data safety. It could be added to services but its management would be complicated
 - Brevo key can be generated at 'https://app.brevo.com/settings/keys/api'
 
 ```
+# Version of the backend release to deploy
+BACKEND_VERSION=0.0.2
+
 # Database connections env vars
 SQRLL_COMM_DB_HOST=127.0.0.1
 SQRLL_COMM_DB_PORT=3306
