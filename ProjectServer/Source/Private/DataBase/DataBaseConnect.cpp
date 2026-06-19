@@ -2,7 +2,10 @@
 #include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "soci/session.h"
-#include "soci/mysql/soci-mysql.h"
+
+// Forward-declare the SOCI MySQL static backend factory
+// (avoids including soci-mysql.h which drags in mysql.h client headers)
+namespace soci { extern backend_factory const mysql; }
 
 FDataBaseConnect::FDataBaseConnect()
 {

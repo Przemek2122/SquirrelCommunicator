@@ -366,7 +366,7 @@ endif()
 
 # Link SOCI (static targets are named soci_*_static when SOCI_STATIC=ON)
 if(TARGET soci_core_static)
-    target_link_libraries("${PROJECT_NAME}" PRIVATE soci_core_static soci_mysql_static)
+    target_link_libraries("${PROJECT_NAME}" PRIVATE soci_mysql_static soci_core_static)
 elseif(TARGET soci_core)
     target_link_libraries("${PROJECT_NAME}" PRIVATE soci_core soci_mysql)
 else()
