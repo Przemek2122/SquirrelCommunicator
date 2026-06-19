@@ -10,21 +10,15 @@ mkdir buildsrv
 mkdir buildsrv\win-%ARCH%
 cd buildsrv\win-%ARCH%
 
-REM Use CMAKE to generate ProjectServer
+REM Use CMAKE to generate ProjectServer (standalone — no Engine)
 cmake -G "Visual Studio 17 2022" -A %ARCH% ..\..\ProjectServer
 
+REM Build the server binary
+echo Building communicatorsrv...
+cmake --build . --target communicatorsrv --parallel
+echo Build complete!
+
 cd /d "%INITIAL_SAVED_DIR%"
-cd ..
-
-REM Prebuild every engine ProjectServer so user can skip this.
-echo Try to build all necesary engine projects
-cmake --build buildsrv\win-%ARCH% --target BuildAllEngine --parallel
-echo All engine builds complete!
-
-REM Prebuild every ProjectServer subprojects so user can skip this.
-echo Try to build all necesary projects
-cmake --build buildsrv\win-%ARCH% --target BuildAllProject --parallel
-echo All builds complete!
 
 REM IDE Selection (if not CLI)
 if "%CI%"=="true" (

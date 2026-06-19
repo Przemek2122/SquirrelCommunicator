@@ -12,7 +12,7 @@ if [ ! -f .env.backend ] || [ ! -f .env.voice ]; then
     exit 1
 fi
 
-# Check ports if abailable
+# Check if ports are available
 PORTS_TO_CHECK=(8080 8081 8082)
 
 echo "Checking port availability..."
@@ -30,26 +30,26 @@ done
 
 echo "All ports are free. Proceeding..."
 
-# Detect command as it can be 'docker compose' or 'docker-compose' in older version
+# Detect command as it can be 'docker compose' or 'docker-compose' in older versions
 if docker compose version >/dev/null 2>&1; then
     DOCKER_COMPOSE="docker compose"
 elif docker-compose version >/dev/null 2>&1; then
     DOCKER_COMPOSE="docker-compose"
 else
-    echo "Błąd: Docker Compose nie jest zainstalowany."
+    echo "Error: Docker Compose is not installed."
     exit 1
 fi
 
 echo "Configuration files found. Starting container build..."
 
-# Build and start
+# Build and start (soft — uses cache, no CACHE_BUST)
 $DOCKER_COMPOSE up --build -d
 
 echo "======================================================="
 echo "Waiting for backend to start..."
 echo "======================================================="
 
-sleep 3 # We do not any wait but let's avoid spam for user
+sleep 3
 
 # Test
 curl -v http://localhost:8080/health
@@ -61,7 +61,7 @@ echo "======================================================="
 echo "Waiting for voice_service to start..."
 echo "======================================================="
 
-sleep 2 # We do not any wait but let's avoid spam for user
+sleep 2
 
 # Test
 curl -v http://localhost:8082/health

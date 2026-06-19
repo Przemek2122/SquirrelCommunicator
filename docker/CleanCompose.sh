@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Detect command as it can be 'docker compose' or 'docker-compose' in older version
+# Detect command
 if docker compose version >/dev/null 2>&1; then
     DOCKER_COMPOSE="docker compose"
 elif docker-compose version >/dev/null 2>&1; then
     DOCKER_COMPOSE="docker-compose"
 else
-    echo "Błąd: Docker Compose nie jest zainstalowany."
+    echo "Error: Docker Compose is not installed."
     exit 1
 fi
 

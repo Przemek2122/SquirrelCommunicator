@@ -6,11 +6,10 @@ if docker compose version >/dev/null 2>&1; then
 elif docker-compose version >/dev/null 2>&1; then
     DOCKER_COMPOSE="docker-compose"
 else
-    echo "Błąd: Docker Compose nie jest zainstalowany."
+    echo "Error: Docker Compose is not installed."
     exit 1
 fi
 
 $DOCKER_COMPOSE down
 
 $DOCKER_COMPOSE ps
-

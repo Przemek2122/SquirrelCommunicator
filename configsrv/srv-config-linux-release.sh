@@ -9,19 +9,12 @@ cd ..
 mkdir -p buildsrv/linux-$ARCH
 cd buildsrv/linux-$ARCH
 
-# Use CMAKE to generate ProjectServer
+# Use CMAKE to generate ProjectServer (standalone — no Engine)
 cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ../../ProjectServer
 
+# Build the server binary
+echo "Building communicatorsrv..."
+cmake --build . --target communicatorsrv --parallel
+echo "Build complete!"
+
 cd "$INITIAL_SAVED_DIR"
-cd ..
-
-# Prebuild every engine ProjectServer so user can skip this.
-echo "Try to build all necessary engine projects"
-cmake --build buildsrv/linux-$ARCH --target BuildAllEngine --parallel
-echo "All engine builds complete!"
-
-# Prebuild every ProjectServer subprojects so user can skip this.
-echo "Try to build all necessary projects"
-cmake --build buildsrv/linux-$ARCH --target BuildAllProject --parallel
-echo "All builds complete!"
-

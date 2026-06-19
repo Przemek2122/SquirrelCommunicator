@@ -1,24 +1,16 @@
-# OS
-FROM fedora:latest
+# ── Stage 1: Build ──────────────────────────────────────────────────
+FROM fedora:latest AS builder
 
-# Basic packages
+# System packages for compilation
 RUN dnf update -y && \
-    dnf install -y git wget curl tar zip unzip gdb glibc-devel zlib-devel gcc gcc-c++ cmake make ninja-build pkgconf kernel-headers kernel-devel xz patch sed openssl openssl-devel && \
-    dnf install -y nano ps ping htop netstat ss
+    dnf install -y \
+        git gcc gcc-c++ cmake make ninja-build \
+        openssl-devel zlib-devel \
+        mariadb-connector-c-devel \
+        libcurl-devel \
+    && dnf clean all && rm -rf /var/cache/dnf
 
-# Packages for project (removed mysql-common mysql-devel as we use mariadb-connector-c anyway)
-RUN dnf install -y alsa-lib-devel perl perl-IPC-Cmd perl-generators perl-devel nasm pkgconfig flex bison binutils elfutils-libelf-devel && \
-	dnf install -y libaio-devel ncurses-devel readline-devel libuuid-devel libtirpc-devel lz4-devel libedit-devel snappy-devel bzip2-devel && \
-    dnf install -y libstdc++-static brotli-devel libwebsockets-devel libuv-devel freetype-devel mariadb-connector-c mariadb-connector-c-devel
-
-# Packages for fake screen (Should be skipped in GUI version)
-RUN dnf install -y libX11-devel libXext-devel libXrandr-devel libXrender-devel  libXinerama-devel libXi-devel libXcursor-devel libXfixes-devel wayland-devel libxkbcommon-devel mesa-libEGL-devel libdecor-devel
-
-# Clean
-RUN dnf clean all && rm -rf /var/cache/dnf
-
-# Database linking
-RUN ls -la /usr/lib64/pkgconfig/ | grep maria
+# Database linking (SOCI expects mysqlclient)
 RUN if [ -f /usr/lib64/pkgconfig/libmariadb.pc ]; then \
         ln -sf /usr/lib64/pkgconfig/libmariadb.pc /usr/lib64/pkgconfig/mysqlclient.pc; \
     elif [ -f /usr/lib64/pkgconfig/mariadb.pc ]; then \
@@ -28,35 +20,37 @@ RUN if [ -f /usr/lib64/pkgconfig/libmariadb.pc ]; then \
     fi
 RUN ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
 
-# Work dir
-RUN mkdir /var/repos
-WORKDIR /var/repos
-
-# Projects
-RUN git clone https://github.com/Przemek2122/SquirrelCommunicator.git
-RUN git clone -b communicator https://github.com/Przemek2122/Engine.git
-
-# Random argument to ensure we have next steps rebuild each time we call build instead of caching them
+# Clone project (standalone — no Engine dependency)
+WORKDIR /build
 ARG CACHE_BUST=1
+RUN git clone --recurse-submodules https://github.com/Przemek2122/SquirrelCommunicator.git
 
-# Update engine module
-WORKDIR /var/repos/Engine
-RUN git fetch
-RUN git pull
-RUN git submodule update --init --recursive
+# Update to latest (CACHE_BUST forces re-pull)
+WORKDIR /build/SquirrelCommunicator
+RUN git pull && git submodule update --init --recursive
 
-# Update communicator module
-WORKDIR /var/repos/SquirrelCommunicator
-RUN git fetch
-RUN git pull
-RUN git submodule update --init --recursive
+# Build release
+WORKDIR /build/SquirrelCommunicator/ProjectServer
+RUN cmake -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+RUN cmake --build build --target communicatorsrv --parallel $(nproc)
 
-# Compile
-WORKDIR /var/repos/SquirrelCommunicator/configsrv
-RUN chmod +x srv-config-linux-release_2cores.sh
-RUN ./srv-config-linux-release_2cores.sh
+# ── Stage 2: Runtime ────────────────────────────────────────────────
+FROM fedora:latest
 
-# Go into build dir
-WORKDIR /var/repos/SquirrelCommunicator/buildsrv/linux-x64/bin/Release/Project/
-# Run but when container starts
+# Runtime dependencies only (no compiler)
+RUN dnf install -y \
+        openssl zlib \
+        mariadb-connector-c \
+        libcurl \
+        curl \
+    && dnf clean all && rm -rf /var/cache/dnf
+
+# Database linking for runtime
+RUN ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
+
+# Copy only the built binary and assets
+WORKDIR /app
+COPY --from=builder /build/SquirrelCommunicator/ProjectServer/build/bin/Release/Project/communicatorsrv .
+COPY --from=builder /build/SquirrelCommunicator/ProjectServer/Assets ./Assets
+
 CMD ["./communicatorsrv"]
