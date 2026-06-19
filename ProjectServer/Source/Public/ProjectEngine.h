@@ -1,14 +1,21 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2020-2025 https://github.com/Przemek2122/Engine
 #pragma once
 
-#include "CoreMinimal.h"
-#include "Engine.h"
+#include "EngineCompat.h"
+#include "Logger/Logger.h"
 #include "Rest/CrowAppMiddleware.h"
 #include "Rest/CrowAppEndpoint.h"
 #include "BackendSettings.h"
 #include "crow/app.h"
 #include "Managers/FriendListManager.h"
 
+#include <functional>
+#include <memory>
+#include <future>
+#include <string>
+#include <vector>
+
+class FServersManager;
 class FTransferTokenManager;
 class FRoomsServiceManager;
 class FPasswordResetManager;
@@ -17,20 +24,25 @@ class FSocketManager;
 class FAbuseProtection;
 class FUserManager;
 
+// Factory function type for REST endpoints (replaces FClassStorage)
+using FEndpointFactory = std::function<FCrowAppEndpoint*(FProjectEngine*)>;
+
 /**
  * Primary engine class for your project.
+ * Standalone version - no longer inherits from FEngine.
  */
-class FProjectEngine : public FEngine
+class FProjectEngine
 {
 public:
 	FProjectEngine();
+	~FProjectEngine();
 
-	void Init() override;
-	void PostSecondTick() override;
+	void Init();
+	void PostSecondTick();
 
 	void StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni);
 
-	void PreExit() override;
+	void PreExit();
 
 	void AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap);
 	void AddCookies(crow::response& CurrentResponse, const std::string& AuthToken);
@@ -42,6 +54,7 @@ public:
 	FUserManager* GetUserManager() const { return UserManager.get(); }
 	FTransferTokenManager* GetTransferTokenManager() const { return TransferTokenManager.get(); }
 	FConversationsManager* GetConversationsManager() const { return ConversationsManager.get(); }
+	FServersManager* GetServersManager() const { return ServersManager.get(); }
 	FSocketManager* GetSocketManager() const { return SocketManager.get(); }
 
 	crow::App<FCrowAppMiddleware>& GetCrowApp() { return CrowApp; }
@@ -57,6 +70,7 @@ public:
 	std::string GetMailAPIKey() const { return MailAPIKey; }
 
 protected:
+
 	/** API Server */
 	crow::App<FCrowAppMiddleware> CrowApp;
 
@@ -81,6 +95,9 @@ protected:
 	/** Conversations manager */
 	std::unique_ptr<FConversationsManager> ConversationsManager;
 
+	/** Servers manager */
+	std::unique_ptr<FServersManager> ServersManager;
+
 	/** PasswordResetManager */
 	std::unique_ptr<FPasswordResetManager> PasswordResetManager;
 
@@ -90,8 +107,8 @@ protected:
 	/** Manager for rooms service (GO Microserivce) */
 	std::unique_ptr<FRoomsServiceManager> RoomsManager;
 
-	/** Array of rest endpoint classes */
-	CArray<FClassStorage<FCrowAppEndpoint, FProjectEngine*>> RestEndpointsClasses;
+	/** Array of rest endpoint factory functions (replaces FClassStorage) */
+	CArray<FEndpointFactory> RestEndpointsFactories;
 
 	/** Array with rest endpoints instances */
 	CArray<std::shared_ptr<FCrowAppEndpoint>> RestEndpointInstances;

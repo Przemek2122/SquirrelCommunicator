@@ -1,4 +1,5 @@
 #pragma once
+#include "EngineCompat.h"
 #include <uwebsockets/WebSocket.h>
 
 struct FWebSocketSessionData

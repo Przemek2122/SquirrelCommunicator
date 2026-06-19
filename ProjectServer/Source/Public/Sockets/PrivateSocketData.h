@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "EngineCompat.h"
+
 #include <uwebsockets/WebSocketProtocol.h>
 #include "SocketData.h"
 #include "nlohmann/json_fwd.hpp"

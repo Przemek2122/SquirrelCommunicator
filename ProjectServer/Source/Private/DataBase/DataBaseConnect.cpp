@@ -1,3 +1,4 @@
+#include "Logger/Logger.h"
 #include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "soci/session.h"
@@ -10,7 +11,7 @@ FDataBaseConnect::FDataBaseConnect()
     try
     {
         // Create connection
-		Session = soci::session(BackendName, ConnectionString);
+		Session = std::make_unique<soci::session>(BackendName, ConnectionString);
         bIsConnected = true;
     }
     catch (const soci::soci_error& e)

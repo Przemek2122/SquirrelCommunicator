@@ -1,15 +1,13 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
+#include "Logger/Logger.h"
 #include "Auth/TransferTokenManager.h"
-#include "Misc/EncryptionUtil.h"
-#include "Threads/ThreadsManager.h"
-
-static const char* TransferTokenManagerThreadName = "TransferTokenThread";
+#include "SQRLLEncryption.h"
+#include "ThreadCompat.h"
 
 FTransferTokenManager::FTransferTokenManager()
     : AsyncWorkLastTime(0)
     , CurrentTimeCached(0)
-    , TransferTokenThreadData(nullptr)
 {
 }
 
@@ -17,45 +15,29 @@ void FTransferTokenManager::Init()
 {
 	CurrentTimeCached = FUtil::GetSeconds();
 
-    FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-    TransferTokenThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(TransferTokenManagerThreadName);
-    FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(TransferTokenThreadData->GetThread());
-    if (GenericThread != nullptr)
+    WorkerThread = std::jthread([this](std::stop_token stoken)
     {
-        GenericThread->SetShouldRemoveDoneJobs(false);
-        GenericThread->AddTask([this]()
-        {
-            AsyncWork();
-        });
+        constexpr Uint64 TimeBetweenRuns = 2 * 60; // Time in seconds
 
-        GenericThread->BeginAsyncWork();
-    }
-    else
-    {
-        LOG_ERROR("Failed to create transfer token manager thread");
-    }
+        while (!stoken.stop_requested())
+        {
+            const Uint64 CurrentTime = CurrentTimeCached;
+
+            if (AsyncWorkLastTime + TimeBetweenRuns <= CurrentTime)
+            {
+                AsyncWorkLastTime = CurrentTime;
+                AsyncClearOldTransferTokens();
+            }
+
+            // Sleep 1 second between checks
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    });
 }
 
 void FTransferTokenManager::PostSecondTick()
 {
 	CurrentTimeCached = FUtil::GetSeconds();
-}
-
-void FTransferTokenManager::AsyncWork()
-{
-    constexpr Uint64 TimeBetweenRuns = 2 * 60; // Time in seconds
-    const Uint64 CurrentTime = CurrentTimeCached;
-
-    if (AsyncWorkLastTime + TimeBetweenRuns > CurrentTime)
-    {
-        THREAD_WAIT_MS(1000);
-    }
-    else
-    {
-        AsyncWorkLastTime = CurrentTime;
-
-        AsyncClearOldTransferTokens();
-    }
 }
 
 void FTransferTokenManager::AsyncClearOldTransferTokens()

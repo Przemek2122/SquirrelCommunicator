@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 #include "soci/session.h"
 
 /** Enum for returning DB operation result */
@@ -55,9 +55,9 @@ public:
 	~FDataBaseConnect();
 
 	bool IsConnected() const { return bIsConnected; }
-	soci::session& GetSession() { return Session; }
+	soci::session& GetSession() { return *Session; }
 
 protected:
-	soci::session Session;
+	std::unique_ptr<soci::session> Session;
 	bool bIsConnected;
 };

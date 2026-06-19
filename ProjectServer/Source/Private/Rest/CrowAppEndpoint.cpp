@@ -1,4 +1,5 @@
 
+#include "Logger/Logger.h"
 #include "Rest/CrowAppEndpoint.h"
 
 FCrowAppEndpoint::FCrowAppEndpoint(FProjectEngine* InProjectEngine)

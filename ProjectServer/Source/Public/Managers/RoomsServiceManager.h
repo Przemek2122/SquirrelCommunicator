@@ -1,7 +1,10 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
 #pragma once
+
 #include <shared_mutex>
+#include <unordered_map>
+#include <string>
 
 enum class ERoomExistenceStatus
 {

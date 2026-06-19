@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "EngineCompat.h"
 #include <variant>
 #include <uwebsockets/WebSocket.h>
 
@@ -68,6 +69,8 @@ enum class ESocketMessageRoomsType : uint8
     Unknown = 0,
 
     CreateRoom,
+    JoinRoom,
+    LeaveRoom,
 
     Error = 255
 };

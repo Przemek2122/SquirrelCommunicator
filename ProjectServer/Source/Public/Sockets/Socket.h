@@ -2,12 +2,14 @@
 
 #pragma once
 
+#include "EngineCompat.h"
+
 #include <shared_mutex>
 #include <nlohmann/json_fwd.hpp>
 #include "PrivateSocketData.h"
 #include "RoomsSocketData.h"
 #include "Auth/UserManager.h"
-#include "Misc/WebSockets/AppWrapper.h"
+#include "WebSocket/AppWrapper.h"
 
 class FUser;
 struct FConversationData;

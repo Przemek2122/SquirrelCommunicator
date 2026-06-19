@@ -2,9 +2,10 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 #include <shared_mutex>
 #include <string>
+#include <thread>
 
 /** Structure for transfer token manager */
 struct FTransferTokenData
@@ -24,7 +25,6 @@ public:
     void Init();
     void PostSecondTick();
 
-    void AsyncWork();
     void AsyncClearOldTransferTokens();
 
     std::string CreateTransferToken(Uint64 UserId);
@@ -46,6 +46,7 @@ private:
     /** Time saved for performance */
     Uint64 CurrentTimeCached;
 
-    FThreadData* TransferTokenThreadData;
+    /** Background worker thread */
+    std::jthread WorkerThread;
 
 };

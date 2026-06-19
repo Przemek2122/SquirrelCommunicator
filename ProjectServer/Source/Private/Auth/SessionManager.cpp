@@ -1,12 +1,10 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
+#include "Logger/Logger.h"
 #include "Auth/SessionManager.h"
 
-#include "Misc/EncryptionUtil.h"
-#include "Threads/Thread.h"
-#include "Threads/ThreadsManager.h"
-
-static const char* SessionManagerThreadName = "SessionManagerThread";
+#include "SQRLLEncryption.h"
+#include "ThreadCompat.h"
 
 FUserSessionData::FUserSessionData()
 	: UserId(0)
@@ -53,14 +51,12 @@ FSessionManager::FSessionManager(const Uint64 InSessionExpirationTime)
 	: AsyncWorkLastTime(0)
 	, CurrentTimeCached(0)
 	, SessionExpirationTime(InSessionExpirationTime)
-	, SessionManagerThreadData(nullptr)
 {
 }
 
 FSessionManager::~FSessionManager()
 {
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	ThreadsManager->TryStopThread(SessionManagerThreadData);
+	// std::jthread auto-requests stop and joins on destruction
 }
 
 void FSessionManager::Init()
@@ -72,45 +68,29 @@ void FSessionManager::Init()
 		EncryptionKey = FEncryptionUtil::GenerateSecureSalt(64);
 	}
 
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	SessionManagerThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(SessionManagerThreadName);
-	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(SessionManagerThreadData->GetThread());
-	if (GenericThread != nullptr)
+	WorkerThread = std::jthread([this](std::stop_token stoken)
 	{
-		GenericThread->SetShouldRemoveDoneJobs(false);
-		GenericThread->AddTask([this]()
-		{
-			AsyncWork();
-		});
+		constexpr Uint64 TimeBetweenRuns = 3 * 60; // Time in seconds
 
-		GenericThread->BeginAsyncWork();
-	}
-	else
-	{
-		LOG_ERROR("Failed to create session manager thread");
-	}
+		while (!stoken.stop_requested())
+		{
+			const Uint64 CurrentTime = CurrentTimeCached;
+
+			if (AsyncWorkLastTime + TimeBetweenRuns <= CurrentTime)
+			{
+				AsyncWorkLastTime = CurrentTime;
+				AsyncCheckForDeadSessions();
+			}
+
+			// Sleep 1 second between checks — no busy-wait
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		}
+	});
 }
 
 void FSessionManager::PostSecondTick()
 {
 	CurrentTimeCached = FUtil::GetSeconds();
-}
-
-void FSessionManager::AsyncWork()
-{
-	constexpr Uint64 TimeBetweenRuns = 3 * 60; // Time in seconds
-	const Uint64 CurrentTime = CurrentTimeCached;
-
-	if (AsyncWorkLastTime + TimeBetweenRuns > CurrentTime)
-	{
-		THREAD_WAIT_MS(1000);
-	}
-	else
-	{
-		AsyncWorkLastTime = CurrentTime;
-
-		AsyncCheckForDeadSessions();
-	}
 }
 
 void FSessionManager::AsyncCheckForDeadSessions()

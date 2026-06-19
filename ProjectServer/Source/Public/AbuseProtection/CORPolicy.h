@@ -1,7 +1,7 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2020-2025 https://github.com/Przemek2122/Engine
 #pragma once
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 
 /** This class could be way better, but for now, accept anything */
 class FCORPolicy

@@ -4,7 +4,7 @@
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
 #include "DataBase/DataBaseConnect.h"
-#include "Misc/WebSockets/CookieHelper.h"
+#include "WebUtils/CookieHelper.h"
 #include "Sockets/SocketManager.h"
 #include "Sockets/WebSocketSessionData.h"
 #include <nlohmann/json.hpp>

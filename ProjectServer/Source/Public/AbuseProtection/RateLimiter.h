@@ -2,8 +2,9 @@
 #pragma once
 
 #include <shared_mutex>
+#include <thread>
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 
 /** Assume reset is done by removing from map */
 struct FRateLimit
@@ -62,7 +63,6 @@ public:
 	/** Add room operation attempt */
 	void AddRoomOperationAttempt(const std::string_view InAddress);
 
-	void AsyncWork();
 	void ResetRateLimits();
 
 protected:
@@ -96,7 +96,8 @@ protected:
 	int32 NumberOfRoomOperationAttemptsToBlock;
 
 private:
-	FThreadData* RateLimiterThreadData;
+	/** Background worker thread */
+	std::jthread WorkerThread;
 	std::chrono::time_point<std::chrono::utc_clock> AsyncWorkLastTime;
 
 };

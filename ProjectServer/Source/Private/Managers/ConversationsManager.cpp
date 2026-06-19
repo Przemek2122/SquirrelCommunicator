@@ -1,10 +1,11 @@
+#include "Logger/Logger.h"
 #include "Managers/ConversationsManager.h"
 #include "DataBase/DataBaseConnect.h"
 #include "soci/rowset.h"
 
 Uint64 FConversationsManager::GetOrCreateConversation(const CArray<Uint64>& InUserIds, bool& bIsNewConversation)
 {
-	return UploadOrGetConversation(InUserIds.Vector, bIsNewConversation);
+	return UploadOrGetConversation(InUserIds.Vector(), bIsNewConversation);
 }
 
 std::shared_ptr<FConversationData> FConversationsManager::GetConversation(const Uint64 InConversationId)
@@ -67,7 +68,7 @@ bool FConversationsManager::IsMessageInConversation(Uint64 InMessageId, Uint64 I
 		// Linear search from the end
 		{
 			std::shared_lock Lock(ConversationDataSharedPtr->Lock);
-			const std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque;
+			const std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque();
 
 			uint16 CheckedCount = 0;
 			const uint16 MaxLookback = 50;
@@ -130,7 +131,7 @@ void FConversationsManager::EditMessage(const Uint64 InRequesterId, const Uint64
         // 2. Find the conversation (Safe read from the global map)
         {
             std::shared_lock Lock(ConversationIdToConversationDataMutex);
-            auto ConvIt = ConversationIdToConversationData.Map.find(InConversationId);
+            auto ConvIt = ConversationIdToConversationData.Map().find(InConversationId);
             if (ConvIt == ConversationIdToConversationData.end() || ConvIt->second == nullptr)
             {
                 return; // Conversation does not exist
@@ -142,7 +143,7 @@ void FConversationsManager::EditMessage(const Uint64 InRequesterId, const Uint64
         {
             // Using unique_lock! No other thread can read or write to this deque right now.
             std::unique_lock WriteLock(ConversationDataSharedPtr->Lock);
-            std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque;
+            std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque();
 
         	int32 CurrentLoopback = 0;
         	const int32 MaxLoopback = 50;
@@ -183,7 +184,7 @@ void FConversationsManager::DeleteMessage(const Uint64 InRequesterId, const Uint
         // 2. Find the conversation
         {
             std::shared_lock Lock(ConversationIdToConversationDataMutex);
-            auto ConvIt = ConversationIdToConversationData.Map.find(InConversationId);
+            auto ConvIt = ConversationIdToConversationData.Map().find(InConversationId);
             if (ConvIt == ConversationIdToConversationData.end() || ConvIt->second == nullptr)
             {
                 return;
@@ -194,7 +195,7 @@ void FConversationsManager::DeleteMessage(const Uint64 InRequesterId, const Uint
         // 3. Delete the message (WRITE lock at the conversation level)
         {
             std::unique_lock WriteLock(ConversationDataSharedPtr->Lock);
-            std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque;
+            std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque();
 
             auto It = std::lower_bound(
                 Deque.begin(),
@@ -630,9 +631,10 @@ Uint64 FConversationsManager::UploadOrGetConversation(const std::vector<Uint64>&
 				LOG_ERROR("Database error: " << e.what());
 			}
 
-			std::vector<Uint64> Ids;
+			CArray<Uint64> Ids;
 			Ids.resize(UserIds.size());
-			AddConversationToCache(ConversationId, UserIds, Ids);
+			CArray<Uint64> UserIdsCArray(UserIds.begin(), UserIds.end());
+			AddConversationToCache(ConversationId, UserIdsCArray, Ids);
 		}
 		else
 		{

@@ -4,7 +4,7 @@
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
-#include "Misc/WebSockets/CookieHelper.h"
+#include "WebUtils/CookieHelper.h"
 
 FAuthEndpoint::FAuthEndpoint(FProjectEngine* InProjectEngine)
 	: FCrowAppEndpoint(InProjectEngine)

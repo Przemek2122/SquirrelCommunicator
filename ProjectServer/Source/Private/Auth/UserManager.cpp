@@ -1,12 +1,14 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
+#include "Logger/Logger.h"
 #include "Auth/UserManager.h"
 
 #include <nlohmann/json.hpp>
 
 #include "DataBase/DataBaseConnect.h"
-#include "Misc/EncryptionManager.h"
-#include "Misc/EncryptionUtil.h"
+#include "Encryption/EncryptionCompat.h"
+#include "SQRLLEncryption.h"
+#include "WebUtils/StringHelpers.h"
 
 FUserManager::FUserManager(Uint64 InSessionExpirationTime)
 	: NextAvailableIndex(0)

@@ -2,14 +2,12 @@
 
 #include "Rest/TransferTokenEndpoint.h"
 
-#include <SDL3/SDL_stdinc.h>
-
 #include "PredefinedMessages.h"
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/TransferTokenManager.h"
 #include "Auth/UserManager.h"
-#include "Misc/Util.h"
+#include "Logger/Logger.h"
 #include "nlohmann/json.hpp"
 #include "nlohmann/json_fwd.hpp"
 #include "Rest/CrowUtils.h"

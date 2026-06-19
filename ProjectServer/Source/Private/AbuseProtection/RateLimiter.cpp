@@ -1,10 +1,7 @@
 #include "ProjectEngine.h"
 #include "AbuseProtection/RateLimiter.h"
 
-#include "Threads/Thread.h"
-#include "Threads/ThreadsManager.h"
-
-static const char* RateLimiterThreadName = "RateLimiterThread";
+#include "ThreadCompat.h"
 
 FRateLimit::FRateLimit()
 	: AttemptCount(1)
@@ -76,27 +73,29 @@ FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumbe
 	, NumberOfPasswordResetAttemptsToBlock(InNumberOfPasswordResetAttemptsToBlock)
 	, NumberOfRoomOperationAttemptsToBlock(InNumberOfRoomOperationAttemptsToBlock)
 {
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	RateLimiterThreadData = ThreadsManager->CreateThread<FGenericThread, FThreadData>(RateLimiterThreadName);
-	FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(RateLimiterThreadData->GetThread());
-	GenericThread->SetShouldRemoveDoneJobs(false);
-	if (GenericThread != nullptr)
+	AsyncWorkLastTime = std::chrono::utc_clock::now();
+
+	WorkerThread = std::jthread([this](std::stop_token stoken)
 	{
-		AsyncWorkLastTime = std::chrono::utc_clock::now();
-
-		GenericThread->AddTask([this]()
+		while (!stoken.stop_requested())
 		{
-			AsyncWork();
-		});
+			const auto CurrentTime = std::chrono::utc_clock::now();
 
-		GenericThread->BeginAsyncWork();
-	}
+			if (AsyncWorkLastTime + ClearingTimeInMins <= CurrentTime)
+			{
+				AsyncWorkLastTime = CurrentTime;
+				ResetRateLimits();
+			}
+
+			// Sleep 1 second between checks
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+		}
+	});
 }
 
 FRateLimiter::~FRateLimiter()
 {
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	ThreadsManager->TryStopThread(RateLimiterThreadData);
+	// std::jthread auto-requests stop and joins on destruction
 }
 
 bool FRateLimiter::IsAddressBlocked(const std::string_view InAddress)
@@ -127,22 +126,6 @@ bool FRateLimiter::IsRoomOperationAddressBlocked(const std::string_view InAddres
 void FRateLimiter::AddRoomOperationAttempt(const std::string_view InAddress)
 {
 	RoomOperationAddressToLimits.AddAttempt(InAddress);
-}
-
-void FRateLimiter::AsyncWork()
-{
-	const std::chrono::time_point<std::chrono::utc_clock> CurrentTime = std::chrono::utc_clock::now();
-
-	if (AsyncWorkLastTime + ClearingTimeInMins > CurrentTime)
-	{
-		THREAD_WAIT_MS(1);
-	}
-	else
-	{
-		AsyncWorkLastTime = CurrentTime;
-
-		ResetRateLimits();
-	}
 }
 
 void FRateLimiter::ResetRateLimits()

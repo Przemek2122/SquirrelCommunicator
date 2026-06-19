@@ -2,13 +2,14 @@
 
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
-#include "Assets/IniReader/IniObject.h"
+#include "SQRLLIniObject.h"
 #include "Auth/TransferTokenManager.h"
 #include "DataBase/DataBaseConnect.h"
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
 #include "Managers/PasswordResetManager.h"
 #include "Managers/RoomsServiceManager.h"
+#include "Managers/ServersManager.h"
 #include "Rest/AccountEndpoint.h"
 #include "Rest/CrowUtils.h"
 #include "Rest/IntegrationEndpoint.h"
@@ -17,37 +18,42 @@
 #include "Rest/TransferTokenEndpoint.h"
 #include "Sockets/SocketManager.h"
 
-#define ENDPOINT_CLASS(EndpointName) FClassStorage<FCrowAppEndpoint, FProjectEngine*>().InlineSet<EndpointName>()
+#include <filesystem>
+
+// Endpoint factory macro - replaces FClassStorage
+#define ENDPOINT_FACTORY(EndpointName) FEndpointFactory([](FProjectEngine* engine) -> FCrowAppEndpoint* { return new EndpointName(engine); })
 
 FProjectEngine::FProjectEngine()
 	: BackendSettings(std::make_unique<FBackendSettings>())
 	, SocketManager(std::make_unique<FSocketManager>())
 	, ConversationsManager(std::make_unique<FConversationsManager>())
+	, ServersManager(std::make_unique<FServersManager>())
 	, PasswordResetManager(nullptr)
 	, bIsSSLEnabled(false)
 {
 	// Collect Database settings
 	FDataBaseSettings::Initialize();
 
-	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTestEndpoint));
-	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAuthEndpoint));
-	RestEndpointsClasses.Push(ENDPOINT_CLASS(FIntegrationEndpoint));
-	RestEndpointsClasses.Push(ENDPOINT_CLASS(FTransferTokenEndpoint));
-	RestEndpointsClasses.Push(ENDPOINT_CLASS(FAccountEndpoint));
+	RestEndpointsFactories.Push(ENDPOINT_FACTORY(FTestEndpoint));
+	RestEndpointsFactories.Push(ENDPOINT_FACTORY(FAuthEndpoint));
+	RestEndpointsFactories.Push(ENDPOINT_FACTORY(FIntegrationEndpoint));
+	RestEndpointsFactories.Push(ENDPOINT_FACTORY(FTransferTokenEndpoint));
+	RestEndpointsFactories.Push(ENDPOINT_FACTORY(FAccountEndpoint));
 }
+
+// Destructor must be defined here where all unique_ptr types are complete
+FProjectEngine::~FProjectEngine() = default;
 
 void FProjectEngine::Init()
 {
-	/** We do not need SDL input in server */
-	DisableInput();
-
-	FEngine::Init();
+	// Set global engine pointer for legacy FGlobalDefines::GEngine access
+	FGlobalDefines::GEngine = this;
 
 	LOG_DEBUG("Server init");
 
 	BackendSettings->LoadBackendSettings();
 	std::shared_ptr<FIniObject> ServerSettingsIni = BackendSettings->GetBackendSettingsIni();
-	if (ServerSettingsIni->DoesIniExist())
+	if (ServerSettingsIni && ServerSettingsIni->IsLoaded())
 	{
 		const FIniField SessionLifeTimeField = ServerSettingsIni->FindFieldByName("SessionLifeTime");
 		Uint64 SessionLifeTime = 1000;
@@ -82,15 +88,11 @@ void FProjectEngine::Init()
 			MaxFriends = MaxFriendsField.GetValueAsInt();
 		}
 
-		FriendListManager = std::make_unique<FFriendListManager>(GetThreadsManager(), MaxSentRequests, MaxIncomingRequests, MaxFriends);
-	}
+		FriendListManager = std::make_unique<FFriendListManager>(MaxSentRequests, MaxIncomingRequests, MaxFriends);
+		AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
+		DefaultHeadersCache = GetDefaultHeaders();
+		RoomsManager = std::make_unique<FRoomsServiceManager>();
 
-	AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
-	DefaultHeadersCache = GetDefaultHeaders();
-	RoomsManager = std::make_unique<FRoomsServiceManager>();
-
-	if (ServerSettingsIni->DoesIniExist())
-	{
 		// Get time for token to be alive
 		const FIniField PasswordResetTokenAliveTimeMinsField = ServerSettingsIni->FindFieldByName("PasswordResetTokenAliveTimeMins");
 		int32 PasswordResetTokenAliveTimeMins = 10;
@@ -131,11 +133,11 @@ void FProjectEngine::Init()
 		}
 #endif
 
-		// Create endpoints
-		for (auto& RestEndpointsClass : RestEndpointsClasses)
+		// Create endpoints using factory functions
+		for (auto& EndpointFactory : RestEndpointsFactories)
 		{
-			FCrowAppEndpoint* CrowAppEndpoint = RestEndpointsClass.Allocate(this);
-			std::shared_ptr<FCrowAppEndpoint> SharedPtr = std::make_shared<FCrowAppEndpoint>(*CrowAppEndpoint);
+			FCrowAppEndpoint* CrowAppEndpoint = EndpointFactory(this);
+			std::shared_ptr<FCrowAppEndpoint> SharedPtr = std::shared_ptr<FCrowAppEndpoint>(CrowAppEndpoint);
 			CrowAppEndpoint->RegisterRoutes(CrowApp);
 			RestEndpointInstances.Push(SharedPtr);
 		}
@@ -175,8 +177,6 @@ void FProjectEngine::Init()
 
 void FProjectEngine::PostSecondTick()
 {
-	FEngine::PostSecondTick();
-
 	UserManager->PostSecondTick();
 	TransferTokenManager->PostSecondTick();
 }
@@ -184,11 +184,11 @@ void FProjectEngine::PostSecondTick()
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)
 {
 	// Find port in settings
-	constexpr uint16 ServerPortDefault = 8080;
+	constexpr uint16_t ServerPortDefault = 8080;
 
-	int32 ServerPort;
+	int32 ServerPort = ServerPortDefault;
 	bIsSSLEnabled = false;
-	bool bDoesServerSettingsExist = ServerSettingsIni->DoesIniExist();
+	bool bDoesServerSettingsExist = ServerSettingsIni && ServerSettingsIni->IsLoaded();
 	if (bDoesServerSettingsExist)
 	{
 		const FIniField ServerPortField = ServerSettingsIni->FindFieldByName("Port");
@@ -205,8 +205,8 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 
 		if (bIsSSLEnabled)
 		{
-			const FAssetsManager* AssetsManager = FGlobalDefines::GEngine->GetAssetsManager();
-			const std::string ConfigPathAbsolute = AssetsManager->ConvertRelativeToFullPath(AssetsManager->GetConfigPathRelative());
+			// Use ./Assets/Config/ as the config path (replaces Engine's AssetsManager)
+			const std::string ConfigPathAbsolute = "./Assets/Config";
 
 			bool bIsPathAbsolute = false;
 			const FIniField SSLPathsAbsoluteField = ServerSettingsIni->FindFieldByName("SSLPathsAbsolute");
@@ -224,7 +224,7 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 				}
 				else
 				{
-					KeyFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLKeyField.GetValueAsString();
+					KeyFilePath = ConfigPathAbsolute + "/" + SSLKeyField.GetValueAsString();
 				}
 			}
 
@@ -237,24 +237,20 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 				}
 				else
 				{
-					CertFilePath = ConfigPathAbsolute + AssetsManager->GetPlatformSlash() + SSLCertField.GetValueAsString();
+					CertFilePath = ConfigPathAbsolute + "/" + SSLCertField.GetValueAsString();
 				}
 			}
 		}
 	}
-	else
-	{
-		ServerPort = ServerPortDefault;
-	}
 
 	if (bDoesServerSettingsExist && bIsSSLEnabled)
 	{
-		LOG_INFO("Server will start with SSL");
+		LOG_INFO("REST server (CrowCPP) will start with SSL");
 
-		if (FFileSystem::File::Exists(CertFilePath) && FFileSystem::File::Exists(KeyFilePath))
+		if (std::filesystem::exists(CertFilePath) && std::filesystem::exists(KeyFilePath))
 		{
 			CrowAppFutureAsync = CrowApp.port(static_cast<Uint16>(ServerPort))
-				.ssl_file(CertFilePath.c_str(), KeyFilePath.c_str())
+				.ssl_file(CertFilePath, KeyFilePath)
 				.multithreaded()
 				.run_async();
 		}
@@ -273,9 +269,9 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 	}
 	else
 	{
-		LOG_INFO("Server will start without SSL");
+		LOG_INFO("REST server (CrowCPP) will start without SSL");
 
-		CrowAppFutureAsync = CrowApp.port(static_cast<uint16>(ServerPort))
+		CrowAppFutureAsync = CrowApp.port(static_cast<uint16_t>(ServerPort))
 			.multithreaded()
 			.run_async();
 	}
@@ -283,8 +279,6 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 
 void FProjectEngine::PreExit()
 {
-	FEngine::PreExit();
-
 	CrowApp.stop();
 
 	//CrowAppFutureAsync.wait();

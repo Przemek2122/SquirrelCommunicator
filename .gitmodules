@@ -1,7 +1,10 @@
-[submodule "Engine"]
-	path = Engine
-	url = https://github.com/Przemek2122/Engine
-	branch = communicator
+
 [submodule "services/SquirrelCommunicatorVoice"]
 	path = services/SquirrelCommunicatorVoice
 	url = https://github.com/Przemek2122/SquirrelCommunicatorVoice
+[submodule "ProjectServer/ThirdParty/IniReader"]
+	path = ProjectServer/ThirdParty/IniReader
+	url = https://github.com/Przemek2122/SQRLL_INI_Reader
+[submodule "ProjectServer/ThirdParty/Encryption"]
+	path = ProjectServer/ThirdParty/Encryption
+	url = https://github.com/Przemek2122/SQRLL_Encryption

@@ -2,10 +2,12 @@
 
 #pragma once
 
+#include "EngineCompat.h"
+
 #include <shared_mutex>
 #include "SessionManager.h"
 #include "User.h"
-#include "Misc/PasswordEncryptionArgon.h"
+#include "Encryption/PasswordEncryptionArgon.h"
 
 enum class EDatabaseOperationResult : Uint8;
 

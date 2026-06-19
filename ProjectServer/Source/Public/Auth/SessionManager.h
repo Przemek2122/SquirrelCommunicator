@@ -2,10 +2,9 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 #include <shared_mutex>
-
-class FGenericThread;
+#include <thread>
 
 struct FUserSessionData
 {
@@ -40,7 +39,6 @@ public:
 	void Init();
 	void PostSecondTick();
 
-	void AsyncWork();
 	void AsyncCheckForDeadSessions();
 
 	std::string CreateSession(Uint64 InUserId);
@@ -82,6 +80,7 @@ private:
 	/** Key for generating sessions */
 	std::string EncryptionKey;
 
-	FThreadData* SessionManagerThreadData;
+	/** Background worker thread */
+	std::jthread WorkerThread;
 
 };

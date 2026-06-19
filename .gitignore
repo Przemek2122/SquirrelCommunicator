@@ -34,15 +34,18 @@
 # Ignore directories
 /Project/out
 /Project/.vs/Project
-/build/win
-/build/android/android-project/app/build
-/build/android/android-project/build
-/build/android/android-project/app/.cxx
-/build/android/android-project/.idea
-/build/android/android-project/.gradle
-/build/win-x64
-/buildsrv
+
+# Ignore build dir
+/ProjectServer/cmake-build-debug/
+
+# Ignore secrets
 ProjectServer/Assets/Config/key.pem
 ProjectServer/Assets/Config/cert.pem
-/vcpkg
 /ProjectServer/Secrets
+
+# Ignore some libraries
+/ProjectServer/ThirdParty/asio
+/ProjectServer/ThirdParty/Crow
+/ProjectServer/ThirdParty/json
+/ProjectServer/ThirdParty/soci
+/ProjectServer/ThirdParty/uWebSockets

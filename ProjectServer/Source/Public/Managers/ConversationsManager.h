@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 #include <shared_mutex>
 
 enum class EDatabaseOperationResult : Uint8;

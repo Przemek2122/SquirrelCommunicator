@@ -1,18 +1,26 @@
-// Created by https://www.linkedin.com/in/przemek2122/ 2020-2025 https://github.com/Przemek2122/Engine
+// Created by https://www.linkedin.com/in/przemek2122/ 2020-2026
+
 #pragma once
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 
-/** Class for managing backend settings */
+/** Class for global backend settings */
 class FBackendSettings
 {
 public:
+    FBackendSettings();
+
     void LoadBackendSettings();
 
     std::shared_ptr<FIniObject> GetBackendSettingsIni() const { return BackendSettingsIniObject; }
+
+    /** Max number of letters per message */
+    int32 GetMaxMessageSize() const { return MaxMessageSize; }
 
 protected:
     /** Settings ini object */
     std::shared_ptr<FIniObject> BackendSettingsIniObject;
 
+    /** Max number of letters per message */
+    int32 MaxMessageSize;
 };

@@ -1,7 +1,7 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2020-2025
 #pragma once
 
-#include "CoreMinimal.h"
+#include "EngineCompat.h"
 #include "AbuseProtection/CORPolicy.h"
 #include "AbuseProtection/RateLimiter.h"
 

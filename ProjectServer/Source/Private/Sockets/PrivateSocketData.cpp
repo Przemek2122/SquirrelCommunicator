@@ -401,6 +401,13 @@ void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::
 		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
 		if (WebSocketSessionData != nullptr)
 		{
+			if (Content.size() > ProjectEngine->GetBackendSettings()->GetMaxMessageSize())
+			{
+				FSocket::EarlyExit(wsVariant, "Message too large", opCode);
+
+				return;
+			}
+
 			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
 			std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
 			const Uint64& ConnectionUserId = WebSocketSessionData->UserId;
@@ -418,7 +425,7 @@ void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::
 				JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Message);
 				JsonRoot["message"] = MessageJson;
 
-				FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector, JsonRoot.dump());
+				FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector(), JsonRoot.dump());
 			}
 		}
 	}, wsVariant);
@@ -454,7 +461,7 @@ void FPrivateSocketData::OnMessageReceived_MessageEdit(AnyWebSocket wsVariant, u
 						JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::MessageEdit);
 						JsonRoot["message"] = MessageJson;
 
-						FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector, JsonRoot.dump());
+						FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector(), JsonRoot.dump());
 	                }
 				}
 			}
@@ -475,7 +482,7 @@ void FPrivateSocketData::OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::O
 			FUserManager* UserManager = ProjectEngine->GetUserManager();
 			std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
 			std::vector<std::shared_ptr<FUser>> Users;
-			UserManager->GetUsersByIds(Conversation->UsersIds.Vector, Users);
+			UserManager->GetUsersByIds(Conversation->UsersIds.Vector(), Users);
 
 			nlohmann::json MessageJson;
 			MessageJson["conversation_id"] = ConversationId;
@@ -750,7 +757,7 @@ void FPrivateSocketData::OnMessageReceived_AddConversation(AnyWebSocket wsVarian
 			{
 				// Find or create conversation
 				bool bIsNewConversation = false;
-				const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray.Vector, bIsNewConversation);
+				const Uint64 ConversationId = ConversationManager->GetOrCreateConversation(UserIdArray, bIsNewConversation);
 
 				const nlohmann::json MessageJson = FormatConversationIntoJson({ ConversationId });
 
@@ -1220,7 +1227,7 @@ nlohmann::json FPrivateSocketData::FormatConversationIntoJson(const CArray<Uint6
 			NewConversation["id"] = ConversationId;
 
 			std::vector<std::shared_ptr<FUser>> OutUsers;
-			UserManager->GetUsersByIds(Conversation->UsersIds.Vector, OutUsers);
+			UserManager->GetUsersByIds(Conversation->UsersIds.Vector(), OutUsers);
 
 			// Add users (id to name)
 			{
@@ -1241,7 +1248,7 @@ nlohmann::json FPrivateSocketData::FormatConversationIntoJson(const CArray<Uint6
 			}
 
 			// Add users Ids
-			NewConversation["userids"] = Conversation->UsersIds.Vector;
+			NewConversation["userids"] = Conversation->UsersIds.Vector();
 
 			// Add messages
 			{

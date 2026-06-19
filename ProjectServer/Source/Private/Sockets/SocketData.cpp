@@ -106,6 +106,8 @@ ESocketMessageRoomsType StringToSocketMessageRoomsType(std::string_view InTypeSt
 	switch (HashString(InTypeString))
 	{
 		case HashString("create_room"):		return ESocketMessageRoomsType::CreateRoom;
+		case HashString("join_room"):		return ESocketMessageRoomsType::JoinRoom;
+		case HashString("leave_room"):		return ESocketMessageRoomsType::LeaveRoom;
 		case HashString("error"):			return ESocketMessageRoomsType::Error;
 
 		default:								return ESocketMessageRoomsType::Unknown;
@@ -117,6 +119,8 @@ std::string SocketMessageRoomsTypeToString(ESocketMessageRoomsType InTypeEnum)
 	switch (InTypeEnum)
 	{
 		case ESocketMessageRoomsType::CreateRoom:		return "create_room";
+		case ESocketMessageRoomsType::JoinRoom:			return "join_room";
+		case ESocketMessageRoomsType::LeaveRoom:		return "leave_room";
 		case ESocketMessageRoomsType::Error:			return "error";
 
 		case ESocketMessageRoomsType::Unknown:

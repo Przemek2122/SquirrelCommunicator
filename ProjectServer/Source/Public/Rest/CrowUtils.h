@@ -1,4 +1,5 @@
 #pragma once
+#include "EngineCompat.h"
 
 #include "crow/http_response.h"
 

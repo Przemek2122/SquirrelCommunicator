@@ -1,7 +1,12 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026 https://github.com/Przemek2122/Engine
 
 #pragma once
+
+#include "EngineCompat.h"
 #include <shared_mutex>
+#include <unordered_map>
+#include <chrono>
+#include <thread>
 
 struct FPasswordResetStruct
 {
@@ -41,9 +46,6 @@ public:
     /** Async function collecting all tokens and removing outdated */
     void AsyncCleanupTokens();
 
-    /** Update waiting time */
-    void AsyncUpdateWaitingTime();
-
 protected:
     /** Map of tokens to their associated reset structure. */
     std::unordered_map<std::string, FPasswordResetStruct> TokenToStructureMap;
@@ -51,8 +53,8 @@ protected:
     /** Mutex for TokenToStructureMap. */
     std::shared_mutex TokenToStructureMapMutex;
 
-    /** Thread data */
-    FThreadData* TokenManagerThreadData;
+    /** Background worker thread */
+    std::jthread WorkerThread;
 
     /** Time for each token generate while it's active */
     int32 TimeInMinsForTokenToBeAlive;

@@ -5,9 +5,10 @@
 #include "Auth/UserManager.h"
 #include "Managers/MailSender.h"
 #include "Managers/PasswordResetManager.h"
-#include "Misc/WebSockets/CookieHelper.h"
+#include "WebUtils/CookieHelper.h"
 #include "nlohmann/json.hpp"
 #include "nlohmann/json_fwd.hpp"
+#include "WebUtils/StringHelpers.h"
 #include "Rest/CrowUtils.h"
 
 FAccountEndpoint::FAccountEndpoint(FProjectEngine* InProjectEngine)

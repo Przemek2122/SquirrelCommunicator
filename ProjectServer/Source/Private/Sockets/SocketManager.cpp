@@ -1,11 +1,6 @@
 #include "Sockets/SocketManager.h"
-#include "Threads/ThreadsManager.h"
+#include "ThreadCompat.h"
 #include "ProjectEngine.h"
-
-FSocketThreadData::FSocketThreadData(FThreadsManager* InThreadsManager, const std::string& InNewThreadName)
-	: FThreadData(InThreadsManager, InNewThreadName)
-{
-}
 
 void FSocketManagerHelper::BroadcastDataToUsers(const FProjectEngine* ProjectEngine, const std::vector<Uint64>& ConversationUsersIds, const std::string& SerializedPayload)
 {
@@ -45,43 +40,33 @@ void FSocketManagerHelper::BroadcastDataToUsers(const FProjectEngine* ProjectEng
 
 FSocketManager::~FSocketManager()
 {
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-	for (FSocketThreadData* ThreadDataArray : SocketThreadDataArray)
-	{
-		ThreadsManager->TryStopThread(ThreadDataArray);
-	}
+	// std::jthread auto-requests stop and joins on destruction
+	SocketThreads.clear();
 }
 
 void FSocketManager::CreateSockets(std::string Host, int32 SocketPort, bool bUseSSL, const std::string& InKeyPath, const std::string& InCertPath)
 {
-	static const std::string SocketThreadName = "SocketThread";
-	const int32 NumberOFSocketsToCreate = FThreadsManager::GetNumberOfLogicalCPU();
+	const int32 NumberOfSocketsToCreate = GetNumberOfLogicalCPU();
 
-	SocketThreadDataArray.SetNum(NumberOFSocketsToCreate);
+	SocketThreads.reserve(NumberOfSocketsToCreate);
 
-	FThreadsManager* ThreadsManager = FGlobalDefines::GEngine->GetThreadsManager();
-
-	for (int32 i = 0; i < NumberOFSocketsToCreate; ++i)
+	for (int32 i = 0; i < NumberOfSocketsToCreate; ++i)
 	{
-		const std::string CurrentSocketThreadName = SocketThreadName + std::to_string(i);
+		auto SocketThread = std::make_unique<FSocketThread>();
 
-		FSocketThreadData* SocketManagerThreadData = ThreadsManager->CreateThread<FGenericThread, FSocketThreadData>(CurrentSocketThreadName);
-		SocketThreadDataArray[i] = SocketManagerThreadData;
-
-		FGenericThread* GenericThread = dynamic_cast<FGenericThread*>(SocketManagerThreadData->GetThread());
-		if (GenericThread != nullptr)
+		// Capture index and params by value for the thread
+		const int32 SocketIndex = i;
+		SocketThread->Thread = std::jthread([this, SocketThread = SocketThread.get(), SocketIndex, Host, SocketPort, bUseSSL, InKeyPath, InCertPath](std::stop_token)
 		{
-			GenericThread->AddTask([this, SocketManagerThreadData, i, Host, SocketPort, bUseSSL, InKeyPath, InCertPath]()
+			SocketThread->SocketPtr = std::make_unique<FSocket>(SocketIndex, Host, SocketPort, bUseSSL, InKeyPath, InCertPath);
+			if (SocketThread->SocketPtr != nullptr)
 			{
-				SocketManagerThreadData->SocketPtr = std::make_unique<FSocket>(i, Host, SocketPort, bUseSSL, InKeyPath, InCertPath);
-				if (SocketManagerThreadData->SocketPtr != nullptr)
-				{
-					SocketManagerThreadData->SocketPtr->Async();
-				}
-			});
+				// FSocket::Async() calls uWS::run() which blocks until the loop ends
+				SocketThread->SocketPtr->Async();
+			}
+		});
 
-			GenericThread->BeginAsyncWork();
-		}
+		SocketThreads.push_back(std::move(SocketThread));
 	}
 }
 
@@ -96,9 +81,9 @@ void FSocketManager::EnqueueTaskForUserAtSocket(const int32 InSocketId, const Ui
 
 FSocket* FSocketManager::GetSocketById(int32 InSocketId)
 {
-	if (SocketThreadDataArray.IsValidIndex(InSocketId))
+	if (InSocketId >= 0 && InSocketId < static_cast<int32>(SocketThreads.size()))
 	{
-		return SocketThreadDataArray[InSocketId]->SocketPtr.get();
+		return SocketThreads[InSocketId]->SocketPtr.get();
 	}
 
 	return nullptr;

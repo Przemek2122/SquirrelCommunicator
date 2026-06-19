@@ -1,0 +1,116 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            g++ \
+            libssl-dev \
+            libmysqlclient-dev \
+            zlib1g-dev
+
+      - name: Get current version
+        id: get_version
+        run: |
+          if git describe --tags --abbrev=0 2>/dev/null; then
+            CURRENT_VERSION=$(git describe --tags --abbrev=0 | sed 's/v//')
+          else
+            CURRENT_VERSION="0.0.0"
+          fi
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump_version
+        run: |
+          VERSION="${{ steps.get_version.outputs.current_version }}"
+          IFS='.' read -ra PARTS <<< "$VERSION"
+          MAJOR=${PARTS[0]}
+          MINOR=${PARTS[1]}
+          PATCH=${PARTS[2]}
+
+          case "${{ github.event.inputs.version_bump }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Configure CMake
+        run: |
+          cmake -B ProjectServer/build -S ProjectServer -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build ProjectServer/build --target communicatorsrv -j$(nproc)
+
+      - name: Package binary
+        run: |
+          cd ProjectServer/build/bin/Release/Project
+          tar -czf communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz \
+            communicatorsrv \
+            Assets/
+          mv communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz $GITHUB_WORKSPACE/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump_version.outputs.tag }}
+          name: Release ${{ steps.bump_version.outputs.new_version }}
+          draft: false
+          prerelease: false
+          files: |
+            communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz
+          body: |
+            ## Communicator Server ${{ steps.bump_version.outputs.new_version }}
+
+            ### Changes
+            - Automated build from commit ${{ github.sha }}
+
+            ### Download
+            - **Linux x64**: `communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz`
+
+            ### Installation
+            ```bash
+            tar -xzf communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz
+            chmod +x communicatorsrv
+            ./communicatorsrv
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,12 +1,12 @@
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
-#include "Assets/IniReader/IniObject.h"
+#include "SQRLLIniObject.h"
 
 FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 	: CORPolicyPtr(std::make_unique<FCORPolicy>())
 {
 	const std::shared_ptr<FIniObject> BackendSettingsIni = InBackendSettings->GetBackendSettingsIni();
-	if (BackendSettingsIni->DoesIniExist())
+	if (BackendSettingsIni->IsLoaded())
 	{
 		LOG_DEBUG("BackendSettingsIni number of fields: '" << BackendSettingsIni->GetNumberOfFields() << "'.");
 

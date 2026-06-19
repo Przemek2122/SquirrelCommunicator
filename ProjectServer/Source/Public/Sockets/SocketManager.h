@@ -1,15 +1,15 @@
 #pragma once
+#include "EngineCompat.h"
 
-#include "Threads/ThreadData.h"
 #include "Sockets/Socket.h"
+#include <thread>
+#include <vector>
+#include <memory>
 
-class FSocketThreadData : public FThreadData
+/** Holds a socket and its worker thread */
+struct FSocketThread
 {
-	friend FThreadsManager;
-
-public:
-	FSocketThreadData(FThreadsManager* InThreadsManager, const std::string& InNewThreadName);
-
+	std::jthread Thread;
 	std::unique_ptr<FSocket> SocketPtr;
 };
 
@@ -33,5 +33,5 @@ public:
 	FSocket* GetSocketById(int32 InSocketId);
 
 protected:
-	CArray<FSocketThreadData*> SocketThreadDataArray;
+	std::vector<std::unique_ptr<FSocketThread>> SocketThreads;
 };

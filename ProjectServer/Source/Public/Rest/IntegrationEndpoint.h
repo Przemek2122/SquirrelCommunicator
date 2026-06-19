@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EngineCompat.h"
 #include "CrowAppEndpoint.h"
 
 class FUser;

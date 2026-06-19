@@ -1,3 +1,5 @@
+#include "Logger/Logger.h"
+#include "EngineCompat.h"
 #include "DataBase/DataBaseSettings.h"
 
 static FDataBaseConnectionData DataBaseConnectionData;

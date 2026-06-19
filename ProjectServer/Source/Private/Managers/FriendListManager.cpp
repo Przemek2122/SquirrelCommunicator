@@ -1,16 +1,15 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
+#include "Logger/Logger.h"
 #include "Managers/FriendListManager.h"
 
 #include "DataBase/DataBaseConnect.h"
 #include <soci/rowset.h>
 #include "soci/transaction.h"
-#include "Threads/ThreadsManager.h"
 #include <algorithm>
 
-FFriendListManager::FFriendListManager(FThreadsManager* InThreadsManager, int32 InMaxSentRequests, int32 InMaxIncomingRequests, int32 InMaxFriends)
-    : ThreadsManager(InThreadsManager)
-    , MaxSentRequests(InMaxSentRequests)
+FFriendListManager::FFriendListManager(int32 InMaxSentRequests, int32 InMaxIncomingRequests, int32 InMaxFriends)
+    : MaxSentRequests(InMaxSentRequests)
     , MaxIncomingRequests(InMaxIncomingRequests)
     , MaxFriends(InMaxFriends)
 {

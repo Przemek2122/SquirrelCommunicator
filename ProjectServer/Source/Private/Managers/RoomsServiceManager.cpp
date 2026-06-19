@@ -1,9 +1,10 @@
 // Created by https://www.linkedin.com/in/przemek2122/ 2026
 
+#include "Logger/Logger.h"
 #include "Managers/RoomsServiceManager.h"
 #include <cpr/cpr.h>
 #include "crow/json.h"
-#include "Misc/EncryptionUtil.h"
+#include "SQRLLEncryption.h"
 #include "nlohmann/json.hpp"
 #include "nlohmann/json_fwd.hpp"
 

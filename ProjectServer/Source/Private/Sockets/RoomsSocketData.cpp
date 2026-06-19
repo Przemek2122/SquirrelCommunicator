@@ -5,7 +5,7 @@
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
 #include "Managers/RoomsServiceManager.h"
-#include "Misc/EncryptionUtil.h"
+#include "SQRLLEncryption.h"
 #include "Sockets/Socket.h"
 #include "nlohmann/json.hpp"
 
@@ -62,6 +62,19 @@ void FRoomsSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& Jso
             break;
         }
 
+        case ESocketMessageRoomsType::JoinRoom:
+        {
+
+
+            break;
+        }
+
+        case ESocketMessageRoomsType::LeaveRoom:
+        {
+
+            break;
+        }
+
         case ESocketMessageRoomsType::Unknown:
         case ESocketMessageRoomsType::Error:
         default:
@@ -84,9 +97,6 @@ void FRoomsSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& Jso
 
 void FRoomsSocketData::CreateRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& RoomName)
 {
-    // @TODO For now it is okay to just use Socket threads but in future we should use a thread pool for room service operations
-
-    // 1. Basic validation
     if (RoomName.empty())
     {
         FSocket::EarlyExit(wsVariant, "empty room_name", opCode);
@@ -94,52 +104,22 @@ void FRoomsSocketData::CreateRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, co
         return;
     }
 
-    std::string_view ClientIP;
-
     std::visit([&](auto&& ws) {
-        ClientIP = ws->getRemoteAddressAsText();
-    }, wsVariant);
+        std::string_view ClientIP = ws->getRemoteAddressAsText();
 
-    FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
-    FRoomsServiceManager* RoomsManager = ProjectEngine->GetRoomsManager();
+        FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
 
-    if (!ClientIP.empty() && AbuseProtection->CanAddressRequestCreateRoom(ClientIP))
-    {
-        const std::string EncryptionTokenRandom = FEncryptionUtil::GenerateSecureSalt(32);
-        const std::string RoomNameFull = RoomName + "_" + EncryptionTokenRandom;
-        const std::string EncryptionToken = FEncryptionUtil::EncryptDataCustom(RoomNameFull, EncryptionKey);
-        const std::string GeneratedToken = "tkn_" + EncryptionToken;
-
-        AbuseProtection->AddCreateRoomAttempt(ClientIP);
-        const bool bSuccess = RoomsManager->CreateRoom(RoomName);
-
-        nlohmann::json response;
-        response["section"] = "rooms";
-
-        if (bSuccess)
+        if (!ClientIP.empty() && AbuseProtection->CanAddressRequestCreateRoom(ClientIP))
         {
-            response["type"] = "create_room_success";
-            response["data"] = {
-                {"room_name", RoomName},
-                {"room_token", GeneratedToken}
-            };
+
+
+
+
+            AbuseProtection->AddCreateRoomAttempt(ClientIP);
         }
         else
         {
-            response["type"] = "error";
-            response["data"] = {
-                {"message", "Failed to create room in backend service"}
-            };
+            FSocket::EarlyExit(wsVariant, "service abuse", opCode);
         }
-
-        // 5. Send back to client
-        std::string jsonString = response.dump();
-        std::visit([&](auto&& ws) {
-            if (ws) ws->send(jsonString, opCode);
-        }, wsVariant);
-    }
-    else
-    {
-        FSocket::EarlyExit(wsVariant, "service abuse", opCode);
-    }
+    }, wsVariant);
 }
