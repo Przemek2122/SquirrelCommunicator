@@ -41,7 +41,8 @@ FROM fedora:latest
 RUN dnf install -y \
         openssl zlib \
         mariadb-connector-c \
-        libcurl \
+        boost-date-time \
+        libidn2 libnghttp2 libpsl \
         curl \
     && dnf clean all && rm -rf /var/cache/dnf
 
