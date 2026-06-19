@@ -116,22 +116,18 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/soci/CMakeLists.txt")
 
     if(GIT_RESULT EQUAL 0)
         message(STATUS "SOCI downloaded successfully")
-
-        # Fix cmake_minimum_required in the downloaded source
-        file(READ "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/soci/CMakeLists.txt" SOCI_CMAKE_CONTENT)
-        string(REPLACE "cmake_minimum_required(VERSION 2.8 FATAL_ERROR)"
-                       "cmake_minimum_required(VERSION 3.5...4.1 FATAL_ERROR)"
-                       SOCI_CMAKE_CONTENT "${SOCI_CMAKE_CONTENT}")
-        file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/soci/CMakeLists.txt" "${SOCI_CMAKE_CONTENT}")
     else()
         message(FATAL_ERROR "Failed to download SOCI")
     endif()
 endif()
 
 # Add SOCI from ThirdParty
+# SOCI v4.0.3 uses an old cmake_minimum_required — allow it without patching their files
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/soci/CMakeLists.txt")
     message(STATUS "Adding SOCI from ThirdParty/soci")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/soci ${CMAKE_BINARY_DIR}/soci)
+    unset(CMAKE_POLICY_VERSION_MINIMUM)
 endif()
 
 # Download uWebSockets via git clone (no FetchContent cache)
