@@ -1,0 +1,5 @@
+# This file defines who owns which files and directories in the repository.
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for the entire repository
+*                   @Przemek2122

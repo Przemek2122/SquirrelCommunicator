@@ -1,168 +1,148 @@
-# Squirrel Communicator
+# Squirrel Communicator 🐿️
 
-_Squirrel Communicator_ is a software project designed to deliver high-performance communication capabilities, leveraging C++ and complementary tools for modular design, efficient communication, and ease of deployment.
+![C++](https://img.shields.io/badge/C++-20-blue.svg?style=flat&logo=c%2B%2B)
+![CMake](https://img.shields.io/badge/CMake-passing-brightgreen?logo=cmake)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)
+![License](https://img.shields.io/badge/License-Private-red.svg)
 
-The application currently supports both **REST API** (using the CROWCPP library) and **WebSocket communication** (powered by uWebSockets) to provide stable and fastest available communication.
+A high-performance, low-latency real-time chat application built with a powerful C++ backend and a modern frontend ecosystem.
 
-You can explore a **live working example** of this project at: [http://comm.sqrll.net/](http://comm.sqrll.net/).
-
----
-
-## Current Functionality
-
-Squirrel Communicator offers the following features:
-- **Real-time chat functionality**: Seamlessly send and receive messages between users in real time.
-- **Login and Registration**: Secure user authentication and onboarding.
-- **User search**: Easily locate and select other users to create new chats.
-- **User status display**: See the online or offline status of other users.
-- **Typing indicator**: View when other users are actively typing messages in real time.
-- **Automatic message loading**: Messages are automatically loaded when scrolling to the top of the chat history.
+You can explore a live working example of this project at: **[http://comm.sqrll.net/](http://comm.sqrll.net/)**
 
 ---
 
-## Repository Overview
+## 🛠️ Architecture Diagram
 
-### Primary Technologies
+GitHub natively renders the diagram below to show how the different microservices and clients communicate within the Squirrel ecosystem:
 
-- **C++**: The core of the project is written in C++ to ensure high performance and efficient execution of critical functionalities.
-- **CROWCPP**: Provides the REST API functionality for user authentication, chat management, and data retrieval.
-- **uWebSockets**: Enables real-time event-driven WebSocket communication for the chat application.
-- **CMake**: Simplifies the build process and allows configuration for multiple platforms.
-- **Docker**: Allows containerized setup and deployment in a consistent environment.
-- **Build Scripts**: Preconfigured build scripts for Windows and Linux are available in the `configsrv` directory.
+```mermaid
+graph TD
+    Client[Tauri / Web Client]
 
----
+    subgraph Core Backend
+        CPP_REST[C++ Crow REST API]
+        CPP_WS[C++ uWebSockets]
+        DB[(MariaDB)]
+    end
 
-## TODO list:
+    subgraph Media Microservice
+        GO_SFU[Go Voice/Video Router]
+    end
 
-### Improvements
-- Add confirmation mail when creating account.
+    %% Client Connections
+    Client -- "HTTP POST (Auth, Tokens)" --> CPP_REST
+    Client -- "WebSocket (Real-time Chat, Typing, Status)" --> CPP_WS
+    Client -- "WebRTC / UDP (Voice, Screen Share)" --> GO_SFU
 
-### Optimization
-- Add clearing messages every day and leaving fixed configurable ammount like 100 per user
-- Add clearing user inactive for like 3 days (also configurable) +
+    %% Backend Communication
+    CPP_REST -- "Read/Write Users" --> DB
+    CPP_WS -- "Save/Load Messages" --> DB
+    
+    %% Microservice sync
+    CPP_WS -. "Signaling (Session IDs)" .-> GO_SFU
 
-## How to Build
+    classDef cpp fill:#00599C,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef go fill:#00ADD8,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef db fill:#F29111,stroke:#fff,stroke-width:2px,color:#fff;
+    
+    class CPP_REST,CPP_WS cpp;
+    class GO_SFU go;
+    class DB db;
+```
 
-### Supported Platforms
+## ✨ Current Functionality
 
-- **Linux**: Fedora 43 (used for development) Debian 13 (used for production)
-- **Windows**: Latest (packages managed by vcpkg)
+Squirrel Communicator currently offers the following features:
+* **Real-time chat functionality:** Seamlessly send and receive messages between users in real time.
+* **Login and Registration:** Secure user authentication and onboarding.
+* **User search:** Easily locate and select other users to create new chats.
+* **User status display:** See the online or offline status of other users.
+* **Typing indicator:** View when other users are actively typing messages in real time.
+* **Automatic message loading:** Messages are automatically loaded when scrolling to the top of the chat history.
+
+## 🛠️ Architecture & Tech Stack
+
+The architecture focuses on raw speed, concurrency, and ephemeral communication. It is divided into specialized services:
+
+### Core Backend (This Repository)
+* **C++:** The backbone of the project, ensuring bare-metal performance and efficient execution of critical logic.
+* **CROWCPP:** Provides the REST API for transactional operations (user authentication, generating transfer tokens, data retrieval).
+* **uWebSockets:** Handles the massive real-time event-driven WebSocket communication loop.
+* **CMake:** Simplifies the build process and allows configuration across multiple platforms.
+
+### Media & Voice
+* **Go (Golang):** A dedicated, fast microservice handling media routing and ephemeral communication (like screen sharing and voice streams) using goroutines for high concurrency. 
+
+### Infrastructure
+* **Docker:** Containerized setup ensuring a consistent deployment environment across the whole ecosystem.
+* **Build Scripts:** Preconfigured build scripts for Windows and Linux are available in the `configsrv` directory.
+
+## 📦 Project Structure
+
+The ecosystem consists of the following components:
+* **SquirrelComm-Back:** The core C++ server (REST + WebSockets) - *This repository*.
+* **Docker directory:** Deployment configurations and database schemas are located in the `docker` folder.
+* **Squirrel Microservice - Voice:** The Go-based media router (Separate repository).
+* **SquirrelComm-Front:** The modern client-side application.
+
+> [!NOTE]
+> The frontend client (**SquirrelComm-Front**) is currently kept as a private repository.
+
+## 🐳 Running with Docker
+
+The easiest and fastest way to get the project up and running locally is via Docker. 
+
+> [!IMPORTANT]
+> You do not need to compile the C++ source code manually. The environment is configured to automatically pull pre-built Docker images generated by GitHub CI/CD workflows.
+
+For detailed instructions, environment variables, and `docker-compose` usage, please refer to the dedicated Docker documentation:
+👉 **[Read the Docker Setup Guide here](./docker/README.md)**
+
+## 🚀 How to Build Manually
+
+> [!WARNING]
+> Manual compilation is only recommended if you intend to modify the C++ core or contribute to the project. For testing or hosting, please use the Docker setup above.
+
+### Supported Platforms & IDEs
+* **Linux:** Fedora 43 (Primary development environment), Debian 13 (Production setup).
+* **Windows:** Latest (Packages managed via vcpkg).
+
+> [!TIP]
+> For the best development and debugging experience on Linux, we highly recommend using **JetBrains CLion**, fully tested and optimized on **Fedora**.
 
 ### Prerequisites
-
-You will need the following tools to build and run the project:
-- A C++ compiler (e.g., `g++` or `clang` or Visual Studio 2022 pack for windows).
-
-View Dockerfile in docker directory for latest packages required on Linux (Fedora).
+You will need the following tools to build and run the project locally from source: 
+* A C++ compiler supporting modern C++ standards (e.g., g++, clang, or Visual Studio 2022 build tools).
+* View the `Dockerfile` in the `docker` directory for the exact package dependencies required on Linux.
 
 ### Build Instructions
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Przemek2122/SquirrelCommunicator.git
-   cd SquirrelCommunicator
-   ```
-2. Download submodules
-   First download 
+1. **Clone the repository:** Ensure you initialize and download all required submodules.
+2. **Use Build Scripts (Optional):** Preconfigured automation scripts are available in the `configsrv` directory:
+   * For Windows, execute the `.bat` file.
+   * For Linux, execute the `.sh` file.
+3. **Manual CMake Build:**
+   * Change to the `ProjectServer` directory where the core source files are located.
+   * Create a build directory (e.g., `mkdir build && cd build`).
+   * Configure and compile using CMake: `cmake .. && cmake --build .`
+   * *Note: If you are using an IDE like CLion or Visual Studio, the build directories will be managed automatically by your environment.*
 
-4. **Use Build Scripts (Optional)**:
-   If you're on **Windows** or **Linux**, you can use the pre-configured build scripts from the `configsrv` directory:
-   - For Windows, execute the `.bat` file in the `configsrv` directory.
-   - For Linux, execute the `.sh` file in the `configsrv` directory:
-     ```bash
-     cd configsrv
-     ./build-linux.sh
-     ```
+## ⚠️ Repository Limitations
 
-5. **Manual Build**:
-   If you'd like to build the project manually:
-   - Change to the `ProjectServer` directory where the build files are located:
-     ```bash
-     cd ProjectServer
-     ```
-   - Create a build directory:
-     ```bash
-     mkdir build
-     cd build
-     ```
-   - Use CMake to configure and compile:
-     ```bash
-     cmake ..
-     make
-     ```
+> [!CAUTION]
+> This repository includes platform-specific utilities (Shell scripts for UNIX/Linux and Batch files for Windows). Running the wrong script may result in build failures.
 
-   The compiled binaries will appear in the `ProjectServer/build` directory.
+* **Documentation:** Some features and modules may require further documentation.
+* **Experimental Features:** Certain areas of the codebase may be under development or require testing in production-like environments.
 
----
+## 🤝 Contributing
 
-## Running with Docker
-
-The project provides Docker support for simplified setup and consistent application environments.
-
-### Pre-written Docker Scripts
-
-Two scripts are available in the repository under the `docker` directory to simplify Docker operations:
-- **`build_docker.sh`**: Builds a Docker image using the default cache layer.
-- **`build_docker_clean.sh`**: Builds the Docker image without using the cache (forcing a clean build).
-
-### Steps to Use the Scripts
-
-1. Use the `build_docker.sh` script to build the Docker image:
-   ```bash
-   cd docker
-   chmod +x build_docker.sh
-   ./build_docker.sh
-   ```
-
-   This will build the Docker image with the tag `squirrelcommunicator:latest`.
-
-2. Alternatively, use the `build_docker_clean.sh` script for a fresh build:
-   ```bash
-   chmod +x build_docker_clean.sh
-   ./build_docker_clean.sh
-   ```
-
-3. Run the Docker container:
-   ```bash
-   docker run --rm -it squirrelcommunicator:latest
-   ```
-
-Using these predefined scripts ensures that Docker images are built properly without manually typing long commands.
-
----
-
-## Mediasoup
-
-For online audio communication, there is mediasoup server (by default it will use port 3000)
-
-
-## Repository Limitations
-
-- **Platform-Specific Utilities**:
-    - The repository includes Shell scripts for UNIX/Linux and Batch files for Windows. Ensure you use the appropriate one for your platform.
-- **Documentation**:
-    - Some features and modules may require further documentation.
-- **Experimental Features**:
-    - Certain areas of the codebase may be under development or require testing in production-like environments.
-
----
-
-## Contributing
-
-Contributions are welcome! Here’s how you can contribute:
+Contributions are welcome! Here's how you can contribute: 
 1. Fork the repository and create a feature branch.
-2. Make your changes and add commits.
+2. Make your changes and add commits. 
 3. Open a pull request to propose your changes.
 
----
+## 📄 License & About
 
-## License
-
-For any usage or distribution inquiries, please contact the repository owner, [Przemek2122](https://github.com/Przemek2122).
-
----
-
-## About the Author
-
-The repository is maintained by [Przemek2122](https://github.com/Przemek2122). Feedback, ideas, and collaboration are warmly invited.
+For any usage or distribution inquiries, please contact the repository owner, **@Przemek2122**. 
+Feedback, ideas, and collaboration are warmly invited.
