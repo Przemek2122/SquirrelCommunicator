@@ -129,9 +129,6 @@ You will need the following tools to build and run the project locally from sour
 
 ## ⚠️ Repository Limitations
 
-> [!CAUTION]
-> This repository includes platform-specific utilities (Shell scripts for UNIX/Linux and Batch files for Windows). Running the wrong script may result in build failures.
-
 * **Documentation:** Some features and modules may require further documentation.
 * **Experimental Features:** Certain areas of the codebase may be under development or require testing in production-like environments.
 
