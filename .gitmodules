@@ -2,9 +2,12 @@
 [submodule "services/SquirrelCommunicatorVoice"]
 	path = services/SquirrelCommunicatorVoice
 	url = https://github.com/Przemek2122/SquirrelCommunicatorVoice
+	branch = main
 [submodule "ProjectServer/ThirdParty/IniReader"]
 	path = ProjectServer/ThirdParty/IniReader
 	url = https://github.com/Przemek2122/SQRLL_INI_Reader
+	branch = main
 [submodule "ProjectServer/ThirdParty/Encryption"]
 	path = ProjectServer/ThirdParty/Encryption
 	url = https://github.com/Przemek2122/SQRLL_Encryption
+	branch = main
