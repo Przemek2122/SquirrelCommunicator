@@ -62,11 +62,6 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 	{
 		RegisterUserStatus = ERegisterUserStatus::MailIncorrect;
 	}
-
-	if (!FStringHelpers::ValidateString(InUserPassword, FPredefinedCharsets::BASE_SIMPLE_PASSWORD))
-	{
-		RegisterUserStatus = ERegisterUserStatus::PasswordIncorrect;
-	}
 	
 	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
 	{

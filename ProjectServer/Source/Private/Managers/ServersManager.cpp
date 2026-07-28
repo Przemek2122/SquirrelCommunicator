@@ -43,12 +43,12 @@ std::vector<std::shared_ptr<FServer>> FServersManager::GetUserServers(const Uint
 {
     std::vector<std::shared_ptr<FServer>> Result;
 
-    const auto ServerIds = GetUserServerIds(UserId);
+    const std::vector<Uint64> ServerIds = GetUserServerIds(UserId);
 
     // Load each server (from cache or DB)
-    for (Uint64 Id : ServerIds)
+    for (const Uint64 Id : ServerIds)
     {
-        auto Server = GetServerById(Id);
+        const std::shared_ptr<FServer> Server = GetServerById(Id);
         if (Server)
         {
             Result.push_back(Server);
@@ -102,7 +102,7 @@ Uint64 FServersManager::AddServer(const std::string& InServerName, Uint64 OwnerI
         return 0;
     }
 
-    auto NewServer = std::make_shared<FServer>();
+    const std::shared_ptr<FServer> NewServer = std::make_shared<FServer>();
     NewServer->SetServerName(InServerName);
     NewServer->SetOwnerId(OwnerId);
     NewServer->SetToken(GenerateServerToken());
@@ -366,7 +366,7 @@ std::shared_ptr<FServer> FServersManager::JoinViaInvite(const std::string& Invit
         }
     }
 
-    auto Server = GetServerById(ServerId);
+    const std::shared_ptr<FServer> Server = GetServerById(ServerId);
     if (!Server)
     {
         LOG_ERROR("JoinViaInvite: Server not found: " << ServerId);
@@ -422,6 +422,42 @@ void FServersManager::LeaveVoiceChannel(const Uint64 ServerId, const Uint64 Chan
     std::unique_lock Lock(Server->GetMutex());
     std::vector<Uint64>& Users = Channel->ConnectedUsers;
     Users.erase(std::remove(Users.begin(), Users.end(), UserId), Users.end());
+}
+
+std::vector<std::pair<Uint64, Uint64>> FServersManager::GetUserVoiceChannels(Uint64 UserId)
+{
+    std::vector<std::pair<Uint64, Uint64>> Result;
+
+    // Get all server IDs this user is a member of
+    const std::vector<Uint64> ServerIds = GetUserServerIds(UserId);
+
+    for (Uint64 ServerId : ServerIds)
+    {
+        const std::shared_ptr<FServer> Server = GetServerById(ServerId);
+        if (!Server)
+        {
+            continue;
+        }
+
+        // Check each voice channel for this user
+        std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
+        for (const std::shared_ptr<FServerChannel>& Channel : Channels)
+        {
+            if (Channel->ChannelType != EServerChannelType::Voice)
+            {
+                continue;
+            }
+
+            // Check if user is in ConnectedUsers
+            const std::vector<Uint64>& Users = Channel->ConnectedUsers;
+            if (std::find(Users.begin(), Users.end(), UserId) != Users.end())
+            {
+                Result.emplace_back(ServerId, Channel->ChannelId);
+            }
+        }
+    }
+
+    return Result;
 }
 
 void FServersManager::EnsureServerLoaded(const Uint64 ServerId)
@@ -695,7 +731,7 @@ bool FServersManager::DownloadServerFromDB(Uint64 ServerId)
             return false;
         }
 
-        auto Server = std::make_shared<FServer>();
+        const std::shared_ptr<FServer> Server = std::make_shared<FServer>();
         Server->SetServerId(ServerId);
         Server->SetServerName(Name);
         Server->SetOwnerId(static_cast<Uint64>(OwnerId));

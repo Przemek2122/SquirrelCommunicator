@@ -146,7 +146,7 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             }
             else
             {
-                FSocket::EarlyExit(wsVariant, "missing room_join_voice fields", opCode);
+                FSocket::EarlyExit(wsVariant, "missing server_join_voice fields", opCode);
             }
             break;
         }
@@ -161,7 +161,7 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             }
             else
             {
-                FSocket::EarlyExit(wsVariant, "missing room_leave_voice fields", opCode);
+                FSocket::EarlyExit(wsVariant, "missing server_leave_voice fields", opCode);
             }
             break;
         }
@@ -537,10 +537,25 @@ void FServersSocketData::RoomJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opCod
         return;
     }
 
+    // Verify channel exists and is voice type
+    auto Server = ServersManager->GetServerById(RoomId);
+    if (!Server)
+    {
+        FSocket::EarlyExit(wsVariant, "room not found", opCode);
+        return;
+    }
+
+    auto Channel = Server->GetChannel(ChannelId);
+    if (!Channel || Channel->ChannelType != EServerChannelType::Voice)
+    {
+        FSocket::EarlyExit(wsVariant, "invalid voice channel", opCode);
+        return;
+    }
+
     ServersManager->JoinVoiceChannel(RoomId, ChannelId, CurrentUserId);
 
     // Also create/check the Go voice service room
-    const std::string VoiceRoomName = "server_" + std::to_string(RoomId) + "_" + std::to_string(ChannelId);
+    const std::string VoiceRoomName = "Server_" + std::to_string(RoomId) + "_" + std::to_string(ChannelId);
 
     const ERoomExistenceStatus CheckResult = ProjectEngine->GetRoomsManager()->CheckRoom(VoiceRoomName);
     if (CheckResult == ERoomExistenceStatus::NotExists)
@@ -635,38 +650,7 @@ void FServersSocketData::HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode
 
     for (const auto& Server : Servers)
     {
-        nlohmann::json RoomJson;
-        RoomJson["room_id"] = std::to_string(Server->GetServerId());
-        RoomJson["room_name"] = Server->GetServerName();
-        RoomJson["room_token"] = Server->GetToken();
-        RoomJson["owner_id"] = std::to_string(Server->GetOwnerId());
-        RoomJson["created_at"] = Server->GetCreatedAt();
-
-        // Members
-        nlohmann::json MembersArray = nlohmann::json::array();
-        for (const auto& Member : Server->GetMembers())
-        {
-            nlohmann::json MemberJson;
-            MemberJson["user_id"] = std::to_string(Member.UserId);
-            MemberJson["user_name"] = Member.UserName;
-            MemberJson["status"] = Member.Status;
-            MembersArray.push_back(MemberJson);
-        }
-        RoomJson["members"] = MembersArray;
-
-        // Channels
-        nlohmann::json ChannelsArray = nlohmann::json::array();
-        for (const auto& Channel : Server->GetAllChannels())
-        {
-            nlohmann::json ChannelJson;
-            ChannelJson["channel_id"] = std::to_string(Channel->ChannelId);
-            ChannelJson["channel_name"] = Channel->ChannelName;
-            ChannelJson["channel_type"] = (Channel->ChannelType == EServerChannelType::Voice) ? "voice" : "text";
-            ChannelsArray.push_back(ChannelJson);
-        }
-        RoomJson["channels"] = ChannelsArray;
-
-        RoomsArray.push_back(RoomJson);
+        RoomsArray.push_back(BuildRoomDataJson(Server->GetServerId()));
     }
 
     ResponseJson["data"]["rooms"] = RoomsArray;
@@ -840,6 +824,40 @@ void FServersSocketData::BroadcastMemberStatus(Uint64 UserId, const std::string&
              << " across " << ServerIds.size() << " servers");
 }
 
+// ========== Public: Voice Channel Auto-Cleanup ==========
+
+void FServersSocketData::CleanupUserVoiceChannels(Uint64 UserId, const std::string& UserName)
+{
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+
+    // Find all voice channels this user is currently connected to
+    const auto VoiceChannels = ServersManager->GetUserVoiceChannels(UserId);
+
+    if (VoiceChannels.empty())
+    {
+        return;
+    }
+
+    for (const auto& [ServerId, ChannelId] : VoiceChannels)
+    {
+        // Remove user from the voice channel in-memory state
+        ServersManager->LeaveVoiceChannel(ServerId, ChannelId, UserId);
+
+        // Broadcast to other room members that user left voice
+        nlohmann::json BroadcastJson;
+        BroadcastJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::RoomUserVoiceLeave);
+        BroadcastJson["data"]["room_id"] = ServerId;
+        BroadcastJson["data"]["channel_id"] = ChannelId;
+        BroadcastJson["data"]["user_id"] = UserId;
+        BroadcastJson["data"]["user_name"] = UserName;
+
+        BroadcastToServerMembers(ServerId, BroadcastJson, UserId);
+
+        LOG_INFO("Auto-cleaned voice: User " << UserId << " removed from channel "
+                 << ChannelId << " in server " << ServerId);
+    }
+}
+
 // ========== Private Helpers ==========
 
 void FServersSocketData::BroadcastToServerMembers(Uint64 ServerId, const nlohmann::json& JsonMessage, Uint64 ExcludeUserId)
@@ -941,6 +959,13 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(Uint64 ServerId)
     Data["owner_id"] = std::to_string(Server->GetOwnerId());
     Data["created_at"] = Server->GetCreatedAt();
 
+    // Build a lookup: user_id → user_name from members
+    std::unordered_map<Uint64, std::string> MemberIdToName;
+    for (const auto& Member : Server->GetMembers())
+    {
+        MemberIdToName[Member.UserId] = Member.UserName;
+    }
+
     // Members
     nlohmann::json MembersArray = nlohmann::json::array();
     for (const auto& Member : Server->GetMembers())
@@ -961,6 +986,23 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(Uint64 ServerId)
         ChannelJson["channel_id"] = std::to_string(Channel->ChannelId);
         ChannelJson["channel_name"] = Channel->ChannelName;
         ChannelJson["channel_type"] = (Channel->ChannelType == EServerChannelType::Voice) ? "voice" : "text";
+
+        // For voice channels: include who is currently connected
+        if (Channel->ChannelType == EServerChannelType::Voice && !Channel->ConnectedUsers.empty())
+        {
+            nlohmann::json ConnectedArray = nlohmann::json::array();
+            for (Uint64 ConnectedUserId : Channel->ConnectedUsers)
+            {
+                nlohmann::json ConnectedJson;
+                ConnectedJson["user_id"] = std::to_string(ConnectedUserId);
+                // Resolve user name from members map
+                auto NameIter = MemberIdToName.find(ConnectedUserId);
+                ConnectedJson["user_name"] = (NameIter != MemberIdToName.end()) ? NameIter->second : "Unknown";
+                ConnectedArray.push_back(ConnectedJson);
+            }
+            ChannelJson["connected_users"] = ConnectedArray;
+        }
+
         ChannelsArray.push_back(ChannelJson);
     }
     Data["channels"] = ChannelsArray;

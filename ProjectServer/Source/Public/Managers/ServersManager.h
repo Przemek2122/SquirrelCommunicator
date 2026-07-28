@@ -62,6 +62,13 @@ public:
     void JoinVoiceChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 UserId);
     void LeaveVoiceChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 UserId);
 
+    /**
+     * Get all voice channels a user is currently connected to.
+     * Returns vector of {ServerId, ChannelId} pairs.
+     * Used on WebSocket disconnect to auto-cleanup voice state.
+     */
+    std::vector<std::pair<Uint64, Uint64>> GetUserVoiceChannels(Uint64 UserId);
+
     /** Ensure a server is loaded into memory cache from DB */
     void EnsureServerLoaded(Uint64 ServerId);
 

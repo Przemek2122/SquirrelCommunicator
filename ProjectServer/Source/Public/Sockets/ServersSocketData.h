@@ -36,6 +36,12 @@ public:
     /** Broadcast a member's status change to all servers they belong to */
     void BroadcastMemberStatus(Uint64 UserId, const std::string& UserName, EUserStatus NewStatus);
 
+    /**
+     * Called when a user disconnects from WebSocket.
+     * Removes them from all voice channels and broadcasts server_voice_left to other members.
+     */
+    void CleanupUserVoiceChannels(Uint64 UserId, const std::string& UserName);
+
 private:
     /** Helper: broadcast a JSON message to all members of a server */
     void BroadcastToServerMembers(Uint64 ServerId, const nlohmann::json& JsonMessage, Uint64 ExcludeUserId = 0);

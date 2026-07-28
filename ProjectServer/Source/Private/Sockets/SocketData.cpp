@@ -112,8 +112,8 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("room_message"):            return ESocketMessageServersType::RoomMessage;
         case HashString("create_channel"):          return ESocketMessageServersType::CreateChannel;
         case HashString("room_invite"):             return ESocketMessageServersType::RoomInvite;
-        case HashString("room_join_voice"):         return ESocketMessageServersType::RoomJoinVoice;
-        case HashString("room_leave_voice"):        return ESocketMessageServersType::RoomLeaveVoice;
+        case HashString("server_join_voice"):       return ESocketMessageServersType::RoomJoinVoice;
+        case HashString("server_leave_voice"):      return ESocketMessageServersType::RoomLeaveVoice;
         case HashString("get_server_list"):         return ESocketMessageServersType::GetServerList;
         case HashString("get_server_messages"):     return ESocketMessageServersType::GetServerMessages;
         case HashString("server_create_invite"):    return ESocketMessageServersType::ServerCreateInvite;
@@ -124,8 +124,8 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("room_user_joined"):        return ESocketMessageServersType::RoomUserJoined;
         case HashString("room_user_left"):          return ESocketMessageServersType::RoomUserLeft;
         case HashString("room_channel_created"):    return ESocketMessageServersType::RoomChannelCreated;
-        case HashString("room_user_voice_join"):    return ESocketMessageServersType::RoomUserVoiceJoin;
-        case HashString("room_user_voice_leave"):   return ESocketMessageServersType::RoomUserVoiceLeave;
+        case HashString("server_voice_joined"):     return ESocketMessageServersType::RoomUserVoiceJoin;
+        case HashString("server_voice_left"):       return ESocketMessageServersType::RoomUserVoiceLeave;
         case HashString("room_member_status"):      return ESocketMessageServersType::RoomMemberStatus;
         case HashString("server_list"):             return ESocketMessageServersType::ServerList;
         case HashString("server_messages"):         return ESocketMessageServersType::ServerMessages;
@@ -149,8 +149,8 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::RoomMessage:          return "room_message";
         case ESocketMessageServersType::CreateChannel:        return "create_channel";
         case ESocketMessageServersType::RoomInvite:           return "room_invite";
-        case ESocketMessageServersType::RoomJoinVoice:        return "room_join_voice";
-        case ESocketMessageServersType::RoomLeaveVoice:       return "room_leave_voice";
+        case ESocketMessageServersType::RoomJoinVoice:        return "server_join_voice";
+        case ESocketMessageServersType::RoomLeaveVoice:       return "server_leave_voice";
         case ESocketMessageServersType::GetServerList:        return "get_server_list";
         case ESocketMessageServersType::GetServerMessages:    return "get_server_messages";
         case ESocketMessageServersType::ServerCreateInvite:   return "server_create_invite";
@@ -161,8 +161,8 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::RoomUserJoined:       return "room_user_joined";
         case ESocketMessageServersType::RoomUserLeft:         return "room_user_left";
         case ESocketMessageServersType::RoomChannelCreated:   return "room_channel_created";
-        case ESocketMessageServersType::RoomUserVoiceJoin:    return "room_user_voice_join";
-        case ESocketMessageServersType::RoomUserVoiceLeave:   return "room_user_voice_leave";
+        case ESocketMessageServersType::RoomUserVoiceJoin:    return "server_voice_joined";
+        case ESocketMessageServersType::RoomUserVoiceLeave:   return "server_voice_left";
         case ESocketMessageServersType::RoomMemberStatus:     return "room_member_status";
         case ESocketMessageServersType::ServerList:           return "server_list";
         case ESocketMessageServersType::ServerMessages:       return "server_messages";

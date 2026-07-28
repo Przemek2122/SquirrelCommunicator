@@ -353,6 +353,12 @@ void FSocket::OnClientDisconnected(auto* ws, int code, std::string_view message)
 		{
 			ServersSocketData.BroadcastMemberStatus(ConnectedUserId, UserName, EUserStatus::Offline);
 		}
+
+		// Auto-remove from all voice channels on disconnect
+		if (!UserName.empty())
+		{
+			ServersSocketData.CleanupUserVoiceChannels(ConnectedUserId, UserName);
+		}
 	}
 }
 
