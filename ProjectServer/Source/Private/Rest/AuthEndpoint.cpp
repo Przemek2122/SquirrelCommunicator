@@ -59,6 +59,12 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 
 						break;
 					}
+					case ERegisterUserStatus::PasswordIncorrect:
+					{
+						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password bad, please change."} });
+
+						break;
+					}
 					case ERegisterUserStatus::DataBaseInsertFailed:
 					{
 						LOG_ERROR("ERegisterUserStatus::DataBaseInsertFailed:");
@@ -107,22 +113,20 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 				std::string OutSessionToken;
 				const ELoginStatus LoginStatus = ProjectEngine->GetUserManager()->LoginUser(UserEmail, UserPassword, OutSessionToken);
 
-				if (!OutSessionToken.empty())
+				if (!OutSessionToken.empty() && LoginStatus == ELoginStatus::Successful)
+				{
+					OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
+
+					// This is overrided by CreateResponse so use after setting OutResponse
+					ProjectEngine->AddCookies(OutResponse, OutSessionToken);
+				}
+				else
 				{
 					switch (LoginStatus)
 					{
 						case ELoginStatus::Unknown:
 						{
 							OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "User login successful!"}, { "message", "unknown issue" } });
-
-							break;
-						}
-						case ELoginStatus::Successful:
-						{
-							OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User login successful!"} });
-
-							// This is overrided by CreateResponse so use after setting OutResponse
-							ProjectEngine->AddCookies(OutResponse, OutSessionToken);
 
 							break;
 						}
@@ -152,10 +156,7 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 							LOG_ERROR("LoginStatus unknown value!");
 						}
 					}
-				}
-				else
-				{
-					OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Unable to generate session."} });
+
 				}
 			}
 
