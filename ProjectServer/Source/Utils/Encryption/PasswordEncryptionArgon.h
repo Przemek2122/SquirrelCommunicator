@@ -46,69 +46,90 @@ public:
         // Generate random salt
         std::vector<uint8_t> Salt(Settings.salt_len);
         std::random_device rd;
-        for (auto& byte : Salt)
+        for (uint8_t& byte : Salt)
         {
             byte = static_cast<uint8_t>(rd() % 256);
         }
 
-        std::vector<uint8_t> Hash(Settings.hash_len);
+        // Calculate correct encoded buffer length
+        const size_t encoded_len = argon2_encodedlen(
+            Settings.t_cost,
+            Settings.m_cost,
+            Settings.parallelism,
+            static_cast<uint32_t>(Salt.size()),
+            Settings.hash_len,
+            Argon2_id
+        );
 
-        int Result = argon2id_hash_raw(
+        std::vector<char> Encoded(encoded_len);
+
+        // Hash and let Argon2 format the B64 string properly
+        const int Result = argon2id_hash_encoded(
             Settings.t_cost,
             Settings.m_cost,
             Settings.parallelism,
             InputString.c_str(), InputString.length(),
             Salt.data(), Salt.size(),
-            Hash.data(), Hash.size()
+            Settings.hash_len,
+            Encoded.data(), Encoded.size()
         );
 
         if (Result != ARGON2_OK) return "";
 
-        // Encode as $argon2id$v=19$m=COST,t=TIME,p=PAR$SALT$HASH
-        std::ostringstream oss;
-        oss << "$argon2id$v=" << ARGON2_VERSION_NUMBER
-            << "$m=" << Settings.m_cost << ",t=" << Settings.t_cost << ",p=" << Settings.parallelism
-            << "$";
-
-        // Hex encode salt and hash
-        for (auto b : Salt) oss << std::hex << std::setfill('0') << std::setw(2) << (int)b;
-        oss << "$";
-        for (auto b : Hash) oss << std::hex << std::setfill('0') << std::setw(2) << (int)b;
-
-        return oss.str();
+        return std::string(Encoded.data());
     }
 
     std::string HashPassword(const std::string& InputString) override
     {
-        // Use argon2 encoded hash for easy verification
-        char encoded[256];
         FArgonSettings settings;
 
+        // Generate salt
         std::vector<uint8_t> salt(settings.salt_len);
         std::random_device rd;
-        for (auto& byte : salt) byte = static_cast<uint8_t>(rd() % 256);
+        for (uint8_t& byte : salt) {
+            byte = static_cast<uint8_t>(rd() % 256);
+        }
 
-        int result = argon2id_hash_encoded(
+        // Compute buffer length with argon2_encodedlen
+        const size_t encoded_len = argon2_encodedlen(
+            settings.t_cost,
+            settings.m_cost,
+            settings.parallelism,
+            static_cast<uint32_t>(salt.size()),
+            settings.hash_len,
+            Argon2_id // Pass the type explicitly
+        );
+
+        // Allocate buffer
+        std::vector<char> encoded(encoded_len);
+
+        // Hash encoded
+        const int result = argon2id_hash_encoded(
             settings.t_cost,
             settings.m_cost,
             settings.parallelism,
             InputString.c_str(), InputString.length(),
             salt.data(), salt.size(),
             settings.hash_len,
-            encoded, sizeof(encoded)
+            encoded.data(), encoded.size()
         );
 
-        if (result != ARGON2_OK) return "";
-        return std::string(encoded);
+        if (result != ARGON2_OK) {
+            // Option to inspect error: argon2_error_message(result)
+            return "";
+        }
+
+        return std::string(encoded.data());
     }
 
     bool VerifyPassword(const std::string& StringWithHash, const std::string& StringWithoutHash) override
     {
-        int result = argon2id_verify(
+        const int result = argon2id_verify(
             StringWithHash.c_str(),
             StringWithoutHash.c_str(),
             StringWithoutHash.length()
         );
+
         return result == ARGON2_OK;
     }
 };
