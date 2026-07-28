@@ -42,7 +42,7 @@ class FRateLimiter
 {
 public:
 	FRateLimiter(int32 InClearingTimeInMins, int32 InNumberOfAttemptsToBlock, int32 InNumberOfPasswordResetAttemptsToBlock,
-		int32 InNumberOfRoomOperationAttemptsToBlock);
+		int32 InNumberOfServerOperationAttemptsToBlock);
 	~FRateLimiter();
 
 	/** Check if we have user blocked */
@@ -57,11 +57,11 @@ public:
 	/** Add password reset attempt */
 	void AddPasswordResetAttempt(const std::string_view InAddress);
 
-	/** Check if address can perform room operation */
-	bool IsRoomOperationAddressBlocked(const std::string_view InAddress);
+	/** Check if address can perform server operation */
+	bool IsServerOperationAddressBlocked(const std::string_view InAddress);
 
-	/** Add room operation attempt */
-	void AddRoomOperationAttempt(const std::string_view InAddress);
+	/** Add server operation attempt */
+	void AddServerOperationAttempt(const std::string_view InAddress);
 
 	void ResetRateLimits();
 
@@ -80,8 +80,8 @@ protected:
 	/** Object for limiting access when using password reset */
 	FRateLimitObject PasswordResetIPAddressToLimits;
 
-	/** Object for limiting access when using room operations */
-	FRateLimitObject RoomOperationAddressToLimits;
+	/** Object for limiting access when using server operations */
+	FRateLimitObject ServerOperationAddressToLimits;
 
 	/** Time when we clear limits */
 	std::chrono::minutes ClearingTimeInMins;
@@ -92,8 +92,8 @@ protected:
 	/** How many attempts are needed to block password reset */
 	int32 NumberOfPasswordResetAttemptsToBlock;
 
-	/** How many attempts are needed to block room operation */
-	int32 NumberOfRoomOperationAttemptsToBlock;
+	/** How many attempts are needed to block server operation */
+	int32 NumberOfServerOperationAttemptsToBlock;
 
 private:
 	/** Background worker thread */

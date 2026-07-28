@@ -67,11 +67,11 @@ void FRateLimitObject::Reset()
 }
 
 FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock,
-	const int32 InNumberOfRoomOperationAttemptsToBlock)
+	const int32 InNumberOfServerOperationAttemptsToBlock)
 	: ClearingTimeInMins(std::chrono::minutes(InClearingTimeInMins))
 	, NumberOfAttemptsToBlock(InNumberOfAttemptsToBlock)
 	, NumberOfPasswordResetAttemptsToBlock(InNumberOfPasswordResetAttemptsToBlock)
-	, NumberOfRoomOperationAttemptsToBlock(InNumberOfRoomOperationAttemptsToBlock)
+	, NumberOfServerOperationAttemptsToBlock(InNumberOfServerOperationAttemptsToBlock)
 {
 	AsyncWorkLastTime = std::chrono::utc_clock::now();
 
@@ -118,14 +118,14 @@ void FRateLimiter::AddPasswordResetAttempt(const std::string_view InAddress)
 	PasswordResetIPAddressToLimits.AddAttempt(InAddress);
 }
 
-bool FRateLimiter::IsRoomOperationAddressBlocked(const std::string_view InAddress)
+bool FRateLimiter::IsServerOperationAddressBlocked(const std::string_view InAddress)
 {
-	return RoomOperationAddressToLimits.IsBlockedKey(InAddress, NumberOfRoomOperationAttemptsToBlock);
+	return ServerOperationAddressToLimits.IsBlockedKey(InAddress, NumberOfServerOperationAttemptsToBlock);
 }
 
-void FRateLimiter::AddRoomOperationAttempt(const std::string_view InAddress)
+void FRateLimiter::AddServerOperationAttempt(const std::string_view InAddress)
 {
-	RoomOperationAddressToLimits.AddAttempt(InAddress);
+	ServerOperationAddressToLimits.AddAttempt(InAddress);
 }
 
 void FRateLimiter::ResetRateLimits()

@@ -13,13 +13,13 @@ FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 		const FIniField RateLimitTimeToClearInMinsField = BackendSettingsIni->FindFieldByName("RateLimitTimeToClearInMins");
 		const FIniField RateLimitNumberPerIPField = BackendSettingsIni->FindFieldByName("RateLimitNumberPerIP");
 		const FIniField RateLimitPasswordField = BackendSettingsIni->FindFieldByName("PasswordRateLimitNumberPerIP");
-		const FIniField RateLimitCreateRoomField = BackendSettingsIni->FindFieldByName("CreateRoomRateLimitNumberPerIP");
+		const FIniField RateLimitCreateServerField = BackendSettingsIni->FindFieldByName("CreateRoomRateLimitNumberPerIP");
 
 		RateLimiter = std::make_unique<FRateLimiter>(
 			RateLimitTimeToClearInMinsField.GetValueAsInt(),
 			RateLimitNumberPerIPField.GetValueAsInt(),
 			RateLimitPasswordField.GetValueAsInt(),
-			RateLimitCreateRoomField.GetValueAsInt()
+			RateLimitCreateServerField.GetValueAsInt()
 		);
 	}
 	else
@@ -50,14 +50,14 @@ void FAbuseProtection::AddPasswordResetAttempt(const std::string_view InAddress)
 	RateLimiter->AddPasswordResetAttempt(InAddress);
 }
 
-bool FAbuseProtection::CanAddressRequestCreateRoom(const std::string_view InAddress) const
+bool FAbuseProtection::CanAddressRequestCreateServer(const std::string_view InAddress) const
 {
-	return RateLimiter->IsRoomOperationAddressBlocked(InAddress);
+	return !RateLimiter->IsServerOperationAddressBlocked(InAddress);
 }
 
-void FAbuseProtection::AddCreateRoomAttempt(const std::string_view InAddress) const
+void FAbuseProtection::AddCreateServerAttempt(const std::string_view InAddress) const
 {
-	RateLimiter->AddRoomOperationAttempt(InAddress);
+	RateLimiter->AddServerOperationAttempt(InAddress);
 }
 
 CUnorderedMap<std::string, std::string> FAbuseProtection::GetCORHeaders() const

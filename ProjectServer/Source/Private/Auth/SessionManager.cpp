@@ -232,7 +232,7 @@ std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const
 	TemporaryString += NumberAsBase62;
 	TemporaryString += Salt2AsBase62;
 
-	const std::string EncryptedData = FEncryptionUtil::EncryptDataCustom(TemporaryString, EncryptionKey);
+	const std::string EncryptedData = FEncryptionUtil::Encrypt(TemporaryString, EncryptionKey);
 	const std::string SimpleData = FEncryptionUtil::ToBaseN_Irreversible(EncryptedData, FPredefinedCharsets::BASE62);
 
 	return SimpleData;

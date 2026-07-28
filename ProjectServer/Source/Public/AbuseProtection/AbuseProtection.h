@@ -21,8 +21,8 @@ public:
 	bool CanAddressRequestPasswordReset(const std::string_view InAddress) const;
 	void AddPasswordResetAttempt(const std::string_view InAddress) const;
 
-	bool CanAddressRequestCreateRoom(const std::string_view InAddress) const;
-	void AddCreateRoomAttempt(const std::string_view InAddress) const;
+	bool CanAddressRequestCreateServer(const std::string_view InAddress) const;
+	void AddCreateServerAttempt(const std::string_view InAddress) const;
 
 	CUnorderedMap<std::string, std::string> GetCORHeaders() const;
 

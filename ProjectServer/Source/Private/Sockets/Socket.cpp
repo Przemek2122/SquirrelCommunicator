@@ -22,7 +22,7 @@ FSocket::FSocket(const int32 InSocketIndex, std::string InHost, const int32 InPo
 	, AppListenSocket(nullptr)
 	, ProjectEngine(dynamic_cast<FProjectEngine*>(FGlobalDefines::GEngine))
 	, PrivateSocketData(this)
-	, RoomsSocketData(this)
+	, ServersSocketData(this)
 {
 }
 
@@ -263,6 +263,7 @@ void FSocket::OnClientConnected(auto* ws)
 			ws->subscribe(UserTopic);
 		}
 
+		std::string UserName;
 		// Add per user information about Socket
 		if (!OutUsers.empty())
 		{
@@ -272,6 +273,7 @@ void FSocket::OnClientConnected(auto* ws)
 			{
 				User->SetSocketId(SocketIndex);
 				User->SetUserStatus(EUserStatus::Online);
+				UserName = User->GetUserNameString();
 			}
 		}
 
@@ -280,9 +282,9 @@ void FSocket::OnClientConnected(auto* ws)
 			nlohmann::json JsonData;
 			JsonData["user_id"] = ConnectedUserId;
 
-			if (!OutUsers.empty() && OutUsers[0].get() != nullptr)
+			if (!UserName.empty())
 			{
-				JsonData["user_display_name"] = OutUsers[0]->GetUserNameString();
+				JsonData["user_display_name"] = UserName;
 			}
 			else
 			{
@@ -297,8 +299,14 @@ void FSocket::OnClientConnected(auto* ws)
 			ws->send(JsonRoot.dump(), uWS::TEXT);
 		}
 
-		// Update status to connected clients
+		// Update status to connected clients (friends)
 		BroadcastUserStatus(UserManger, ConnectedUserId, EUserStatus::Online);
+
+		// ALSO broadcast status to all server members
+		if (!UserName.empty())
+		{
+			ServersSocketData.BroadcastMemberStatus(ConnectedUserId, UserName, EUserStatus::Online);
+		}
 	}
 	else
 	{
@@ -323,6 +331,7 @@ void FSocket::OnClientDisconnected(auto* ws, int code, std::string_view message)
 		std::vector<std::shared_ptr<FUser>> OutUsers;
 		UserManger->GetUsersByIds({ ConnectedUserId }, OutUsers);
 
+		std::string UserName;
 		// Remove per user information about Socket
 		if (!OutUsers.empty())
 		{
@@ -330,13 +339,20 @@ void FSocket::OnClientDisconnected(auto* ws, int code, std::string_view message)
 			FUser* User = OutUsers[0].get();
 			if (User != nullptr)
 			{
+				UserName = User->GetUserNameString();
 				User->SetSocketId(-1);
 				User->SetUserStatus(EUserStatus::Offline);
 			}
 		}
 
-		// Update status to connected clients
+		// Update status to connected clients (friends)
 		BroadcastUserStatus(UserManger, ConnectedUserId, EUserStatus::Offline);
+
+		// ALSO broadcast status to all server members
+		if (!UserName.empty())
+		{
+			ServersSocketData.BroadcastMemberStatus(ConnectedUserId, UserName, EUserStatus::Offline);
+		}
 	}
 }
 
@@ -458,7 +474,7 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 
 			case ESocketMessageSection::Rooms:
 			{
-				RoomsSocketData.PrimarySwitch(ws, JsonMessage, opCode);
+				ServersSocketData.PrimarySwitch(ws, JsonMessage, opCode);
 
 				break;
 			}

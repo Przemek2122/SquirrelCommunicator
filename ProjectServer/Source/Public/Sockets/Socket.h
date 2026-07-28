@@ -7,7 +7,7 @@
 #include <shared_mutex>
 #include <nlohmann/json_fwd.hpp>
 #include "PrivateSocketData.h"
-#include "RoomsSocketData.h"
+#include "ServersSocketData.h"
 #include "Auth/UserManager.h"
 #include "WebSocket/AppWrapper.h"
 
@@ -93,6 +93,6 @@ private:
 	/** Represents miscellaneous data associated with a socket, created for readability due to big main class size. */
 	FPrivateSocketData PrivateSocketData;
 
-	/** Represents data related to socket rooms, such as room management and user room associations, created for readability due to big main class size. */
-	FRoomsSocketData RoomsSocketData;
+	/** Represents data related to servers, such as server management and user server associations, created for readability due to big main class size. */
+	FServersSocketData ServersSocketData;
 };

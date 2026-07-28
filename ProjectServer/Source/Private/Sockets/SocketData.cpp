@@ -4,126 +4,174 @@
 
 // Simple FNV-1a hash function for compile-time usage
 constexpr uint32_t HashString(const std::string_view str) {
-	uint32_t hash = 2166136261u; // Seed
-	for (const char c : str) {
-		hash ^= static_cast<uint32_t>(c);
-		hash *= 16777619u; // The FNV Prime
-	}
-	return hash;
+    uint32_t hash = 2166136261u; // Seed
+    for (const char c : str) {
+        hash ^= static_cast<uint32_t>(c);
+        hash *= 16777619u; // The FNV Prime
+    }
+    return hash;
 }
 
 ESocketMessageSection StringToSocketMessageSection(const std::string_view InTypeString)
 {
-	// The compiler replaces HashString("...") with a literal number.
-	// This switch is extremely fast and easy to read.
-	switch (HashString(InTypeString))
-	{
-		case HashString("priv"):		return ESocketMessageSection::Priv;
-		case HashString("rooms"):	return ESocketMessageSection::Rooms;
-		case HashString("error"):	return ESocketMessageSection::Error;
-		default:						return ESocketMessageSection::Unknown;
-	}
+    // The compiler replaces HashString("...") with a literal number.
+    // This switch is extremely fast and easy to read.
+    switch (HashString(InTypeString))
+    {
+        case HashString("priv"):        return ESocketMessageSection::Priv;
+        case HashString("rooms"):   return ESocketMessageSection::Rooms;
+        case HashString("error"):   return ESocketMessageSection::Error;
+        default:                        return ESocketMessageSection::Unknown;
+    }
 }
 
 std::string SocketMessageSectionToString(const ESocketMessageSection InTypeEnum)
 {
-	switch (InTypeEnum)
-	{
-		case ESocketMessageSection::Priv:		return "priv";
-		case ESocketMessageSection::Rooms:		return "rooms";
-		case ESocketMessageSection::Error:		return "error";
-		case ESocketMessageSection::Unknown:
-		default:								return "unknown";
-	}
+    switch (InTypeEnum)
+    {
+        case ESocketMessageSection::Priv:       return "priv";
+        case ESocketMessageSection::Rooms:      return "rooms";
+        case ESocketMessageSection::Error:      return "error";
+        case ESocketMessageSection::Unknown:
+        default:                                return "unknown";
+    }
 }
 
 ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_view InTypeString)
 {
-	// The switch operates on integer hashes calculated at compile-time
-	switch (HashString(InTypeString))
-	{
-		case HashString("message"):					return ESocketMessagePrivateType::Message;
-		case HashString("message_edit"):				return ESocketMessagePrivateType::MessageEdit;
-		case HashString("typing"):					return ESocketMessagePrivateType::Typing;
-		case HashString("message_delivered"):		return ESocketMessagePrivateType::MessageDelivered;
-		case HashString("message_read"):				return ESocketMessagePrivateType::MessageRead;
-		case HashString("user_status"):				return ESocketMessagePrivateType::UserStatus;
-		case HashString("search_user"):				return ESocketMessagePrivateType::SearchUser;
-		case HashString("load_more_messages"):		return ESocketMessagePrivateType::LoadMoreMessages;
-		case HashString("get_conversations"):		return ESocketMessagePrivateType::GetConversations;
-		case HashString("add_conversation"):			return ESocketMessagePrivateType::AddConversation;
-		case HashString("get_friend_list"):			return ESocketMessagePrivateType::GetFriendList;
-		case HashString("get_friend_request_list"):	return ESocketMessagePrivateType::GetFriendRequestList;
-		case HashString("initial_client_data"):		return ESocketMessagePrivateType::InitialClientData;
-		case HashString("initial_conversations"):	return ESocketMessagePrivateType::InitialConversations;
-		case HashString("create_friend_request"):	return ESocketMessagePrivateType::CreateFriendRequest;
-		case HashString("accept_friend_request"):	return ESocketMessagePrivateType::AcceptFriendRequest;
-		case HashString("reject_friend_request"):	return ESocketMessagePrivateType::RejectFriendRequest;
-		case HashString("cancel_friend_request"):	return ESocketMessagePrivateType::CancelFriendRequest;
-		case HashString("remove_friend"):			return ESocketMessagePrivateType::RemoveFriend;
-		case HashString("data_stream_channel"):		return ESocketMessagePrivateType::DataStreamChannel;
-		case HashString("user_calling"):				return ESocketMessagePrivateType::UserCalling;
+    // The switch operates on integer hashes calculated at compile-time
+    switch (HashString(InTypeString))
+    {
+        case HashString("message"):                 return ESocketMessagePrivateType::Message;
+        case HashString("message_edit"):                return ESocketMessagePrivateType::MessageEdit;
+        case HashString("typing"):                  return ESocketMessagePrivateType::Typing;
+        case HashString("message_delivered"):       return ESocketMessagePrivateType::MessageDelivered;
+        case HashString("message_read"):                return ESocketMessagePrivateType::MessageRead;
+        case HashString("user_status"):             return ESocketMessagePrivateType::UserStatus;
+        case HashString("search_user"):             return ESocketMessagePrivateType::SearchUser;
+        case HashString("load_more_messages"):      return ESocketMessagePrivateType::LoadMoreMessages;
+        case HashString("get_conversations"):       return ESocketMessagePrivateType::GetConversations;
+        case HashString("add_conversation"):        return ESocketMessagePrivateType::AddConversation;
+        case HashString("get_friend_list"):         return ESocketMessagePrivateType::GetFriendList;
+        case HashString("get_friend_request_list"): return ESocketMessagePrivateType::GetFriendRequestList;
+        case HashString("initial_client_data"):     return ESocketMessagePrivateType::InitialClientData;
+        case HashString("initial_conversations"):   return ESocketMessagePrivateType::InitialConversations;
+        case HashString("create_friend_request"):   return ESocketMessagePrivateType::CreateFriendRequest;
+        case HashString("accept_friend_request"):   return ESocketMessagePrivateType::AcceptFriendRequest;
+        case HashString("reject_friend_request"):   return ESocketMessagePrivateType::RejectFriendRequest;
+        case HashString("cancel_friend_request"):   return ESocketMessagePrivateType::CancelFriendRequest;
+        case HashString("remove_friend"):           return ESocketMessagePrivateType::RemoveFriend;
+        case HashString("data_stream_channel"):     return ESocketMessagePrivateType::DataStreamChannel;
+        case HashString("user_calling"):                return ESocketMessagePrivateType::UserCalling;
 
-		case HashString("error"):					return ESocketMessagePrivateType::Error;
-		default:										return ESocketMessagePrivateType::Unknown;
-	}
+        case HashString("error"):                   return ESocketMessagePrivateType::Error;
+        default:                                    return ESocketMessagePrivateType::Unknown;
+    }
 }
 
 std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InTypeEnum)
 {
-	switch (InTypeEnum)
-	{
-		case ESocketMessagePrivateType::Message:				return "message";
-		case ESocketMessagePrivateType::MessageEdit:			return "message_edit";
-		case ESocketMessagePrivateType::Typing:					return "typing";
-		case ESocketMessagePrivateType::MessageDelivered:		return "message_delivered";
-		case ESocketMessagePrivateType::MessageRead:			return "message_read";
-		case ESocketMessagePrivateType::UserStatus:				return "user_status";
-		case ESocketMessagePrivateType::SearchUser:				return "search_user";
-		case ESocketMessagePrivateType::LoadMoreMessages:		return "load_more_messages";
-		case ESocketMessagePrivateType::GetConversations:		return "get_conversations";
-		case ESocketMessagePrivateType::AddConversation:		return "add_conversation";
-		case ESocketMessagePrivateType::GetFriendList:			return "get_friend_list";
-		case ESocketMessagePrivateType::GetFriendRequestList:	return "get_friend_request_list";
-		case ESocketMessagePrivateType::InitialClientData:		return "initial_client_data";
-		case ESocketMessagePrivateType::InitialConversations:	return "initial_conversations";
-		case ESocketMessagePrivateType::CreateFriendRequest:	return "create_friend_request";
-		case ESocketMessagePrivateType::AcceptFriendRequest:	return "accept_friend_request";
-		case ESocketMessagePrivateType::RejectFriendRequest:	return "reject_friend_request";
-		case ESocketMessagePrivateType::CancelFriendRequest:	return "cancel_friend_request";
-		case ESocketMessagePrivateType::RemoveFriend:			return "remove_friend";
-		case ESocketMessagePrivateType::DataStreamChannel:		return "data_stream_channel";
-		case ESocketMessagePrivateType::UserCalling:			return "user_calling";
+    switch (InTypeEnum)
+    {
+        case ESocketMessagePrivateType::Message:                return "message";
+        case ESocketMessagePrivateType::MessageEdit:            return "message_edit";
+        case ESocketMessagePrivateType::Typing:                 return "typing";
+        case ESocketMessagePrivateType::MessageDelivered:       return "message_delivered";
+        case ESocketMessagePrivateType::MessageRead:            return "message_read";
+        case ESocketMessagePrivateType::UserStatus:             return "user_status";
+        case ESocketMessagePrivateType::SearchUser:             return "search_user";
+        case ESocketMessagePrivateType::LoadMoreMessages:       return "load_more_messages";
+        case ESocketMessagePrivateType::GetConversations:       return "get_conversations";
+        case ESocketMessagePrivateType::AddConversation:        return "add_conversation";
+        case ESocketMessagePrivateType::GetFriendList:          return "get_friend_list";
+        case ESocketMessagePrivateType::GetFriendRequestList:   return "get_friend_request_list";
+        case ESocketMessagePrivateType::InitialClientData:      return "initial_client_data";
+        case ESocketMessagePrivateType::InitialConversations:   return "initial_conversations";
+        case ESocketMessagePrivateType::CreateFriendRequest:    return "create_friend_request";
+        case ESocketMessagePrivateType::AcceptFriendRequest:    return "accept_friend_request";
+        case ESocketMessagePrivateType::RejectFriendRequest:    return "reject_friend_request";
+        case ESocketMessagePrivateType::CancelFriendRequest:    return "cancel_friend_request";
+        case ESocketMessagePrivateType::RemoveFriend:           return "remove_friend";
+        case ESocketMessagePrivateType::DataStreamChannel:      return "data_stream_channel";
+        case ESocketMessagePrivateType::UserCalling:            return "user_calling";
 
-		case ESocketMessagePrivateType::Error:					return "error";
-		case ESocketMessagePrivateType::Unknown:
-		default:												return "unknown";
-	}
+        case ESocketMessagePrivateType::Error:                  return "error";
+        case ESocketMessagePrivateType::Unknown:
+        default:                                                return "unknown";
+    }
 }
 
-ESocketMessageRoomsType StringToSocketMessageRoomsType(std::string_view InTypeString)
+ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTypeString)
 {
-	switch (HashString(InTypeString))
-	{
-		case HashString("create_room"):		return ESocketMessageRoomsType::CreateRoom;
-		case HashString("join_room"):		return ESocketMessageRoomsType::JoinRoom;
-		case HashString("leave_room"):		return ESocketMessageRoomsType::LeaveRoom;
-		case HashString("error"):			return ESocketMessageRoomsType::Error;
+    switch (HashString(InTypeString))
+    {
+        // Client → Server
+        case HashString("create_room"):             return ESocketMessageServersType::CreateRoom;
+        case HashString("join_room"):               return ESocketMessageServersType::JoinRoom;
+        case HashString("leave_room"):              return ESocketMessageServersType::LeaveRoom;
+        case HashString("room_message"):            return ESocketMessageServersType::RoomMessage;
+        case HashString("create_channel"):          return ESocketMessageServersType::CreateChannel;
+        case HashString("room_invite"):             return ESocketMessageServersType::RoomInvite;
+        case HashString("room_join_voice"):         return ESocketMessageServersType::RoomJoinVoice;
+        case HashString("room_leave_voice"):        return ESocketMessageServersType::RoomLeaveVoice;
+        case HashString("get_server_list"):         return ESocketMessageServersType::GetServerList;
+        case HashString("get_server_messages"):     return ESocketMessageServersType::GetServerMessages;
+        case HashString("server_create_invite"):    return ESocketMessageServersType::ServerCreateInvite;
+        case HashString("server_join_invite"):      return ESocketMessageServersType::ServerJoinInvite;
 
-		default:								return ESocketMessageRoomsType::Unknown;
-	}
+        // Server → Client
+        case HashString("room_created"):            return ESocketMessageServersType::RoomCreated;
+        case HashString("room_user_joined"):        return ESocketMessageServersType::RoomUserJoined;
+        case HashString("room_user_left"):          return ESocketMessageServersType::RoomUserLeft;
+        case HashString("room_channel_created"):    return ESocketMessageServersType::RoomChannelCreated;
+        case HashString("room_user_voice_join"):    return ESocketMessageServersType::RoomUserVoiceJoin;
+        case HashString("room_user_voice_leave"):   return ESocketMessageServersType::RoomUserVoiceLeave;
+        case HashString("room_member_status"):      return ESocketMessageServersType::RoomMemberStatus;
+        case HashString("server_list"):             return ESocketMessageServersType::ServerList;
+        case HashString("server_messages"):         return ESocketMessageServersType::ServerMessages;
+        case HashString("server_invite_created"):   return ESocketMessageServersType::ServerInviteCreated;
+        case HashString("server_joined"):           return ESocketMessageServersType::ServerJoined;
+
+        case HashString("error"):                   return ESocketMessageServersType::Error;
+
+        default:                                    return ESocketMessageServersType::Unknown;
+    }
 }
 
-std::string SocketMessageRoomsTypeToString(ESocketMessageRoomsType InTypeEnum)
+std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnum)
 {
-	switch (InTypeEnum)
-	{
-		case ESocketMessageRoomsType::CreateRoom:		return "create_room";
-		case ESocketMessageRoomsType::JoinRoom:			return "join_room";
-		case ESocketMessageRoomsType::LeaveRoom:		return "leave_room";
-		case ESocketMessageRoomsType::Error:			return "error";
+    switch (InTypeEnum)
+    {
+        // Client → Server
+        case ESocketMessageServersType::CreateRoom:           return "create_room";
+        case ESocketMessageServersType::JoinRoom:             return "join_room";
+        case ESocketMessageServersType::LeaveRoom:            return "leave_room";
+        case ESocketMessageServersType::RoomMessage:          return "room_message";
+        case ESocketMessageServersType::CreateChannel:        return "create_channel";
+        case ESocketMessageServersType::RoomInvite:           return "room_invite";
+        case ESocketMessageServersType::RoomJoinVoice:        return "room_join_voice";
+        case ESocketMessageServersType::RoomLeaveVoice:       return "room_leave_voice";
+        case ESocketMessageServersType::GetServerList:        return "get_server_list";
+        case ESocketMessageServersType::GetServerMessages:    return "get_server_messages";
+        case ESocketMessageServersType::ServerCreateInvite:   return "server_create_invite";
+        case ESocketMessageServersType::ServerJoinInvite:     return "server_join_invite";
 
-		case ESocketMessageRoomsType::Unknown:
-		default:										return "unknown";
-	}
+        // Server → Client
+        case ESocketMessageServersType::RoomCreated:          return "room_created";
+        case ESocketMessageServersType::RoomUserJoined:       return "room_user_joined";
+        case ESocketMessageServersType::RoomUserLeft:         return "room_user_left";
+        case ESocketMessageServersType::RoomChannelCreated:   return "room_channel_created";
+        case ESocketMessageServersType::RoomUserVoiceJoin:    return "room_user_voice_join";
+        case ESocketMessageServersType::RoomUserVoiceLeave:   return "room_user_voice_leave";
+        case ESocketMessageServersType::RoomMemberStatus:     return "room_member_status";
+        case ESocketMessageServersType::ServerList:           return "server_list";
+        case ESocketMessageServersType::ServerMessages:       return "server_messages";
+        case ESocketMessageServersType::ServerInviteCreated:  return "server_invite_created";
+        case ESocketMessageServersType::ServerJoined:         return "server_joined";
+
+        case ESocketMessageServersType::Error:                return "error";
+
+        case ESocketMessageServersType::Unknown:
+        default:                                              return "unknown";
+    }
 }
