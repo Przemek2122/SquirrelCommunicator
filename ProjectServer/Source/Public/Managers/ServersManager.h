@@ -99,7 +99,7 @@ public:
                                             std::string* OutError = nullptr);
     bool DeleteInvite(Uint64 ServerId, const std::string& InviteCode, Uint64 RequestedByUserId);
     std::vector<FInviteInfo> ListInvites(Uint64 ServerId, Uint64 RequestedByUserId,
-                                         int32 Start, int32 Count, int32* OutTotal = nullptr);
+                                         Uint32 Start, Uint32 Count, Uint32* OutTotal = nullptr);
 
     /** Voice channel operations */
     void JoinVoiceChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 UserId);

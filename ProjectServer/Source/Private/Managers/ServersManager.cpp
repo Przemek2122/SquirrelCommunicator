@@ -619,8 +619,8 @@ bool FServersManager::DeleteInvite(const Uint64 ServerId, const std::string& Inv
 }
 
 std::vector<FInviteInfo> FServersManager::ListInvites(const Uint64 ServerId, const Uint64 RequestedByUserId,
-                                                       int32 Start, int32 Count,
-                                                       int32* OutTotal)
+                                                       Uint32 Start, Uint32 Count,
+                                                       Uint32* OutTotal)
 {
     const std::shared_ptr<FServer> Server = GetServerById(ServerId);
     if (!Server)
