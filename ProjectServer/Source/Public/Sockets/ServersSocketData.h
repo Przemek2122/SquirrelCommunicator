@@ -63,7 +63,7 @@ public:
      * current_uses, remaining_uses, created_at, and expires_at.
      */
     void HandleServerListInvites(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                 Uint64 RoomId, int32 Start, int32 Count);
+                                 Uint64 RoomId, Uint32 Start, Uint32 Count);
 
     /** Broadcast a member's status change to all servers they belong to */
     void BroadcastMemberStatus(Uint64 UserId, const std::string& UserName, EUserStatus NewStatus);

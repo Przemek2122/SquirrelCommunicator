@@ -1006,7 +1006,7 @@ void FServersSocketData::HandleServerDeleteInvite(AnyWebSocket wsVariant, uWS::O
 }
 
 void FServersSocketData::HandleServerListInvites(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                                   Uint64 RoomId, int32 Start, int32 Count)
+                                                   Uint64 RoomId, Uint32 Start, Uint32 Count)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)
@@ -1030,7 +1030,7 @@ void FServersSocketData::HandleServerListInvites(AnyWebSocket wsVariant, uWS::Op
         return;
     }
 
-    int32 Total = 0;
+    Uint32 Total = 0;
     auto Invites = ServersManager->ListInvites(RoomId, CurrentUserId, Start, Count, &Total);
 
     nlohmann::json ResponseJson;
