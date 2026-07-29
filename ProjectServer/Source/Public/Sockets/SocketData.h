@@ -68,21 +68,24 @@ enum class ESocketMessageServersType : uint8
 {
     Unknown = 0,
 
-    // Client → Server (requests/actions)
+    // Client -> Server (requests/actions)
     CreateRoom,
     JoinRoom,
     LeaveRoom,
     RoomMessage,
     CreateChannel,
-    RoomInvite,
+    ServerInvite,
     RoomJoinVoice,
     RoomLeaveVoice,
     GetServerList,          // Request list of servers user belongs to
     GetServerMessages,      // Request message history for a channel
     ServerCreateInvite,     // Request to generate an invite code
     ServerJoinInvite,       // Request to join via invite code
+    ServerUpdateMemberPermissions, // Request to update a member's permissions
+    ServerDeleteInvite,     // Request to delete an invite by code
+    ServerListInvites,      // Request to list invites with pagination
 
-    // Server → Client (responses/events)
+    // Server -> Client (responses/events)
     RoomCreated,
     RoomUserJoined,
     RoomUserLeft,
@@ -94,6 +97,9 @@ enum class ESocketMessageServersType : uint8
     ServerMessages,         // Response with message history
     ServerInviteCreated,    // Response with generated invite code
     ServerJoined,           // Response after joining via invite (full room data)
+    ServerMemberPermissionsUpdated, // Response after permissions update
+    ServerInviteDeleted,    // Response after deleting an invite
+    ServerInvitesList,      // Response with paginated invite list
 
     Error = 255
 };

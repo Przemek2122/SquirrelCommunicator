@@ -14,6 +14,49 @@ enum class EServerChannelType : uint8
     Voice
 };
 
+/**
+ * Server member permissions (bitfield).
+ * Stored as Uint64. Each bit controls one capability.
+ */
+namespace EServerPermission
+{
+    /** Allow member to create invite codes for this server */
+    constexpr Uint64 CAN_CREATE_INVITES = 1ULL << 0;
+
+    /** Allow member to kick other members (future) */
+    constexpr Uint64 CAN_KICK_MEMBERS   = 1ULL << 1;
+
+    /** Allow member to ban other members (future) */
+    constexpr Uint64 CAN_BAN_MEMBERS    = 1ULL << 2;
+
+    /** Allow member to create, edit, delete channels (future) */
+    constexpr Uint64 CAN_MANAGE_CHANNELS = 1ULL << 3;
+
+    /** Allow member to manage other members permissions (future) */
+    constexpr Uint64 CAN_MANAGE_PERMISSIONS = 1ULL << 4;
+
+    /** All permissions (granted to server owner by default) */
+    constexpr Uint64 ALL_PERMISSIONS = 0xFFFFFFFFFFFFFFFFULL;
+
+    /** Helper: check if a permission bit is set */
+    inline bool HasPermission(Uint64 Permissions, Uint64 Permission)
+    {
+        return (Permissions & Permission) != 0;
+    }
+
+    /** Helper: grant a permission */
+    inline void Grant(Uint64& Permissions, Uint64 Permission)
+    {
+        Permissions |= Permission;
+    }
+
+    /** Helper: revoke a permission */
+    inline void Revoke(Uint64& Permissions, Uint64 Permission)
+    {
+        Permissions &= ~Permission;
+    }
+}
+
 /** Represents a single channel within a server */
 struct FServerChannel
 {
@@ -41,14 +84,49 @@ struct FServerMessage
     FServerMessage() = default;
 };
 
-/** Member of a server with status */
+/** Member of a server with status and permissions */
 struct FServerMember
 {
     Uint64 UserId = 0;
     std::string UserName;
     std::string Status; // "online", "offline", "away"
+    Uint64 Permissions = 0; // Bitfield of EServerPermission flags
 
     FServerMember() = default;
+
+    /** Check if this member has a specific permission */
+    bool HasPermission(Uint64 Permission) const
+    {
+        return EServerPermission::HasPermission(Permissions, Permission);
+    }
+};
+
+/**
+ * Lightweight invite metadata returned by ListInvites.
+ * Used for displaying invite management UI in the frontend.
+ */
+struct FInviteInfo
+{
+    std::string InviteCode;    // The alphanumeric invite token
+    Uint64 CreatedBy = 0;      // User ID who created the invite
+    Uint32 MaxUses = 0;         // Configured max usage count
+    Uint32 CurrentUses = 0;     // How many times it's been consumed
+    std::string CreatedAt;     // Creation timestamp (MySQL TIMESTAMP)
+    std::string ExpiresAt;     // Expiration timestamp (MySQL TIMESTAMP)
+
+    FInviteInfo() = default;
+
+    /** Remaining uses before the invite is exhausted. Clamped to zero defensively. */
+    Uint32 RemainingUses() const
+    {
+        return (MaxUses > CurrentUses) ? (MaxUses - CurrentUses) : 0;
+    }
+
+    /** Whether the invite has no remaining uses */
+    [[nodiscard]] bool IsExhausted() const
+    {
+        return CurrentUses >= MaxUses;
+    }
 };
 
 /** Represents single-server instance */
@@ -85,7 +163,9 @@ public:
     bool HasMember(Uint64 UserId) const;
     void UpdateMemberStatus(Uint64 UserId, const std::string& NewStatus);
     void UpdateMemberUserName(Uint64 UserId, const std::string& UserName);
-    std::vector<FServerMember> GetMembers();
+    void UpdateMemberPermissions(Uint64 UserId, Uint64 NewPermissions);
+    Uint64 GetMemberPermissions(Uint64 UserId) const;
+    std::vector<FServerMember> GetMembers() const;
     size_t GetMemberCount() const;
 
     /** Messages (stored per-channel in memory cache, newest-first) */
@@ -113,13 +193,13 @@ private:
     /** ISO timestamp of creation */
     std::string CreatedAt;
 
-    /** Channels: channel_id → channel */
+    /** Channels: channel_id to channel */
     std::unordered_map<Uint64, std::shared_ptr<FServerChannel>> Channels;
 
-    /** Members: user_id → member info */
+    /** Members: user_id to member info */
     std::unordered_map<Uint64, FServerMember> Members;
 
-    /** Messages cache: channel_id → vector of messages (most recent first by MessageId) */
+    /** Messages cache: channel_id to vector of messages (most recent first by MessageId) */
     std::unordered_map<Uint64, std::vector<FServerMessage>> ChannelMessages;
 
     /** Server mutex for thread-safe access */

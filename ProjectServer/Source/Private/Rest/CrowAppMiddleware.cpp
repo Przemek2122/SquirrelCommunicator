@@ -10,6 +10,18 @@ void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, 
 	// Get IP address
 	const std::string& ClientIP = Req.remote_ip_address;
 
+	// --- Global rate limit: blocks IPs that exceed 5000 req/hr across ALL endpoints ---
+	if (AbuseProtection->IsAddressGloballyBlocked(ClientIP))
+	{
+		Res.code = crow::status::TOO_MANY_REQUESTS;
+		Res.body = R"({"error":"Global rate limit exceeded"})";
+		Res.end();
+		return;
+	}
+	// Count this request against the global cap
+	AbuseProtection->AddGlobalRequestAttempt(ClientIP);
+
+	// --- Specific abuse check (auth-sensitive operations like login, register) ---
 	if (!AbuseProtection->IsAddressBlocked(ClientIP))
 	{
 		// Options support
@@ -47,4 +59,3 @@ void FCrowAppMiddleware::after_handle(crow::request& Req, crow::response& Res, c
 		ProjectEngine->AddHeaders(Res, { { AccessControlAllowOriginHeaderName, Whitelist[0]} });
 	}
 }
-

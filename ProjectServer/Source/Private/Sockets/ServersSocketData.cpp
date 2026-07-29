@@ -121,17 +121,17 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             break;
         }
 
-        case ESocketMessageServersType::RoomInvite:
+        case ESocketMessageServersType::ServerInvite:
         {
             if (DataJSON.contains("room_id") && DataJSON.contains("user_id"))
             {
                 const Uint64 RoomId = std::stoull(DataJSON["room_id"].get<std::string>());
                 const Uint64 TargetUserId = std::stoull(DataJSON["user_id"].get<std::string>());
-                RoomInvite(wsVariant, opCode, RoomId, TargetUserId);
+                ServerInvite(wsVariant, opCode, RoomId, TargetUserId);
             }
             else
             {
-                FSocket::EarlyExit(wsVariant, "missing room_invite fields", opCode);
+                FSocket::EarlyExit(wsVariant, "missing server_invite fields", opCode);
             }
             break;
         }
@@ -204,7 +204,17 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             if (DataJSON.contains("room_id"))
             {
                 const Uint64 RoomId = std::stoull(DataJSON["room_id"].get<std::string>());
-                HandleServerCreateInvite(wsVariant, opCode, RoomId);
+
+                // Optional: max uses and expiration time (configured by API caller)
+                Uint32 MaxUses = 0;
+                Uint32 ExpiresInSeconds = 0;
+
+                if (DataJSON.contains("max_uses"))
+                    MaxUses = DataJSON["max_uses"].get<Uint32>();
+                if (DataJSON.contains("expires_in_seconds"))
+                    ExpiresInSeconds = DataJSON["expires_in_seconds"].get<Uint32>();
+
+                HandleServerCreateInvite(wsVariant, opCode, RoomId, MaxUses, ExpiresInSeconds);
             }
             else
             {
@@ -222,6 +232,70 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             else
             {
                 FSocket::EarlyExit(wsVariant, "missing invite_code", opCode);
+            }
+            break;
+        }
+
+        // ========== NEW: Permission management ==========
+
+        case ESocketMessageServersType::ServerUpdateMemberPermissions:
+        {
+            if (DataJSON.contains("room_id") && DataJSON.contains("target_user_id") && DataJSON.contains("permissions"))
+            {
+                const Uint64 RoomId = std::stoull(DataJSON["room_id"].get<std::string>());
+                const Uint64 TargetUserId = std::stoull(DataJSON["target_user_id"].get<std::string>());
+                const Uint64 NewPermissions = std::stoull(DataJSON["permissions"].get<std::string>());
+
+                HandleUpdateMemberPermissions(wsVariant, opCode, RoomId, TargetUserId, NewPermissions);
+            }
+            else
+            {
+                FSocket::EarlyExit(wsVariant, "missing field in server_update_member_permissions. Required: room_id, target_user_id, permissions.", opCode);
+            }
+            break;
+        }
+
+        // ========== NEW: Invite management ==========
+
+        case ESocketMessageServersType::ServerDeleteInvite:
+        {
+            if (DataJSON.contains("room_id") && DataJSON.contains("invite_code"))
+            {
+                const Uint64 RoomId = std::stoull(DataJSON["room_id"].get<std::string>());
+                const std::string InviteCode = DataJSON["invite_code"].get<std::string>();
+                HandleServerDeleteInvite(wsVariant, opCode, RoomId, InviteCode);
+            }
+            else
+            {
+                FSocket::EarlyExit(wsVariant, "missing room_id or invite_code", opCode);
+            }
+            break;
+        }
+
+        case ESocketMessageServersType::ServerListInvites:
+        {
+            if (DataJSON.contains("room_id"))
+            {
+                const Uint64 RoomId = std::stoull(DataJSON["room_id"].get<std::string>());
+                int32 Start = 0;
+                int32 Count = 50;
+
+                if (DataJSON.contains("start"))
+                    Start = DataJSON["start"].get<int32>();
+                if (DataJSON.contains("count"))
+                    Count = DataJSON["count"].get<int32>();
+
+                // Clamp pagination params at socket layer so response values are accurate.
+                // Consistent with FServersManager::ListInvites: clamp Count to 200 max, default 50.
+                if (Start < 0) Start = 0;
+                if (Count <= 0) Count = 50;
+                else if (Count > 200) Count = 200;
+
+                HandleServerListInvites(wsVariant, opCode, RoomId, Start, Count);
+            }
+            else
+            {
+                FSocket::EarlyExit(wsVariant, "missing room_id", opCode);
             }
             break;
         }
@@ -312,24 +386,18 @@ void FServersSocketData::JoinRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, Ui
     }
 
     FServersManager* ServersManager = ProjectEngine->GetServersManager();
-    const std::string UserName = GetUserName(CurrentUserId);
 
-    if (!ServersManager->AddUserToServer(RoomId, CurrentUserId, UserName))
+    // Security: JoinRoom is only for re-joining servers the user is already a member of.
+    // New members must use ServerJoinInvite with a valid invite code.
+    if (!ServersManager->IsUserInServer(RoomId, CurrentUserId))
     {
-        FSocket::EarlyExit(wsVariant, "failed to join room", opCode);
+        FSocket::EarlyExit(wsVariant, "not a member of this room. Use server_join_invite with a valid invite code.", opCode);
         return;
     }
 
-    // Broadcast to room members
-    nlohmann::json BroadcastJson;
-    BroadcastJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::RoomUserJoined);
-    BroadcastJson["data"]["room_id"] = RoomId;
-    BroadcastJson["data"]["user_id"] = CurrentUserId;
-    BroadcastJson["data"]["user_name"] = UserName;
+    const std::string UserName = GetUserName(CurrentUserId);
 
-    BroadcastToServerMembers(RoomId, BroadcastJson, CurrentUserId);
-
-    // Send full room data to the joining user
+    // Send full room data to the re-joining user
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::RoomCreated);
     ResponseJson["data"] = BuildRoomDataJson(RoomId);
@@ -339,7 +407,7 @@ void FServersSocketData::JoinRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, Ui
         ws->send(ResponseJson.dump(), opCode);
     }, wsVariant);
 
-    LOG_INFO("User " << CurrentUserId << " joined room " << RoomId);
+    LOG_INFO("User " << CurrentUserId << " re-joined room " << RoomId);
 }
 
 void FServersSocketData::LeaveRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId)
@@ -371,7 +439,7 @@ void FServersSocketData::LeaveRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, U
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::LeaveRoom);
     ResponseJson["data"]["room_id"] = RoomId;
-    ResponseJson["status"] = "left";
+    ResponseJson["data"]["status"] = "left";
 
     std::visit([&](auto* ws)
     {
@@ -469,7 +537,7 @@ void FServersSocketData::CreateChannel(AnyWebSocket wsVariant, uWS::OpCode opCod
     LOG_INFO("Channel '" << ChannelName << "' created in room " << RoomId);
 }
 
-void FServersSocketData::RoomInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 TargetUserId)
+void FServersSocketData::ServerInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 TargetUserId)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)
@@ -497,7 +565,7 @@ void FServersSocketData::RoomInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, 
 
     // Send invite notification to the target user
     nlohmann::json InviteJson;
-    InviteJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::RoomInvite);
+    InviteJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerInvite);
     InviteJson["data"]["room_id"] = RoomId;
     InviteJson["data"]["room_name"] = Server->GetServerName();
     InviteJson["data"]["inviter_id"] = CurrentUserId;
@@ -507,7 +575,7 @@ void FServersSocketData::RoomInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, 
 
     // Confirm to the inviter
     nlohmann::json ConfirmJson;
-    ConfirmJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::RoomInvite);
+    ConfirmJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerInvite);
     ConfirmJson["data"]["status"] = "sent";
     ConfirmJson["data"]["room_id"] = RoomId;
     ConfirmJson["data"]["user_id"] = TargetUserId;
@@ -538,14 +606,14 @@ void FServersSocketData::RoomJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opCod
     }
 
     // Verify channel exists and is voice type
-    auto Server = ServersManager->GetServerById(RoomId);
+    std::shared_ptr<FServer> Server = ServersManager->GetServerById(RoomId);
     if (!Server)
     {
         FSocket::EarlyExit(wsVariant, "room not found", opCode);
         return;
     }
 
-    auto Channel = Server->GetChannel(ChannelId);
+    std::shared_ptr<FServerChannel> Channel = Server->GetChannel(ChannelId);
     if (!Channel || Channel->ChannelType != EServerChannelType::Voice)
     {
         FSocket::EarlyExit(wsVariant, "invalid voice channel", opCode);
@@ -641,7 +709,7 @@ void FServersSocketData::HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode
     }
 
     FServersManager* ServersManager = ProjectEngine->GetServersManager();
-    auto Servers = ServersManager->GetUserServers(CurrentUserId);
+    const std::vector<std::shared_ptr<FServer>> Servers = ServersManager->GetUserServers(CurrentUserId);
 
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerList);
@@ -661,7 +729,7 @@ void FServersSocketData::HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode
     }, wsVariant);
 }
 
-void FServersSocketData::HandleGetServerMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 ChannelId, Uint64 Before, int32 Limit)
+void FServersSocketData::HandleGetServerMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 RoomId, const Uint64 ChannelId, const Uint64 Before, const Uint32 Limit)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)
@@ -680,7 +748,7 @@ void FServersSocketData::HandleGetServerMessages(AnyWebSocket wsVariant, uWS::Op
     }
 
     // Use timestamp-based pagination
-    auto Messages = ServersManager->GetChannelMessages(RoomId, ChannelId, Before, Limit);
+    const std::vector<FServerMessage>& Messages = ServersManager->GetChannelMessages(RoomId, ChannelId, Before, Limit);
 
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerMessages);
@@ -708,7 +776,8 @@ void FServersSocketData::HandleGetServerMessages(AnyWebSocket wsVariant, uWS::Op
     }, wsVariant);
 }
 
-void FServersSocketData::HandleServerCreateInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId)
+void FServersSocketData::HandleServerCreateInvite(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                                                    const Uint64 RoomId, const Uint32 MaxUses, const Uint32 ExpiresInSeconds)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)
@@ -725,25 +794,47 @@ void FServersSocketData::HandleServerCreateInvite(AnyWebSocket wsVariant, uWS::O
         return;
     }
 
-    const std::string InviteCode = ServersManager->CreateInvite(RoomId, CurrentUserId);
+    // Check permission: user must have CAN_CREATE_INVITES or be owner
+    if (!ServersManager->UserHasPermission(RoomId, CurrentUserId, EServerPermission::CAN_CREATE_INVITES))
+    {
+        FSocket::EarlyExit(wsVariant, "permission denied: you lack CAN_CREATE_INVITES permission", opCode);
+        return;
+    }
+
+    const std::string InviteCode = ServersManager->CreateInvite(RoomId, CurrentUserId, MaxUses, ExpiresInSeconds);
     if (InviteCode.empty())
     {
         FSocket::EarlyExit(wsVariant, "failed to create invite", opCode);
         return;
     }
 
+    // Resolve actual defaults used (for response)
+    const FBackendSettings* Settings = ProjectEngine->GetBackendSettings();
+    const int32 ActualMaxUses = (MaxUses > 0) ? MaxUses : Settings->GetInviteDefaultMaxUses();
+    int32 ActualExpiresInSeconds = (ExpiresInSeconds > 0) ? ExpiresInSeconds : Settings->GetInviteDefaultExpiresInSeconds();
+    if (ActualExpiresInSeconds > Settings->GetInviteMaxExpiresInSeconds())
+        ActualExpiresInSeconds = Settings->GetInviteMaxExpiresInSeconds();
+
+    // Compute actual expires_at as Unix timestamp for frontend
+    const auto ExpiresTime = std::chrono::system_clock::now() + std::chrono::seconds(ActualExpiresInSeconds);
+    const Uint64 ExpiresAtUnix = std::chrono::duration_cast<std::chrono::seconds>(
+        ExpiresTime.time_since_epoch()).count();
+
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerInviteCreated);
     ResponseJson["data"]["invite_code"] = InviteCode;
     ResponseJson["data"]["invite_url"] = "https://comm.sqrll.net/invite/" + InviteCode;
-    ResponseJson["data"]["expires_at"] = nullptr;
+    ResponseJson["data"]["max_uses"] = ActualMaxUses;
+    ResponseJson["data"]["expires_at"] = ExpiresAtUnix;         // Unix timestamp (seconds)
+    ResponseJson["data"]["expires_in_seconds"] = ActualExpiresInSeconds;
 
     std::visit([&](auto* ws)
     {
         ws->send(ResponseJson.dump(), opCode);
     }, wsVariant);
 
-    LOG_INFO("Invite code created for room " << RoomId << " by user " << CurrentUserId);
+    LOG_INFO("Invite code created for room " << RoomId << " by user " << CurrentUserId
+             << " (maxUses=" << ActualMaxUses << ", expiresIn=" << ActualExpiresInSeconds << "s)");
 }
 
 void FServersSocketData::HandleServerJoinInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& InviteCode)
@@ -756,13 +847,26 @@ void FServersSocketData::HandleServerJoinInvite(AnyWebSocket wsVariant, uWS::OpC
     }
 
     const std::string UserName = GetUserName(CurrentUserId);
+    const std::string ClientIP = GetRemoteIP(wsVariant);
 
     FServersManager* ServersManager = ProjectEngine->GetServersManager();
-    auto Server = ServersManager->JoinViaInvite(InviteCode, CurrentUserId, UserName);
+
+    // Pass IP for invite abuse protection. OutError gives us a specific error code.
+    std::string ErrorCode;
+    auto Server = ServersManager->JoinViaInvite(InviteCode, CurrentUserId, UserName, ClientIP, &ErrorCode);
 
     if (!Server)
     {
-        FSocket::EarlyExit(wsVariant, "invalid or expired invite code", opCode);
+        if (ErrorCode == "abuse_ban")
+        {
+            // IP is banned for too many failed invite attempts.
+            // Send a specific error so frontend can show "try again in X minutes".
+            FSocket::EarlyExit(wsVariant, "abuse ban: too many failed invite attempts. Try again later.", opCode);
+        }
+        else
+        {
+            FSocket::EarlyExit(wsVariant, "invalid or expired invite code", opCode);
+        }
         return;
     }
 
@@ -786,6 +890,179 @@ void FServersSocketData::HandleServerJoinInvite(AnyWebSocket wsVariant, uWS::OpC
     BroadcastToServerMembers(Server->GetServerId(), BroadcastJson, CurrentUserId);
 
     LOG_INFO("User " << CurrentUserId << " joined via invite code to server " << Server->GetServerId());
+}
+
+// ========== NEW: Permission Management ==========
+
+void FServersSocketData::HandleUpdateMemberPermissions(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                                                         Uint64 RoomId, Uint64 TargetUserId, Uint64 NewPermissions)
+{
+    const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
+    if (CurrentUserId == 0)
+    {
+        FSocket::EarlyExit(wsVariant, "not authenticated", opCode);
+        return;
+    }
+
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+
+    // Only the server owner can manage permissions (future: CAN_MANAGE_PERMISSIONS permission)
+    if (!IsServerOwner(RoomId, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "permission denied: only the server owner can manage member permissions", opCode);
+        return;
+    }
+
+    // Cannot modify owner's permissions
+    const std::shared_ptr<FServer> Server = ServersManager->GetServerById(RoomId);
+    if (Server && Server->GetOwnerId() == TargetUserId)
+    {
+        FSocket::EarlyExit(wsVariant, "cannot modify the server owners permissions", opCode);
+        return;
+    }
+
+    if (!ServersManager->IsUserInServer(RoomId, TargetUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "target user is not a member of this room", opCode);
+        return;
+    }
+
+    if (!ServersManager->UpdateMemberPermissions(RoomId, TargetUserId, NewPermissions))
+    {
+        FSocket::EarlyExit(wsVariant, "failed to update member permissions", opCode);
+        return;
+    }
+
+    // Send confirmation to the requester
+    nlohmann::json ResponseJson;
+    ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerMemberPermissionsUpdated);
+    ResponseJson["data"]["room_id"] = RoomId;
+    ResponseJson["data"]["user_id"] = TargetUserId;
+    ResponseJson["data"]["permissions"] = NewPermissions;
+
+    std::visit([&](auto* ws)
+    {
+        ws->send(ResponseJson.dump(), opCode);
+    }, wsVariant);
+
+    // Also broadcast the updated room data to all members (so permissions reflect in member list)
+    nlohmann::json BroadcastJson;
+    BroadcastJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerMemberPermissionsUpdated);
+    BroadcastJson["data"]["room_id"] = RoomId;
+    BroadcastJson["data"]["user_id"] = TargetUserId;
+    BroadcastJson["data"]["permissions"] = NewPermissions;
+
+    BroadcastToServerMembers(RoomId, BroadcastJson);
+
+    LOG_INFO("Permissions updated for user " << TargetUserId << " in room " << RoomId
+             << " by owner " << CurrentUserId << " to " << NewPermissions);
+}
+
+// ========== NEW: Invite Management ==========
+
+void FServersSocketData::HandleServerDeleteInvite(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                                                    Uint64 RoomId, const std::string& InviteCode)
+{
+    const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
+    if (CurrentUserId == 0)
+    {
+        FSocket::EarlyExit(wsVariant, "not authenticated", opCode);
+        return;
+    }
+
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+
+    if (!ServersManager->IsUserInServer(RoomId, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "not a member of this room", opCode);
+        return;
+    }
+
+    // Check permission: user must have CAN_CREATE_INVITES or be owner
+    if (!ServersManager->UserHasPermission(RoomId, CurrentUserId, EServerPermission::CAN_CREATE_INVITES))
+    {
+        FSocket::EarlyExit(wsVariant, "permission denied: you lack CAN_CREATE_INVITES permission", opCode);
+        return;
+    }
+
+    if (!ServersManager->DeleteInvite(RoomId, InviteCode, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "invite not found or already deleted", opCode);
+        return;
+    }
+
+    nlohmann::json ResponseJson;
+    ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerInviteDeleted);
+    ResponseJson["data"]["room_id"] = RoomId;
+    ResponseJson["data"]["invite_code"] = InviteCode;
+
+    std::visit([&](auto* ws)
+    {
+        ws->send(ResponseJson.dump(), opCode);
+    }, wsVariant);
+
+    LOG_INFO("Invite " << InviteCode << " deleted from room " << RoomId
+             << " by user " << CurrentUserId);
+}
+
+void FServersSocketData::HandleServerListInvites(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                                                   Uint64 RoomId, int32 Start, int32 Count)
+{
+    const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
+    if (CurrentUserId == 0)
+    {
+        FSocket::EarlyExit(wsVariant, "not authenticated", opCode);
+        return;
+    }
+
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+
+    if (!ServersManager->IsUserInServer(RoomId, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "not a member of this room", opCode);
+        return;
+    }
+
+    // Check permission: user must have CAN_CREATE_INVITES or be owner
+    if (!ServersManager->UserHasPermission(RoomId, CurrentUserId, EServerPermission::CAN_CREATE_INVITES))
+    {
+        FSocket::EarlyExit(wsVariant, "permission denied: you lack CAN_CREATE_INVITES permission", opCode);
+        return;
+    }
+
+    int32 Total = 0;
+    auto Invites = ServersManager->ListInvites(RoomId, CurrentUserId, Start, Count, &Total);
+
+    nlohmann::json ResponseJson;
+    ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerInvitesList);
+    ResponseJson["data"]["room_id"] = RoomId;
+    ResponseJson["data"]["start"] = Start;
+    ResponseJson["data"]["count"] = static_cast<int32>(Invites.size());
+    ResponseJson["data"]["total"] = Total;
+
+    nlohmann::json InvitesArray = nlohmann::json::array();
+    for (const auto& Inv : Invites)
+    {
+        nlohmann::json InvJson;
+        InvJson["invite_code"] = Inv.InviteCode;
+        InvJson["created_by"] = std::to_string(Inv.CreatedBy);
+        InvJson["max_uses"] = Inv.MaxUses;
+        InvJson["current_uses"] = Inv.CurrentUses;
+        InvJson["remaining_uses"] = Inv.RemainingUses();
+        InvJson["created_at"] = Inv.CreatedAt;
+        InvJson["expires_at"] = Inv.ExpiresAt;
+        InvitesArray.push_back(InvJson);
+    }
+
+    ResponseJson["data"]["invites"] = InvitesArray;
+
+    std::visit([&](auto* ws)
+    {
+        ws->send(ResponseJson.dump(), opCode);
+    }, wsVariant);
+
+    LOG_INFO("Listed " << Invites.size() << " invites for room " << RoomId
+             << " (total " << Total << ", page start=" << Start << ") by user " << CurrentUserId);
 }
 
 // ========== Public: Member Status Broadcast ==========
@@ -921,9 +1198,9 @@ Uint64 FServersSocketData::GetUserIdFromWS(AnyWebSocket wsVariant)
     return UserId;
 }
 
-std::string FServersSocketData::GetUserName(Uint64 UserId)
+std::string FServersSocketData::GetUserName(const Uint64 UserId)
 {
-    auto User = ProjectEngine->GetUserManager()->GetUserById(UserId);
+    const std::shared_ptr<FUser> User = ProjectEngine->GetUserManager()->GetUserById(UserId);
     if (User)
     {
         return User->GetUserNameString();
@@ -939,6 +1216,17 @@ std::string FServersSocketData::GetRemoteIP(AnyWebSocket wsVariant) const
         IP = std::string(RawIP);
     }, wsVariant);
     return IP;
+}
+
+bool FServersSocketData::IsServerOwner(Uint64 ServerId, Uint64 UserId)
+{
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+    const std::shared_ptr<FServer> Server = ServersManager->GetServerById(ServerId);
+    if (!Server)
+    {
+        return false;
+    }
+    return Server->GetOwnerId() == UserId;
 }
 
 nlohmann::json FServersSocketData::BuildRoomDataJson(Uint64 ServerId)
@@ -959,14 +1247,14 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(Uint64 ServerId)
     Data["owner_id"] = std::to_string(Server->GetOwnerId());
     Data["created_at"] = Server->GetCreatedAt();
 
-    // Build a lookup: user_id → user_name from members
+    // Build a lookup: user_id -> user_name from members
     std::unordered_map<Uint64, std::string> MemberIdToName;
     for (const auto& Member : Server->GetMembers())
     {
         MemberIdToName[Member.UserId] = Member.UserName;
     }
 
-    // Members
+    // Members (include permissions)
     nlohmann::json MembersArray = nlohmann::json::array();
     for (const auto& Member : Server->GetMembers())
     {
@@ -974,6 +1262,8 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(Uint64 ServerId)
         MemberJson["user_id"] = std::to_string(Member.UserId);
         MemberJson["user_name"] = Member.UserName;
         MemberJson["status"] = Member.Status;
+        MemberJson["permissions"] = std::to_string(Member.Permissions);
+        MemberJson["is_owner"] = (Member.UserId == Server->GetOwnerId());
         MembersArray.push_back(MemberJson);
     }
     Data["members"] = MembersArray;

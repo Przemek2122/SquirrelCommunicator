@@ -179,6 +179,7 @@ void FProjectEngine::PostSecondTick()
 {
 	UserManager->PostSecondTick();
 	TransferTokenManager->PostSecondTick();
+	ServersManager->PostSecondTick();
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)

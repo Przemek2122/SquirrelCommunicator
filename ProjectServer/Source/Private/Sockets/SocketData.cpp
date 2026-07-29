@@ -105,21 +105,24 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
 {
     switch (HashString(InTypeString))
     {
-        // Client → Server
+        // Client -> Server
         case HashString("create_room"):             return ESocketMessageServersType::CreateRoom;
         case HashString("join_room"):               return ESocketMessageServersType::JoinRoom;
         case HashString("leave_room"):              return ESocketMessageServersType::LeaveRoom;
         case HashString("room_message"):            return ESocketMessageServersType::RoomMessage;
         case HashString("create_channel"):          return ESocketMessageServersType::CreateChannel;
-        case HashString("room_invite"):             return ESocketMessageServersType::RoomInvite;
+        case HashString("server_invite"):           return ESocketMessageServersType::ServerInvite;
         case HashString("server_join_voice"):       return ESocketMessageServersType::RoomJoinVoice;
         case HashString("server_leave_voice"):      return ESocketMessageServersType::RoomLeaveVoice;
         case HashString("get_server_list"):         return ESocketMessageServersType::GetServerList;
         case HashString("get_server_messages"):     return ESocketMessageServersType::GetServerMessages;
         case HashString("server_create_invite"):    return ESocketMessageServersType::ServerCreateInvite;
         case HashString("server_join_invite"):      return ESocketMessageServersType::ServerJoinInvite;
+        case HashString("server_update_member_permissions"): return ESocketMessageServersType::ServerUpdateMemberPermissions;
+        case HashString("server_delete_invite"):    return ESocketMessageServersType::ServerDeleteInvite;
+        case HashString("server_list_invites"):     return ESocketMessageServersType::ServerListInvites;
 
-        // Server → Client
+        // Server -> Client
         case HashString("room_created"):            return ESocketMessageServersType::RoomCreated;
         case HashString("room_user_joined"):        return ESocketMessageServersType::RoomUserJoined;
         case HashString("room_user_left"):          return ESocketMessageServersType::RoomUserLeft;
@@ -131,6 +134,9 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("server_messages"):         return ESocketMessageServersType::ServerMessages;
         case HashString("server_invite_created"):   return ESocketMessageServersType::ServerInviteCreated;
         case HashString("server_joined"):           return ESocketMessageServersType::ServerJoined;
+        case HashString("server_member_permissions_updated"): return ESocketMessageServersType::ServerMemberPermissionsUpdated;
+        case HashString("server_invite_deleted"):   return ESocketMessageServersType::ServerInviteDeleted;
+        case HashString("server_invites_list"):     return ESocketMessageServersType::ServerInvitesList;
 
         case HashString("error"):                   return ESocketMessageServersType::Error;
 
@@ -142,21 +148,24 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
 {
     switch (InTypeEnum)
     {
-        // Client → Server
+        // Client -> Server
         case ESocketMessageServersType::CreateRoom:           return "create_room";
         case ESocketMessageServersType::JoinRoom:             return "join_room";
         case ESocketMessageServersType::LeaveRoom:            return "leave_room";
         case ESocketMessageServersType::RoomMessage:          return "room_message";
         case ESocketMessageServersType::CreateChannel:        return "create_channel";
-        case ESocketMessageServersType::RoomInvite:           return "room_invite";
+        case ESocketMessageServersType::ServerInvite:         return "server_invite";
         case ESocketMessageServersType::RoomJoinVoice:        return "server_join_voice";
         case ESocketMessageServersType::RoomLeaveVoice:       return "server_leave_voice";
         case ESocketMessageServersType::GetServerList:        return "get_server_list";
         case ESocketMessageServersType::GetServerMessages:    return "get_server_messages";
         case ESocketMessageServersType::ServerCreateInvite:   return "server_create_invite";
         case ESocketMessageServersType::ServerJoinInvite:     return "server_join_invite";
+        case ESocketMessageServersType::ServerUpdateMemberPermissions: return "server_update_member_permissions";
+        case ESocketMessageServersType::ServerDeleteInvite:   return "server_delete_invite";
+        case ESocketMessageServersType::ServerListInvites:    return "server_list_invites";
 
-        // Server → Client
+        // Server -> Client
         case ESocketMessageServersType::RoomCreated:          return "room_created";
         case ESocketMessageServersType::RoomUserJoined:       return "room_user_joined";
         case ESocketMessageServersType::RoomUserLeft:         return "room_user_left";
@@ -168,6 +177,9 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::ServerMessages:       return "server_messages";
         case ESocketMessageServersType::ServerInviteCreated:  return "server_invite_created";
         case ESocketMessageServersType::ServerJoined:         return "server_joined";
+        case ESocketMessageServersType::ServerMemberPermissionsUpdated: return "server_member_permissions_updated";
+        case ESocketMessageServersType::ServerInviteDeleted:  return "server_invite_deleted";
+        case ESocketMessageServersType::ServerInvitesList:    return "server_invites_list";
 
         case ESocketMessageServersType::Error:                return "error";
 

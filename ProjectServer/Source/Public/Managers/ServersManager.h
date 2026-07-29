@@ -12,19 +12,23 @@
 class FServer;
 
 /**
- * Manager for user servers (Discord-like "Rooms" from the frontend perspective).
+ * Manager for user servers .
  * Handles:
  *  - Server creation and deletion
  *  - Server membership (join/leave/invite)
  *  - Channel CRUD within servers
  *  - Messages within text channels
- *  - Invite code generation and resolution
+ *  - Invite code generation, resolution, listing, and deletion (with abuse protection)
+ *  - Member permission management (bitfield)
  *  - Database persistence for all server data
  */
 class FServersManager
 {
 public:
     FServersManager();
+
+    /** Called every second by the engine for periodic tasks (abuse cleanup, etc.) */
+    void PostSecondTick();
 
     /** Search for server with provided Id, will return nullptr if not found */
     std::shared_ptr<FServer> GetServerById(Uint64 InServerId);
@@ -42,9 +46,17 @@ public:
     bool RemoveServer(Uint64 InServerId);
 
     /** Membership operations */
-    bool AddUserToServer(Uint64 ServerId, Uint64 UserId, const std::string& UserName);
+    bool AddUserToServer(Uint64 ServerId, Uint64 UserId, const std::string& UserName,
+                         Uint64 Permissions = 0);
     bool RemoveUserFromServer(Uint64 ServerId, Uint64 UserId);
     bool IsUserInServer(Uint64 ServerId, Uint64 UserId);
+
+    /** Permission management */
+    bool UpdateMemberPermissions(Uint64 ServerId, Uint64 TargetUserId, Uint64 NewPermissions);
+    Uint64 GetMemberPermissions(Uint64 ServerId, Uint64 UserId);
+
+    /** Check if a user has a specific permission in a server (owner always has all) */
+    bool UserHasPermission(Uint64 ServerId, Uint64 UserId, Uint64 Permission);
 
     /** Channel operations */
     Uint64 AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType);
@@ -54,9 +66,40 @@ public:
     Uint64 AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 SenderId, const std::string& SenderName, const std::string& Content);
     std::vector<FServerMessage> GetChannelMessages(Uint64 ServerId, Uint64 ChannelId, Uint64 BeforeTimestamp, int32 Limit);
 
-    /** Invite operations */
-    std::string CreateInvite(Uint64 ServerId, Uint64 CreatedByUserId);
-    std::shared_ptr<FServer> JoinViaInvite(const std::string& InviteCode, Uint64 UserId, const std::string& UserName);
+    /**
+     * Invite operations
+     *
+     * CreateInvite: generates a one-time-use or limited-use invite link.
+     *  - MaxUses: maximum number of times the invite can be consumed (0 = use backend default)
+     *  - ExpiresInSeconds: how long the invite lasts (0 = use backend default, capped at 12 months)
+     *  - Subject to MaxInvitesPerServer cap (configurable in BackendSettings.ini, default 10).
+     *  - Requires CAN_CREATE_INVITES permission (or owner).
+     *
+     * JoinViaInvite: consumes an invite code and adds the user to the server.
+     *  - ClientIp: optional IP for abuse tracking. When set, failed attempts are counted
+     *    and IPs are banned after MaxAttempts failures. Set to "" to bypass abuse protection.
+     *  - OutError: if provided and the join fails, set to "invalid", "expired", "maxed_out",
+     *    "abuse_ban", or "server_not_found". On abuse_ban, the IP is banned for the
+     *    configured duration.
+     *
+     * DeleteInvite: deletes an invite by its code.
+     *  - Requires CAN_CREATE_INVITES permission (or owner).
+     *  - Returns true if the invite was found and deleted, false otherwise.
+     *
+     * ListInvites: lists invites for a server with pagination.
+     *  - Start: offset into the result set (0-based).
+     *  - Count: maximum number of invites to return.
+     *  - OutTotal: if non-null, receives the total number of invites for the server.
+     *  - Requires CAN_CREATE_INVITES permission (or owner).
+     */
+    std::string CreateInvite(Uint64 ServerId, Uint64 CreatedByUserId, Uint32 MaxUses = 0, Uint32 ExpiresInSeconds = 0);
+    std::shared_ptr<FServer> JoinViaInvite(const std::string& InviteCode, Uint64 UserId,
+                                            const std::string& UserName,
+                                            const std::string& ClientIp = "",
+                                            std::string* OutError = nullptr);
+    bool DeleteInvite(Uint64 ServerId, const std::string& InviteCode, Uint64 RequestedByUserId);
+    std::vector<FInviteInfo> ListInvites(Uint64 ServerId, Uint64 RequestedByUserId,
+                                         int32 Start, int32 Count, int32* OutTotal = nullptr);
 
     /** Voice channel operations */
     void JoinVoiceChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 UserId);
@@ -77,10 +120,21 @@ protected:
     bool DeleteServerFromDB(Uint64 InServerId);
     bool UploadChannelToDB(Uint64 ServerId, FServerChannel& Channel);
     bool UploadMessageToDB(const FServerMessage& Message, Uint64& OutMessageId);
-    bool UploadMemberToDB(Uint64 ServerId, Uint64 UserId);
+    bool UploadMemberToDB(Uint64 ServerId, Uint64 UserId, Uint64 Permissions);
     bool RemoveMemberFromDB(Uint64 ServerId, Uint64 UserId);
-    bool UploadInviteToDB(const std::string& InviteCode, Uint64 ServerId, Uint64 CreatedByUserId);
+    bool UpdateMemberPermissionsInDB(Uint64 ServerId, Uint64 UserId, Uint64 NewPermissions);
+    bool UploadInviteToDB(const std::string& InviteCode, Uint64 ServerId, Uint64 CreatedByUserId,
+                          Uint32 MaxUses, Uint32 ExpiresInSeconds);
     bool ConsumeInviteFromDB(const std::string& InviteCode, Uint64& OutServerId);
+    bool DeleteInviteFromDB(const std::string& InviteCode, Uint64 ServerId);
+    bool ListInvitesFromDB(Uint64 ServerId, Uint32 Start, Uint32 Count,
+                           std::vector<FInviteInfo>& OutInvites, Uint32& OutTotal);
+
+    /**
+     * Count active (non-expired) invites for a server.
+     * Used to enforce the MaxInvitesPerServer limit.
+     */
+    int32 GetActiveInviteCountForServer(Uint64 ServerId);
 
     /** Download server data from DB into cache */
     bool DownloadServerFromDB(Uint64 ServerId);
@@ -88,7 +142,7 @@ protected:
     /** Download channels for a server from DB */
     bool DownloadChannelsFromDB(Uint64 ServerId, const std::shared_ptr<FServer>& Server);
 
-    /** Download members for a server from DB (joins users table to get usernames) */
+    /** Download members for a server from DB (joins users table to get usernames and permissions) */
     bool DownloadMembersFromDB(Uint64 ServerId, std::shared_ptr<FServer> Server);
 
     /** Download messages for a channel from DB (timestamp-paginated) */
@@ -100,6 +154,12 @@ protected:
     /** Generate a unique invite code */
     static std::string GenerateInviteCode();
 
+    /**
+     * Format a std::chrono time_point as a MySQL TIMESTAMP string (UTC).
+     * Returns "YYYY-MM-DD HH:MM:SS".
+     */
+    static std::string FormatTimestamp(const std::chrono::system_clock::time_point& Time);
+
 private:
     /** Server Id to server instance map (in-memory cache) */
     std::unordered_map<Uint64, std::shared_ptr<FServer>> ServersMap;
@@ -107,9 +167,12 @@ private:
     /** Mutex for servers map */
     mutable std::shared_mutex ServersMapMutex;
 
-    /** Invite code → server_id map (in-memory cache with TTL) */
+    /** Invite code to server_id map (in-memory cache with TTL) */
     std::unordered_map<std::string, Uint64> InviteCodeToServerId;
 
     /** Mutex for invite map */
     mutable std::shared_mutex InviteMapMutex;
+
+    /** Counter for periodic cleanup throttling (cleanup every ~300 ticks = 5 min) */
+    int32 PostSecondTickCounter = 0;
 };

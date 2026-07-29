@@ -82,7 +82,28 @@ void FServer::UpdateMemberUserName(Uint64 UserId, const std::string& UserName)
     }
 }
 
-std::vector<FServerMember> FServer::GetMembers()
+void FServer::UpdateMemberPermissions(const Uint64 UserId, const Uint64 NewPermissions)
+{
+    std::unique_lock Lock(ServerMutex);
+    auto Iter = Members.find(UserId);
+    if (Iter != Members.end())
+    {
+        Iter->second.Permissions = NewPermissions;
+    }
+}
+
+Uint64 FServer::GetMemberPermissions(const Uint64 UserId) const
+{
+    std::shared_lock Lock(ServerMutex);
+    auto Iter = Members.find(UserId);
+    if (Iter != Members.end())
+    {
+        return Iter->second.Permissions;
+    }
+    return 0;
+}
+
+std::vector<FServerMember> FServer::GetMembers() const
 {
     std::shared_lock Lock(ServerMutex);
     std::vector<FServerMember> Result;
@@ -103,7 +124,7 @@ size_t FServer::GetMemberCount() const
 void FServer::AddMessage(const FServerMessage& Message)
 {
     std::unique_lock Lock(ServerMutex);
-    // Newest messages at front (index 0) — sorted by MessageId descending
+    // Newest messages at front (index 0) - sorted by MessageId descending
     auto& Vec = ChannelMessages[Message.ChannelId];
     // Insert maintaining descending order by MessageId
     auto it = std::lower_bound(Vec.begin(), Vec.end(), Message,

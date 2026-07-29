@@ -78,7 +78,7 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 
 		if (DBOpResult == EDatabaseOperationResult::Success && !bUserExists)
 		{
-			Uint64 Id;
+			Uint64 Id = 0;
 			UploadUserToDataBase(InUserName, User->GetUserPasswordHash(), InUserEMail, Id);
 
 			if (Id > 0)
@@ -132,10 +132,13 @@ ERegisterUserStatus FUserManager::RegisterIntegration(const std::string& InUserN
 			User->SetUserEMail(InUserEMail);
 			User->UpdateLastActiveTime();
 
-			Uint64 Id;
+			Uint64 Id = 0;
 			EDatabaseOperationResult UploadOpResult = UploadUserToDataBase(InUserName, "", InUserEMail, Id);
-			if (UploadOpResult == EDatabaseOperationResult::Success)
+			if (UploadOpResult == EDatabaseOperationResult::Success && Id > 0)
 			{
+				User->SetUserId(Id);
+				OnRegisterSuccessful(UserPtr);
+
 				RegisterUserStatus = ERegisterUserStatus::Successful;
 			}
 			else
@@ -189,7 +192,7 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::
 	// User missing check db
 	if (UserPtr == nullptr)
 	{
-		EDatabaseOperationResult Result = DownloadUserFromDBByMail(InUserEmail, UserPtr);
+		const EDatabaseOperationResult Result = DownloadUserFromDBByMail(InUserEmail, UserPtr);
 		if (Result == EDatabaseOperationResult::Success)
 		{
 			bWereDownloadedFromDB = true;
@@ -432,26 +435,44 @@ EUpdateUserPasswordStatus FUserManager::OverrideUserPassword(Uint64 InUserId, co
 std::shared_ptr<FUser> FUserManager::FindUserByMail(const std::string& InMail)
 {
 	std::shared_ptr<FUser> Out;
+	std::optional<Uint64> TargetUserId;
 
-	bool bContainsMailInMap;
+	// Thread-safe lookup in Mail -> ID map
 	{
-		const std::shared_lock<std::shared_mutex> UserMailMapMutexScopeLock(UserMailMapMutex);
-		bContainsMailInMap = UserMailToUserIdMap.ContainsKey(InMail);
+		const std::shared_lock<std::shared_mutex> MailLock(UserMailMapMutex);
+		// Assuming custom container method returning pointer or std::optional
+		if (std::optional<unsigned long> OptionalId = UserMailToUserIdMap.FindValueByKey(InMail))
+		{
+			if (OptionalId.has_value())
+			{
+				TargetUserId = OptionalId.value();
+			}
+		}
 	}
 
-	if (bContainsMailInMap)
+	// Thread-safe lookup in ID -> User cache
+	if (TargetUserId.has_value())
 	{
-		Out = UserDataBaseCache[UserMailToUserIdMap[InMail]];
+		const std::shared_lock<std::shared_mutex> CacheLock(UserDataBaseMutex);
+		const std::optional<std::shared_ptr<FUser>> CacheIter = UserDataBaseCache.FindValueByKey(TargetUserId.value());
+		if (CacheIter.has_value())
+		{
+			Out = CacheIter.value();
+		}
 	}
-	else
+
+	// Fallback to DB query if not present in cache/map
+	if (!Out)
 	{
-		bool bExists;
-		EDatabaseOperationResult CheckOpResult = DoesUserWithMailExists(InMail, bExists);
+		bool bExists = false;
+		const EDatabaseOperationResult CheckOpResult = DoesUserWithMailExists(InMail, bExists);
 		if (CheckOpResult == EDatabaseOperationResult::Success && bExists)
 		{
 			DownloadUserFromDBByMail(InMail, Out);
-
-			AddUserToCache(Out);
+			if (Out)
+			{
+				AddUserToCache(Out);
+			}
 		}
 	}
 
@@ -684,6 +705,8 @@ EDatabaseOperationResult FUserManager::UploadUserToDataBase(const std::string& I
 			Uint64 Id = 0;
 			DataBaseSession.once << "SELECT LAST_INSERT_ID()",
 				soci::into(Id);
+
+			OutId = Id;
 
 			DatabaseOperationResult = EDatabaseOperationResult::Success;
 		}

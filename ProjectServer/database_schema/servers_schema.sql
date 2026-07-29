@@ -7,7 +7,7 @@
 -- Tables created:
 --   1. servers          - Core server/room definitions
 --   2. server_channels  - Channels within servers (text + voice)
---   3. server_members   - Server membership (user_id → server_id)
+--   3. server_members   - Server membership (user_id to server_id) with permissions
 --   4. server_messages  - Messages in server text channels
 --   5. server_invites   - Invite codes for joining servers
 -- ============================================================================
@@ -42,10 +42,11 @@ CREATE TABLE IF NOT EXISTS server_channels (
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Server members table
+-- 3. Server members table (with permissions bitfield)
 CREATE TABLE IF NOT EXISTS server_members (
     server_id   BIGINT UNSIGNED NOT NULL,
     user_id     BIGINT UNSIGNED NOT NULL,
+    permissions BIGINT UNSIGNED NOT NULL DEFAULT 0,
     joined_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (server_id, user_id),
@@ -80,14 +81,20 @@ CREATE TABLE IF NOT EXISTS server_messages (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 5. Server invites table
+-- max_uses: maximum number of times this invite can be consumed (default 1000)
+-- current_uses: how many times it has been used so far
+-- expires_at: invite expiration timestamp (never permanent, max 12 months)
 CREATE TABLE IF NOT EXISTS server_invites (
-    invite_code VARCHAR(16)     NOT NULL PRIMARY KEY,
-    server_id   BIGINT UNSIGNED NOT NULL,
-    created_by  BIGINT UNSIGNED NOT NULL,
-    created_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at  TIMESTAMP       NULL DEFAULT NULL,
+    invite_code  VARCHAR(16)     NOT NULL PRIMARY KEY,
+    server_id    BIGINT UNSIGNED NOT NULL,
+    created_by   BIGINT UNSIGNED NOT NULL,
+    max_uses     INT UNSIGNED    NOT NULL DEFAULT 1000,
+    current_uses INT UNSIGNED    NOT NULL DEFAULT 0,
+    created_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at   TIMESTAMP       NOT NULL DEFAULT (DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 30 DAY)),
 
     INDEX idx_invites_server (server_id),
+    INDEX idx_invites_expires (expires_at),
 
     CONSTRAINT fk_invites_server
         FOREIGN KEY (server_id) REFERENCES servers(id)

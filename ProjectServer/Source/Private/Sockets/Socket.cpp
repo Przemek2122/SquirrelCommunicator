@@ -452,6 +452,23 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 	LOG_INFO("Received: " << message);
 #endif
 
+	// --- Global rate limit: count every WebSocket message against the per-IP cap ---
+	{
+		const std::string_view ClientIP = ws->getRemoteAddressAsText();
+		FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+
+		if (!ClientIP.empty() && AbuseProtection->IsAddressGloballyBlocked(ClientIP))
+		{
+			nlohmann::json ErrorJson;
+			ErrorJson["type"] = "error";
+			ErrorJson["message"] = "Global rate limit exceeded";
+
+			ws->send(ErrorJson.dump(), opCode);
+			return;
+		}
+		AbuseProtection->AddGlobalRequestAttempt(ClientIP);
+	}
+
 	try
 	{
 		nlohmann::json JsonMessage = nlohmann::json::parse(message);
