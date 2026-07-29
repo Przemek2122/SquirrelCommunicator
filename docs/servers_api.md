@@ -1,1635 +1,1094 @@
-# SquirrelCommunicator — Servers (Rooms) API Reference
-
-> **Last updated:** 2026-07-28
-> **Backend version:** C++ / uWebSockets / MariaDB
-> **Naming convention:** "room" on the wire (frontend language), "server" in the C++ codebase.
-> **All IDs are 64-bit unsigned integers serialized as strings on the wire.**
-
----
-
-## Table of Contents
-
-1. [Connection](#1-connection)
-2. [Wire Protocol Overview](#2-wire-protocol-overview)
-3. [Client → Server Messages](#3-client--server-messages)
-   - [3.1 create_room](#31-create_room) — Create a new server
-   - [3.2 join_room](#32-join_room) — Join an existing server
-   - [3.3 leave_room](#33-leave_room) — Leave a server
-   - [3.4 room_message](#34-room_message) — Send a text message to a channel
-   - [3.5 create_channel](#35-create_channel) — Create a channel inside a server
-   - [3.6 room_invite](#36-room_invite) — Invite a user directly
-   - [3.7 server_join_voice](#37-server_join_voice) — Join a voice channel
-   - [3.8 server_leave_voice](#38-server_leave_voice) — Leave a voice channel
-   - [3.9 get_server_list](#39-get_server_list) — List all servers you belong to
-   - [3.10 get_server_messages](#310-get_server_messages) — Load message history (paginated)
-   - [3.11 server_create_invite](#311-server_create_invite) — Generate an invite code
-   - [3.12 server_join_invite](#312-server_join_invite) — Join a server via invite code
-4. [Server → Client Messages](#4-server--client-messages)
-   - [4.1 room_created](#41-room_created) — Full server data (creation or join confirmation)
-   - [4.2 room_user_joined](#42-room_user_joined) — Another user joined
-   - [4.3 room_user_left](#43-room_user_left) — Another user left
-   - [4.4 room_message](#44-room_message) — Incoming text message
-   - [4.5 room_channel_created](#45-room_channel_created) — New channel created
-   - [4.6 room_member_status](#46-room_member_status) — Member went online/offline/away
-   - [4.7 server_voice_joined / server_voice_left](#47-server_voice_joined--server_voice_left) — Voice presence
-   - [4.8 server_list](#48-server_list) — Response: list of servers
-   - [4.9 server_messages](#49-server_messages) — Response: paginated message history
-   - [4.10 server_invite_created](#410-server_invite_created) — Response: generated invite code
-   - [4.11 server_joined](#411-server_joined) — Response: full server data from invite join
-5. [Error Responses](#5-error-responses)
-6. [Voice Integration — Frontend Guide](#6-voice-integration--frontend-guide)
-   - [6.1 Architecture Overview](#61-architecture-overview)
-   - [6.2 Frontend Integration: Step-by-Step](#62-frontend-integration-step-by-step)
-   - [6.3 WebSocket Audio Stream Protocol](#63-websocket-audio-stream-protocol)
-   - [6.4 Token Lifecycle & Security](#64-token-lifecycle--security)
-   - [6.5 Go Voice Service REST API Reference](#65-go-voice-service-rest-api-reference)
-   - [6.6 Room Naming Convention](#66-room-naming-convention)
-   - [6.7 Auto-Disconnect & Ghost Users](#67-auto-disconnect--ghost-users)
-   - [6.8 Voice Presence in Room Data](#68-voice-presence-in-room-data)
-   - [6.9 Error Handling for Voice](#69-error-handling-for-voice)
-   - [6.10 Complete Voice Lifecycle Summary](#610-complete-voice-lifecycle-summary)
-7. [Data Models](#7-data-models)
-8. [Rate Limiting & Abuse Protection](#8-rate-limiting--abuse-protection)
-9. [Database Schema](#9-database-schema)
-10. [Deprecated REST Endpoints](#10-deprecated-rest-endpoints)
-
----
-
-## 1. Connection
-
-| Property | Value |
-|---|---|
-| **Protocol** | WebSocket (WSS) |
-| **Endpoint** | `wss://comm.sqrll.net/ws/api/v1/ws` |
-| **Authentication** | `auth_token` cookie (read during WebSocket upgrade handshake) |
-| **Session lifetime** | Single persistent connection per user |
-| **Idle timeout** | 5 minutes (pings sent automatically) |
-| **Max payload** | 16 KB per frame |
-| **Compression** | Disabled |
-
-### How auth works
-
-1. Client opens WebSocket to `wss://comm.sqrll.net/ws/api/v1/ws`
-2. Browser sends `Cookie: auth_token=<token>` in the upgrade handshake
-3. Server validates token against `users` table (no extra DB lookup after upgrade)
-4. `UserId` is stored in the WebSocket session data (`FWebSocketSessionData.UserId`)
-5. Every subsequent message reads UserId from session → **zero auth overhead per message**
-
-If the token is invalid, the upgrade is rejected with `401 Unauthorized`.
-
----
-
-## 2. Wire Protocol Overview
-
-Every message (both directions) is a **JSON object** with this structure:
-
-```json
-{
-  "section": "rooms",
-  "type": "<message_type>",
-  "data": { ... }
-}
-```
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `section` | string | **yes** | Must be `"rooms"` for servers feature. Other value: `"priv"` for private messages. |
-| `type` | string | **yes** | One of the message types listed below. Strings matched via compile-time FNV-1a hash → O(1) dispatch. |
-| `data` | object | **yes** | Payload specific to each message type (may be empty `{}`). |
-
-### Dispatch flow (server-side)
-
-```
-FSocket::OnMessageReceived_TEXT()
-  ├── Parse JSON
-  ├── Read "section" → hash → ESocketMessageSection::Rooms
-  └── ServersSocketData.PrimarySwitch()
-      ├── Read "type" → hash → ESocketMessageServersType::<X>
-      ├── Extract UserId from WebSocket session data (pointer deref)
-      ├── [optional] Rate-limit check
-      ├── [optional] Membership check (Server->HasMember)
-      └── Handle → DB persist → Broadcast to room members
-```
+Squirrel Communicator Server API Documentation
 
----
+Version 1.3
 
-## 3. Client → Server Messages
+This document describes all server endpoints and WebSocket message types available in Squirrel Communicator. The system uses two communication channels: REST API over HTTPS for authentication and account management, and WebSocket for real time messaging and server operations.
 
-### 3.1 create_room
+============================================
+SECTION 1: REST API ENDPOINTS
+============================================
 
-Create a new server. You become the owner. Two default channels are auto-created: `"general"` (text) and `"General"` (voice).
+All REST endpoints are prefixed with /api/v1/ and accept JSON request bodies. Responses are JSON with status and message fields. Authentication is handled via cookies after login.
+All REST endpoints are subject to the global rate limit (default 5000 requests/hour/IP).
 
-```json
-{
-  "section": "rooms",
-  "type": "create_room",
-  "data": {
-    "room_name": "My Awesome Server"
-  }
-}
-```
+--------------------------------------------
+1.1 USER AUTHENTICATION
+--------------------------------------------
 
-| Field | Type | Required | Constraints |
-|---|---|---|---|
-| `room_name` | string | **yes** | 1–128 characters, non-empty |
+POST /api/v1/users/register
 
-**Rate limit:** Per-IP counter. Default ~10 creations/minute (configurable in `FRateLimiter`).
+    Register a new user account.
 
-**Response:** [`room_created`](#41-room_created) sent to the creator.
+    Request body:
+        username  string  Display name 4 to 109 characters
+        password  string  Password 8 to 269 characters
+        email     string  Valid email address
 
-**Error conditions:** Empty name, rate-limited, DB write failure.
+    Responses:
+        200 OK
+            status  success
+            message  User registered successfully.
+        400 Bad Request
+            Registration failed. User may already exist or invalid input.
+            Registration failed. Password too weak.
+            Registration failed. Password bad, please change.
+        500 Internal Server Error
+            Database insert or connection failure.
 
----
+POST /api/v1/users/login
 
-### 3.2 join_room
+    Login with email and password. Sets auth_token cookie on success.
 
-Join a server you were invited to (or rejoin after leaving).
+    Request body:
+        email     string  Registered email address
+        password  string  Account password
 
-```json
-{
-  "section": "rooms",
-  "type": "join_room",
-  "data": {
-    "room_id": "42"
-  }
-}
-```
+    Responses:
+        200 OK
+            status  success
+            message  User login successful.
+            Sets cookie: auth_token
+        403 Forbidden
+            Wrong credentials.
+            IncorrectInputLength.
+        204 No Content
+            Session already exists.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `room_id` | string | **yes** | Server ID (64-bit, string-encoded) |
+POST /api/v1/users/verify
 
-**Side effects:** Broadcasts [`room_user_joined`](#42-room_user_joined) to all other members.
+    Verify if the current session token is valid. Reads auth_token from cookie.
 
-**Response:** [`room_created`](#41-room_created) sent to the joining user (full room data).
+    Request body: none required
 
----
+    Responses:
+        200 OK
+            Token correct.
+        401 Unauthorized
+            Token incorrect.
 
-### 3.3 leave_room
+POST /api/v1/users/refresh
 
-Leave a server permanently. You will no longer receive messages or appear as a member.
+    Refresh the session token to extend its lifetime. Reads auth_token from cookie.
 
-```json
-{
-  "section": "rooms",
-  "type": "leave_room",
-  "data": {
-    "room_id": "42"
-  }
-}
-```
+    Request body: none required
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `room_id` | string | **yes** | Server ID |
+    Responses:
+        200 OK
+            Token has new refreshed.
+        401 Unauthorized
+            Token not found.
 
-**Side effects:** Broadcasts [`room_user_left`](#43-room_user_left) to all other members. DB member row is deleted.
+POST /api/v1/users/logout
 
-**Response:** Confirmation with `"status": "left"` sent to the leaver.
+    Terminate the current session.
 
----
+    Request body:
+        token  string  Session token to invalidate
 
-### 3.4 room_message
+    Responses:
+        200 OK
+            status  success
+            message  Session terminated.
+        400 Bad Request
+            Can not log out.
 
-Send a text message to a server channel. Message is persisted to DB and broadcast to all server members.
+--------------------------------------------
+1.2 ACCOUNT MANAGEMENT
+--------------------------------------------
 
-```json
-{
-  "section": "rooms",
-  "type": "room_message",
-  "data": {
-    "room_id": "42",
-    "channel_id": "5",
-    "content": "Hello everyone!"
-  }
-}
-```
+POST /api/v1/account/change_name
 
-| Field | Type | Required | Constraints |
-|---|---|---|---|
-| `room_id` | string | **yes** | Must be a member of this server |
-| `channel_id` | string | **yes** | Channel must exist and be type `"text"` |
-| `content` | string | **yes** | Max size: engine's `MaxMessageSize` (default 2000 chars) |
+    Change the display name of the authenticated user.
+
+    Request body:
+        new_name  string  New display name 4 to 109 characters
+
+    Authentication: Cookie auth_token required.
+
+    Responses:
+        200 OK
+            status  success
+            message  User name changed.
+        401 Unauthorized
+            Invalid token.
+        500 Internal Server Error
+            Error details.
 
-**Membership check:** `ServersManager->IsUserInServer(RoomId, UserId)` → O(1) `unordered_map::find` under `shared_lock`.
+POST /api/v1/account/change_password
 
-**Response:** Broadcast as [`room_message`](#44-room_message) to **all** members (including sender, for frontend consistency).
+    Change password. Requires old password for verification.
 
-**Error conditions:** Not authenticated, not a member, message too large, DB write failure.
+    Request body:
+        old_password  string  Current password
+        new_password  string  New password 8 to 269 characters
 
----
+    Authentication: Cookie auth_token required.
+
+    Responses:
+        200 OK
+            status  success
+            message  User password changed.
+        401 Unauthorized
+            Invalid token.
 
-### 3.5 create_channel
-
-Create a new channel inside a server.
+POST /api/v1/account/reset_pass_by_mail
 
-```json
-{
-  "section": "rooms",
-  "type": "create_channel",
-  "data": {
-    "room_id": "42",
-    "channel_name": "memes",
-    "channel_type": "text"
-  }
-}
-```
+    Request a password reset email. Sends a 6 digit code via email template.
 
-| Field | Type | Required | Values |
-|---|---|---|---|
-| `room_id` | string | **yes** | Server ID |
-| `channel_name` | string | **yes** | 1–128 characters |
-| `channel_type` | string | **yes** | `"text"` or `"voice"` |
+    Request body:
+        target_mail  string  Email address to receive reset code
 
-**Response:** Broadcast [`room_channel_created`](#45-room_channel_created) to all server members.
+    Responses:
+        200 OK
+            status  success
+            message  If such e mail exists, it was sent. Check you mailbox.
+        400 Bad Request
+            Invalid email.
+
+POST /api/v1/account/reset_pass_by_mail_verify
 
-**Note:** Only members can create channels. All members see the broadcast.
+    Verify the reset code and set a new password.
 
----
+    Request body:
+        target_mail  string  Email address
+        reset_code   string  6 digit code from email
+        new_password string  New password
 
-### 3.6 room_invite
+    Responses:
+        200 OK
+            status  success
+            message  Password reset successful.
+        400 Bad Request
+            Invalid reset token or user email.
+        500 Internal Server Error
+            Internal error.
 
-Send a direct invite from one member to another user (by user ID). Unlike invite codes, this is a direct push notification to the target.
+--------------------------------------------
+1.3 THIRD PARTY INTEGRATION
+--------------------------------------------
 
-```json
-{
-  "section": "rooms",
-  "type": "room_invite",
-  "data": {
-    "room_id": "42",
-    "user_id": "99"
-  }
-}
-```
+POST /api/v1/integrate/google
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `room_id` | string | **yes** | Server you're inviting to |
-| `user_id` | string | **yes** | Target user's ID |
+    Login or register using a Google OAuth ID token. Requires verified email from Google.
 
-**Response:**
-- Confirmation sent to the inviter: `{ "type": "room_invite", "data": { "status": "sent", "room_id": "42", "user_id": "99" } }`
-- Notification sent to the target user via `SendToUser()` — delivered through uWS pub/sub topic `"user_<id>"`
+    Request body:
+        google_token  string  Google ID token from OAuth flow
 
-**Note:** `SendToUser` checks if the target is online. If offline, the notification is silently dropped (no offline queue).
+    Responses:
+        200 OK
+            status  success
+            message  User login successful.
+            Sets cookie: auth_token
+        400 Bad Request
+            Google integration  E Mail not verified.
+        401 Unauthorized
+            Missing authorization.
+        500 Internal Server Error
+            Google integration error details.
 
----
+POST /api/v1/integrate/microsoft
 
-### 3.7 server_join_voice
+    Login or register using a Microsoft access token. Calls Microsoft Graph API to get profile.
 
-Join a voice channel. This is the **single entry point** for voice — it triggers everything the frontend needs.
+    Request body:
+        microsoft_token  string  Microsoft Bearer access token
 
-```json
-{
-  "section": "rooms",
-  "type": "server_join_voice",
-  "data": {
-    "room_id": "42",
-    "channel_id": "6"
-  }
-}
-```
+    Responses:
+        200 OK
+            status  success
+            message  User login successful.
+            Sets cookie: auth_token
+        401 Unauthorized
+            Microsoft integration  missing authorization.
+        500 Internal Server Error
+            Microsoft integration error details.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `room_id` | string | **yes** | Server ID |
-| `channel_id` | string | **yes** | Channel ID (must be type `"voice"`) |
+--------------------------------------------
+1.4 TRANSFER TOKEN
+--------------------------------------------
 
-**Backend behavior (all automatic):**
-1. Verify membership + channel exists and is voice type
-2. Add user to `FServerChannel::ConnectedUsers` in-memory
-3. Construct voice room name: `"Server_<room_id>_<channel_id>"` (e.g. `"Server_42_6"`)
-4. Check Go voice service via `CheckRoom()` → create if not exists (idempotent via `POST /api/rooms/create`)
-5. Fetch room token from in-memory cache (or generate new 64-char base64 token)
+POST /api/v1/transfer_token/create
 
-**Response (direct, to the joining user only):**
+    Create a one time use transfer token for cross device login.
 
-```json
-{
-  "type": "server_join_voice",
-  "section": "rooms",
-  "data": {
-    "name": "Server_42_6",
-    "token": "dGhpcyBpcyBhIDY0LWNoYXJhY3RlciBiYXNlNjQgdG9rZW4gZm9yIHZvaWNlIHJvb20gYWNjZXNz...",
-    "user_name": "Alice"
-  }
-}
-```
+    Authentication: Cookie auth_token required.
 
-| Field | Type | Description |
-|---|---|---|
-| `name` | string | Voice room name. Use this in the Go voice service WebSocket URL (`?room=` param). |
-| `token` | string | 64-character base64 room access token. Use this in the Go voice service WebSocket URL (`?token=` param). |
-| `user_name` | string | Your display name. Frontend usually already knows this, provided for convenience. |
+    Request body: none required
 
-**Broadcast:** [`server_voice_joined`](#47-server_voice_joined--server_voice_left) sent to other server members.
+    Responses:
+        200 OK
+            status  success
+            token  Transfer token string
+        401 Unauthorized
+            Missing or invalid session.
+            Token incorrect.
+        500 Internal Server Error
+            Failed to create transfer token.
 
-**Next step for frontend:** See [§6.2 — Frontend Integration](#62-frontend-integration-step-by-step) for the complete flow after receiving this response.
+POST /api/v1/transfer_token/redeem
 
-**Error conditions:** Not authenticated, not a member, channel not found, channel is not voice type.
+    Redeem a transfer token to get a new session. Token is consumed on use.
 
----
+    Request body:
+        token  string  Transfer token from /transfer_token/create
 
-### 3.8 server_leave_voice
+    Responses:
+        200 OK
+            status  success
+            message  Transfer token redeemed.
+            Sets cookie: auth_token
+        400 Bad Request
+            Invalid transfer token.
+            Invalid user ID.
 
-Leave a voice channel. You should also close the Go voice WebSocket after receiving confirmation.
+============================================
+SECTION 2: WEBSOCKET API
+============================================
 
-```json
-{
-  "section": "rooms",
-  "type": "server_leave_voice",
-  "data": {
-    "room_id": "42",
-    "channel_id": "6"
-  }
-}
-```
+The WebSocket connection uses a JSON based protocol. Every message must contain a type field identifying the action and a data field with payload. The connection requires prior authentication via REST login; the session cookie is used to identify the user.
+All WebSocket messages are subject to the global rate limit (default 5000 messages/hour/IP).
 
-**Response (to the leaver):**
-```json
-{
-  "type": "server_leave_voice",
-  "section": "rooms",
-  "data": {
-    "status": "disconnected"
-  }
-}
-```
+Base message format:
+    type  string  Message type identifier
+    data  object  Payload data
 
-**Broadcast:** [`server_voice_left`](#47-server_voice_joined--server_voice_left) to other members.
+    Optional fields:
+    section  string  priv or servers message section
 
-**Frontend action:** After receiving `"status": "disconnected"`, close the Go voice WebSocket connection.
+--------------------------------------------
+2.1 PRIVATE MESSAGING
+--------------------------------------------
 
----
+These messages use the priv section and handle direct messages, conversations, friend lists and voice calling between users.
 
-### 3.9 get_server_list
+2.1.1 Client to Server Messages
 
-Fetch all servers you are a member of. Replaces the deprecated `GET /api/v1/rooms/list`.
+    type: message
+        Send a message in a conversation.
 
-```json
-{
-  "section": "rooms",
-  "type": "get_server_list",
-  "data": {}
-}
-```
+        data:
+            conversation_id  string  Conversation ID
+            content          string  Message text
 
-`data` may be empty — no fields required. Authentication is implicit (from WebSocket session).
+    type: message_edit
+        Edit an existing message in a conversation.
 
-**Response:** [`server_list`](#48-server_list)
+        data:
+            conversation_id  string  Conversation ID
+            message_id       string  Message ID to edit
+            content          string  New message text
 
-**Backend flow:**
-1. `GetUserServerIds(UserId)` — lightweight `SELECT server_id FROM server_members WHERE user_id = ?`
-2. For each ID: `GetServerById()` — cache hit or DB download
-3. `BuildRoomDataJson()` — serialize members + channels (with `connected_users` for voice channels)
+    type: typing
+        Notify that the user is typing in a conversation.
 
-**Performance:** O(N) where N = number of servers you belong to. Each server is loaded on demand (lazy).
+        data:
+            conversationId  number  Conversation ID
 
----
+    type: message_read
+        Mark all messages in a conversation as read.
 
-### 3.10 get_server_messages
+        data:
+            conversationId  number  Conversation ID
 
-Load paginated message history for a channel. Replaces `GET /api/v1/rooms/:id/messages?before=X&limit=Y`.
+    type: search_user
+        Search for users by ID or username pattern.
 
-```json
-{
-  "section": "rooms",
-  "type": "get_server_messages",
-  "data": {
-    "room_id": "42",
-    "channel_id": "5",
-    "before": "1722001234567890123",
-    "limit": "50"
-  }
-}
-```
+        data:
+            search_target  string  User ID or username substring
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `room_id` | string | **yes** | — | Server ID (must be a member) |
-| `channel_id` | string | **yes** | — | Channel ID |
-| `before` | string | no | `"0"` | Timestamp in **nanoseconds since epoch**. Messages older than this. `0` = newest messages. |
-| `limit` | string | no | `"50"` | Number of messages to return. Clamped to **1–100**. |
+        Server response type: search_user
+            message contains JSON array of data with id and displayName fields.
 
-**Response:** [`server_messages`](#49-server_messages)
-
-**Pagination pattern:**
-1. First call: `before: "0"`, `limit: "50"` → get newest 50 messages
-2. If `has_more: true`, use oldest message's `timestamp` as `before` in next call
-3. Repeat until `has_more: false`
-
-**Storage:** Messages stored in-memory as `vector<FServerMessage>` sorted by `MessageId` **descending** (newest first). Timestamp comparison done via `std::stoull` on the string format.
-
-**Note on message ordering:** DB query is always `ORDER BY id DESC`. The in-memory cache mirrors this. Timestamp filter applies `created_at < :before`.
-
----
-
-### 3.11 server_create_invite
-
-Generate a shareable invite code for a server. Replaces `POST /api/v1/rooms/:id/invite`.
-
-```json
-{
-  "section": "rooms",
-  "type": "server_create_invite",
-  "data": {
-    "room_id": "42"
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `room_id` | string | **yes** | Server ID (must be a member) |
-
-**Response:** [`server_invite_created`](#410-server_invite_created)
-
-**Invite code format:** 10 random alphanumeric characters (a-z, A-Z, 0-9). Stored in `server_invites` table with `created_at` timestamp. Currently **no expiration** (`expires_at` is NULL).
-
----
-
-### 3.12 server_join_invite
-
-Join a server using an invite code. Replaces `POST /api/v1/rooms/join`.
-
-```json
-{
-  "section": "rooms",
-  "type": "server_join_invite",
-  "data": {
-    "invite_code": "aB3xK9mQz7"
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `invite_code` | string | **yes** | 10-character code (case-sensitive) |
-
-**Response:** [`server_joined`](#411-server_joined) — full server data if successful.
-
-**Backend flow:**
-1. Lookup `invite_code` → `server_id` (in-memory cache first, then DB)
-2. `AddUserToServer()` — INSERT into `server_members`, add to in-memory `Members` map
-3. Broadcast `room_user_joined` to other members
-4. Return full room data to the joiner
-
-**Error:** `"invalid or expired invite code"` if code not found.
-
----
-
-## 4. Server → Client Messages
-
-These are messages the server sends to clients (responses and broadcasts).
-
-### 4.1 room_created
-
-Sent to a user after they **create** a server or **join** an existing one. Contains the full server state.
-
-```json
-{
-  "type": "room_created",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "room_name": "My Server",
-    "room_token": "a1b2c3...",
-    "owner_id": "7",
-    "created_at": "1722000000000000000",
-    "members": [
-      { "user_id": "7", "user_name": "Alice", "status": "online" }
-    ],
-    "channels": [
-      {
-        "channel_id": "5",
-        "channel_name": "general",
-        "channel_type": "text"
-      },
-      {
-        "channel_id": "6",
-        "channel_name": "General",
-        "channel_type": "voice",
-        "connected_users": [
-          { "user_id": "7", "user_name": "Alice" }
-        ]
-      }
-    ]
-  }
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `room_id` | string | Server ID |
-| `room_name` | string | Display name |
-| `room_token` | string | 48-char random token (used for voice service auth) |
-| `owner_id` | string | Creator's user ID |
-| `created_at` | string | Unix epoch **nanoseconds** as string |
-| `members[]` | array | List of all members with status |
-| `members[].user_id` | string | Member's user ID |
-| `members[].user_name` | string | Member's display name (from `users` table JOIN) |
-| `members[].status` | string | `"online"`, `"offline"`, or `"away"` |
-| `channels[]` | array | List of all channels |
-| `channels[].channel_id` | string | Channel ID |
-| `channels[].channel_name` | string | Channel display name |
-| `channels[].channel_type` | string | `"text"` or `"voice"` |
-| `channels[].connected_users` | array | **(voice only)** Users currently in this voice channel. Omitted for text channels or when empty. |
-| `channels[].connected_users[].user_id` | string | Connected user's ID |
-| `channels[].connected_users[].user_name` | string | Connected user's display name |
-
----
-
-### 4.2 room_user_joined
-
-Broadcast to all server members (except the joiner) when someone joins.
-
-```json
-{
-  "type": "room_user_joined",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "user_id": "99",
-    "user_name": "Bob"
-  }
-}
-```
-
----
-
-### 4.3 room_user_left
-
-Broadcast to all server members when someone leaves. The leaving user gets a separate confirmation message.
-
-```json
-{
-  "type": "room_user_left",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "user_id": "99"
-  }
-}
-```
-
----
-
-### 4.4 room_message
-
-Broadcast to **all** server members when a text message is sent. Includes the sender for frontend UI consistency (so the UI doesn't need to optimistically insert).
-
-```json
-{
-  "type": "room_message",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "channel_id": "5",
-    "message_id": "1001",
-    "sender_id": "7",
-    "sender_name": "Alice",
-    "content": "Hello everyone!",
-    "timestamp": "1722001234567890123"
-  }
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `message_id` | string | Unique message ID (auto-increment) |
-| `sender_name` | string | Resolved from `users` table at message creation time |
-| `timestamp` | string | Unix epoch **nanoseconds** at time of server-side processing |
-
----
-
-### 4.5 room_channel_created
-
-Broadcast to all server members when a new channel is created.
-
-```json
-{
-  "type": "room_channel_created",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "channel_id": "8",
-    "channel_name": "memes",
-    "channel_type": "text"
-  }
-}
-```
-
----
-
-### 4.6 room_member_status
-
-Broadcast to all members of **every server** the user belongs to when they connect or disconnect. Triggered by `OnClientConnected()` and `OnClientDisconnected()` in `Socket.cpp`.
-
-```json
-{
-  "type": "room_member_status",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "user_id": "7",
-    "user_name": "Alice",
-    "status": "offline"
-  }
-}
-```
-
-| Field | Type | Values |
-|---|---|---|
-| `status` | string | `"online"`, `"offline"`, `"away"` |
-
-**Note:** This is not sent to the user themselves (excluded via `BroadcastToServerMembers` with `ExcludeUserId`).
-
----
-
-### 4.7 server_voice_joined / server_voice_left
-
-Voice presence events. Sent to all server members (except the user themselves) when someone joins or leaves a voice channel.
-
-**To other members (broadcast when someone joins voice):**
-
-```json
-{
-  "type": "server_voice_joined",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "channel_id": "6",
-    "user_id": "7",
-    "user_name": "Alice"
-  }
-}
-```
-
-**To other members (broadcast when someone leaves voice):**
-
-```json
-{
-  "type": "server_voice_left",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "channel_id": "6",
-    "user_id": "7",
-    "user_name": "Alice"
-  }
-}
-```
-
-**Frontend action on `server_voice_joined`:** Update your voice channel UI to show this user as connected (add avatar indicator, etc.).
-
-**Frontend action on `server_voice_left`:** Remove the user's voice indicator from the UI.
-
-**Naming convention rationale:** `server_voice_joined` / `server_voice_left` use past-tense to indicate they are **events** (something that happened), distinct from the imperative C→S messages `server_join_voice` / `server_leave_voice`. The word "user" was removed — the `user_id` + `user_name` fields in the data payload already identify who.
-
-**Note:** These broadcasts are also sent automatically when a user disconnects from WebSocket (see [§6.7](#67-auto-disconnect--ghost-users)).
-
----
-
-### 4.8 server_list
-
-Response to [`get_server_list`](#39-get_server_list). Contains all servers the user is a member of.
-
-```json
-{
-  "type": "server_list",
-  "section": "rooms",
-  "data": {
-    "rooms": [ ... ]
-  }
-}
-```
-
-Each element in `rooms[]` has the same format as [`room_created.data`](#41-room_created) (including `connected_users` for voice channels).
-
----
-
-### 4.9 server_messages
-
-Response to [`get_server_messages`](#310-get_server_messages). Paginated message history.
-
-```json
-{
-  "type": "server_messages",
-  "section": "rooms",
-  "data": {
-    "messages": [
-      {
-        "message_id": "1001",
-        "channel_id": "5",
-        "sender_id": "7",
-        "sender_name": "Alice",
-        "content": "Hello!",
-        "timestamp": "1722001234567890123"
-      }
-    ],
-    "has_more": true
-  }
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `has_more` | boolean | `true` if there are older messages. Use the oldest message's `timestamp` as the next `before` value. |
-
-**Note:** `has_more` is determined by `messages.size() >= limit` — it's a simpler heuristic than making an extra COUNT query.
-
----
-
-### 4.10 server_invite_created
-
-Response to [`server_create_invite`](#311-server_create_invite).
-
-```json
-{
-  "type": "server_invite_created",
-  "section": "rooms",
-  "data": {
-    "invite_code": "aB3xK9mQz7",
-    "invite_url": "https://comm.sqrll.net/invite/aB3xK9mQz7",
-    "expires_at": null
-  }
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `invite_code` | string | 10-character code |
-| `invite_url` | string | Shareable URL |
-| `expires_at` | null | Not implemented yet — invites never expire |
-
----
-
-### 4.11 server_joined
-
-Response to [`server_join_invite`](#312-server_join_invite). Same format as [`room_created`](#41-room_created) but with type `"server_joined"`.
-
-```json
-{
-  "type": "server_joined",
-  "section": "rooms",
-  "data": {
-    "room_id": "42",
-    "room_name": "Cool Server",
-    ...
-  }
-}
-```
-
-Additionally, a [`room_user_joined`](#42-room_user_joined) broadcast is sent to other members.
-
----
-
-## 5. Error Responses
-
-When a message fails validation, the server sends an error frame with a short message:
-
-```json
-{
-  "type": "error",
-  "section": "rooms",
-  "message": "not authenticated"
-}
-```
-
-| `message` value | Meaning |
-|---|---|
-| `"missing type"` | Message does not contain `"type"` field |
-| `"missing data"` | Message does not contain `"data"` field |
-| `"missing room_name"` | `create_room` without `room_name` |
-| `"empty room_name"` | `room_name` is empty string |
-| `"not authenticated"` | UserId is 0 (WebSocket session has no valid auth) |
-| `"service abuse"` | Rate-limited (too many requests) |
-| `"failed to create room"` | DB insert failed |
-| `"failed to join room"` | DB insert or server not found |
-| `"not a member of this room"` | Membership check failed |
-| `"message too large"` | Content exceeds `MaxMessageSize` |
-| `"failed to save message"` | DB insert failed |
-| `"invalid voice channel"` | Channel not found or not voice type |
-| `"invalid or expired invite code"` | Invite code not found in cache or DB |
-| `"Unknown message type"` | `"type"` string didn't match any known handler |
-
----
-
-## 6. Voice Integration — Frontend Guide
-
-Voice/audio streaming uses a **separate Go service** for real-time audio relay. The C++ backend acts as a **broker**: it manages who is in which voice channel, creates rooms on the Go service, manages access tokens, and broadcasts presence events. The frontend connects **directly to the Go service** for audio streaming.
-
-This section is a complete frontend integration guide. Every step, every URL, every data format is documented below.
-
----
-
-### 6.1 Architecture Overview
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        VOICE ARCHITECTURE                            │
-│                                                                      │
-│  ┌──────────┐                                                        │
-│  │ FRONTEND │  Your browser/app                                      │
-│  │          │                                                        │
-│  │  Has TWO WebSocket connections:                                   │
-│  │  ① Main WS ──── wss://comm.sqrll.net/ws/api/v1/ws                │
-│  │     │  (auth_token cookie, JSON text frames for commands/events)  │
-│  │     │                                                             │
-│  │  ② Voice WS ─── wss://comm.sqrll.net/voice-ws/api/rooms/stream   │
-│  │        (query params: room name + token, binary audio frames)     │
-│  └──┬───────┬───────────────────────────────────────────────────────┘
-│     │       │
-│     │ ①     │ ②
-│     ▼       ▼
-│  ┌──────────┐    POST /api/rooms/create    ┌──────────────┐
-│  │ C++ Back │◄────────────────────────────►│ Go Voice     │
-│  │  (uWS)   │   GET /api/rooms/check       │ Service      │
-│  │          │                               │              │
-│  │ - Auth   │                               │ - WebRTC     │
-│  │ - Member │                               │ - Audio relay│
-│  │   checks │                               │ - WebM/Opus  │
-│  │ - Token  │                               │   streaming  │
-│  │   mgmt   │                               │              │
-│  │ - Presence│                              └──────────────┘
-│  │   broadcast│
-│  └──────────┘
-```
-
-**Key points for frontend developers:**
-
-1. **You always have exactly one main WebSocket** to the C++ backend. This is where auth, text messages, and voice commands flow.
-2. **You open a second WebSocket** to the Go voice service whenever you join a voice channel. Close it when you leave.
-3. The C++ backend tells you the Go room name and token via the `server_join_voice` response.
-4. Audio data flows on the voice WebSocket as **binary frames**, not JSON.
-5. Voice presence (`server_voice_joined`/`server_voice_left`) comes through the main WebSocket, not the voice one.
-
----
-
-### 6.2 Frontend Integration: Step-by-Step
-
-#### Step 1: User clicks "Join Voice" in a server channel
-
-Your frontend already has the server and channel data from [`room_created`](#41-room_created) or [`server_list`](#48-server_list). Identify the voice channel by `channel_type: "voice"`.
-
-#### Step 2: Send `server_join_voice` on the main WebSocket
-
-```json
-{
-  "section": "rooms",
-  "type": "server_join_voice",
-  "data": {
-    "room_id": "42",
-    "channel_id": "6"
-  }
-}
-```
-
-The C++ backend will:
-- Verify you are a member of server 42
-- Verify channel 6 exists and is `"voice"` type
-- Add you to the in-memory voice presence list
-- Ensure a room exists on the Go voice service (creating it if needed)
-- Generate/retrieve a room access token
-
-#### Step 3: Receive the `server_join_voice` response
-
-```json
-{
-  "type": "server_join_voice",
-  "section": "rooms",
-  "data": {
-    "name": "Server_42_6",
-    "token": "dGhpcyBpcyBhIDY0LWNoYXJhY3RlciBiYXNlNjQgdG9rZW4gZm9yIHZvaWNlIHJvb20gYWNjZXNz...",
-    "user_name": "Alice"
-  }
-}
-```
-
-| Field | Use it for... |
-|---|---|
-| `name` | The Go voice room name. Pass as `?room=` query param. |
-| `token` | Room access token. Pass as `?token=` query param. |
-| `user_name` | Your display name (informational — already known by frontend). |
-
-#### Step 4: Open a WebSocket to the Go voice service
-
-Construct the URL using the `name` and `token` from step 3:
-
-```
-wss://comm.sqrll.net/voice-ws/api/rooms/stream?room=Server_42_6&token=dGhpcyBpcyBhIDY0LWNoYXJhY3RlciBiYXNlNjQgdG9rZW4gZm9yIHZvaWNlIHJvb20gYWNjZXNz...&userid=7
-```
-
-| Query Param | Source | Description |
-|---|---|---|
-| `room` | `data.name` from response | Voice room name (e.g. `Server_42_6`) |
-| `token` | `data.token` from response | 64-char base64 access token |
-| `userid` | Your own user ID (from `initial_client_data` or auth state) | Numeric user ID, used by Go service to tag audio frames |
-
-> **Important:** The `token` is a **per-room password**. It is generated once when the first user joins a voice channel and cached in the C++ backend. All subsequent users joining the same voice channel receive the **same token**. The token persists until the C++ server restarts (at which point a new one is generated). Do NOT hardcode or store tokens permanently.
-
-#### Step 5: Start streaming audio
-
-Once the voice WebSocket is connected, you can send and receive **binary audio frames**. See [§6.3](#63-websocket-audio-stream-protocol) for the exact binary format.
-
-#### Step 6: While connected, watch for voice presence events
-
-On the **main WebSocket**, you will receive:
-
-```json
-// When someone else joins voice:
-{ "type": "server_voice_joined", "section": "rooms", "data": { "room_id": "42", "channel_id": "6", "user_id": "99", "user_name": "Bob" } }
-
-// When someone else leaves voice:
-{ "type": "server_voice_left", "section": "rooms", "data": { "room_id": "42", "channel_id": "6", "user_id": "99", "user_name": "Bob" } }
-```
-
-**Frontend action:** Update the voice channel UI to show/hide user indicators accordingly.
-
-> **Note:** You will NOT receive a `server_voice_joined` for yourself. The `server_join_voice` response already confirms you joined. Presence broadcasts always exclude the triggering user.
-
-#### Step 7: To leave voice — send `server_leave_voice`
-
-```json
-{
-  "section": "rooms",
-  "type": "server_leave_voice",
-  "data": {
-    "room_id": "42",
-    "channel_id": "6"
-  }
-}
-```
-
-#### Step 8: Receive leave confirmation, then close voice WebSocket
-
-```json
-{
-  "type": "server_leave_voice",
-  "section": "rooms",
-  "data": {
-    "status": "disconnected"
-  }
-}
-```
-
-After receiving this, call `.close()` on the Go voice WebSocket. The C++ backend has already removed you from the voice presence list; others will receive `server_voice_left`.
-
-#### Pseudocode Summary
-
-```javascript
-// JOIN VOICE
-function joinVoice(serverId, channelId) {
-  mainWs.send(JSON.stringify({
-    section: "rooms",
-    type: "server_join_voice",
-    data: { room_id: serverId, channel_id: channelId }
-  }));
-}
-
-// Handle the response on mainWs
-mainWs.onmessage = (event) => {
-  const msg = JSON.parse(event.data);
-  if (msg.type === "server_join_voice") {
-    const { name, token } = msg.data;
-    const myUserId = getMyUserId(); // from app auth state
-    openVoiceWebSocket(name, token, myUserId);
-  }
-  if (msg.type === "server_voice_joined") {
-    addVoiceIndicator(msg.data.user_id, msg.data.user_name);
-  }
-  if (msg.type === "server_voice_left") {
-    removeVoiceIndicator(msg.data.user_id);
-  }
-};
-
-function openVoiceWebSocket(roomName, token, myUserId) {
-  const url = `wss://comm.sqrll.net/voice-ws/api/rooms/stream?room=${encodeURIComponent(roomName)}&token=${encodeURIComponent(token)}&userid=${myUserId}`;
-  voiceWs = new WebSocket(url);
-  voiceWs.binaryType = "arraybuffer";
-
-  voiceWs.onmessage = (event) => {
-    // event.data is an ArrayBuffer containing a binary audio frame
-    // Format: [userIdLen:1 byte][userId:UTF-8 bytes][WebM/Opus audio data]
-    playAudioFrame(event.data);
-  };
-
-  voiceWs.onerror = (err) => {
-    console.error("Voice WebSocket error:", err);
-    // The C++ backend still has you in the voice channel.
-    // Send server_leave_voice to clean up, or the backend will auto-cleanup
-    // if your main WebSocket also drops.
-  };
-}
-
-// LEAVE VOICE
-function leaveVoice(serverId, channelId) {
-  mainWs.send(JSON.stringify({
-    section: "rooms",
-    type: "server_leave_voice",
-    data: { room_id: serverId, channel_id: channelId }
-  }));
-  // Wait for confirmation, then:
-  // voiceWs.close();
-}
-```
-
----
-
-### 6.3 WebSocket Audio Stream Protocol
-
-The Go voice service WebSocket streams **binary frames** (not JSON) in both directions.
-
-#### Connection URL
-
-```
-wss://comm.sqrll.net/voice-ws/api/rooms/stream?room=<roomName>&token=<token>&userid=<userId>
-```
-
-| Param | Example | Description |
-|---|---|---|
-| `room` | `Server_42_6` | Voice room name. URL-encode if it contains special characters (the format `Server_<id>_<id>` does not, but encode defensively). |
-| `token` | `dGhpcyBpcyBh...` | 64-char base64 room token from `server_join_voice` response. URL-encode it. |
-| `userid` | `7` | Your numeric user ID (integer, not string). The Go service uses this to tag your audio frames so other peers know who is speaking. |
-
-#### Binary Frame Format (Outbound: Frontend → Go)
-
-When you send audio, each WebSocket binary frame should be:
-
-```
-┌──────────────────┬───────────────────────────────┐
-│ userIdLen        │ userId                        │
-│ 1 byte (uint8)   │ userIdLen bytes (UTF-8)       │
-├──────────────────┴───────────────────────────────┤
-│ WebM/Opus audio data                             │
-│ (rest of the frame)                              │
-└──────────────────────────────────────────────────┘
-```
-
-| Segment | Size | Description |
-|---|---|---|
-| `userIdLen` | 1 byte | Length of the userId string in bytes. For user ID `"7"`, this is `0x01`. For user ID `"123"`, this is `0x03`. |
-| `userId` | `userIdLen` bytes | Your numeric user ID as a UTF-8 string (e.g., `"7"` → `0x37`). This is NOT a binary integer — it's the ASCII representation. |
-| `audio data` | remaining bytes | WebM container with Opus-encoded audio. This is standard browser `MediaRecorder` output with MIME type `audio/webm;codecs=opus`. |
-
-**Example (pseudocode for encoding):**
-
-```javascript
-// Using MediaRecorder API in the browser
-const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-
-recorder.ondataavailable = (event) => {
-  if (event.data.size > 0 && voiceWs.readyState === WebSocket.OPEN) {
-    const userId = String(myUserId);
-    const userIdBytes = new TextEncoder().encode(userId);
-    const userIdLen = userIdBytes.length;
-
-    // Build frame: [1 byte len][userId bytes][audio blob bytes]
-    const audioBytes = await event.data.arrayBuffer();
-    const frame = new Uint8Array(1 + userIdLen + audioBytes.byteLength);
-    frame[0] = userIdLen;
-    frame.set(userIdBytes, 1);
-    frame.set(new Uint8Array(audioBytes), 1 + userIdLen);
-
-    voiceWs.send(frame.buffer);
-  }
-};
-
-recorder.start(20); // 20ms chunks for low latency
-```
-
-#### Binary Frame Format (Inbound: Go → Frontend)
-
-The Go service relays audio frames from other users to you. Each incoming binary frame has the **same format**:
-
-```
-[userIdLen: 1 byte][userId: variable][WebM/Opus audio data]
-```
-
-| Segment | Description |
-|---|---|
-| `userIdLen` | Length of the speaking user's ID string |
-| `userId` | The speaking user's ID as a UTF-8 string |
-| `audio data` | WebM/Opus audio from that user |
-
-**Example (pseudocode for decoding):**
-
-```javascript
-voiceWs.onmessage = (event) => {
-  const data = new Uint8Array(event.data);
-
-  const userIdLen = data[0];
-  const userIdBytes = data.slice(1, 1 + userIdLen);
-  const userId = new TextDecoder().decode(userIdBytes);
-  const audioData = data.slice(1 + userIdLen);
-
-  // Route audio to the correct player for this userId
-  playAudioForUser(userId, audioData.buffer);
-};
-```
-
-#### Audio Codec Details
-
-| Property | Value |
-|---|---|
-| **Container** | WebM (Matroska subset) |
-| **Codec** | Opus |
-| **Browser MIME type** | `audio/webm;codecs=opus` |
-| **Sample rate** | 48 kHz (Opus default) |
-| **Channels** | Mono (1 channel) |
-| **Recommended chunk size** | 20 ms (browser `MediaRecorder.start(20)`) |
-| **Bitrate** | Browser default (~32 kbps for mono voice) |
-
----
-
-### 6.4 Token Lifecycle & Security
-
-#### How tokens are generated
-
-1. When the **first user** joins a voice channel (e.g., `Server_42_6`), the C++ backend generates a **64-character base64 random token**.
-2. This token is sent to the Go voice service as part of the `POST /api/rooms/create` request.
-3. The token is stored in an **in-memory cache** (`RoomNameToToken` map) in the C++ backend.
-4. The token is used by the Go service to authenticate WebSocket connections to that room.
-
-#### How tokens are reused
-
-- **Subsequent users** joining the same voice channel receive the **same cached token**.
-- The C++ backend checks `RoomNameToToken` → if found, returns it. If not, generates a new one.
-- The Go service accepts connections using the token it received during room creation.
-
-#### Token lifetime
-
-| Event | What happens to the token |
-|---|---|
-| First user joins voice | Token generated, cached in C++ and sent to Go |
-| Additional users join | Same token reused from cache |
-| All users leave | Token remains cached (room stays on Go service) |
-| C++ server restarts | Cache is lost. New token generated on next join. **Old tokens are invalidated.** |
-| Go service restarts | Rooms are lost. C++ backend detects this via `CheckRoom()` and recreates with **same cached token**. |
-
-#### Security considerations for frontend
-
-- Tokens are **not JWTs** — they are opaque random strings. Do not parse them.
-- Tokens are **room-scoped** — one token grants access to exactly one voice room.
-- Tokens should be treated as **session-only** — never persist to localStorage or IndexedDB.
-- If you receive a 401/403 from the Go voice WebSocket, re-send `server_join_voice` on the main WebSocket to get a fresh token.
-
----
-
-### 6.5 Go Voice Service REST API Reference
-
-The Go voice service exposes two REST endpoints (used internally by the C++ backend) and one WebSocket endpoint (used directly by the frontend).
-
-All REST endpoints use `X-API-Token` header authentication. This is a **server-to-server secret** — the frontend never calls these directly.
-
-#### POST /api/rooms/create
-
-Create a voice room (idempotent — safe to call multiple times).
-
-| Property | Value |
-|---|---|
-| **Method** | `POST` |
-| **URL** | `http://<voice-service>:<port>/api/rooms/create` |
-| **Auth** | `X-API-Token: <SQRLL_VOICE_API_KEY>` header |
-| **Content-Type** | `application/json` |
-| **Timeout** | 3 seconds |
-
-**Request body:**
-
-```json
-{
-  "RoomId": "Server_42_6",
-  "Token": "dGhpcyBpcyBhIDY0LWNoYXJhY3RlciBiYXNlNjQgdG9rZW4gZm9yIHZvaWNlIHJvb20gYWNjZXNz..."
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `RoomId` | string | Voice room name (e.g. `Server_42_6`) |
-| `Token` | string | 64-char base64 access token for this room |
-
-**Success response (201 Created):**
-
-```json
-{
-  "created": true
-}
-```
-
-**Error responses:** Non-201 status codes are treated as failures. The C++ backend logs the status and body.
-
-#### GET /api/rooms/check
-
-Check if a voice room exists on the Go service.
-
-| Property | Value |
-|---|---|
-| **Method** | `GET` |
-| **URL** | `http://<voice-service>:<port>/api/rooms/check?room=<RoomName>` |
-| **Auth** | `X-API-Token: <SQRLL_VOICE_API_KEY>` header |
-| **Timeout** | 3 seconds |
-
-**Success response (200 OK):**
-
-```json
-// Room exists:
-{ "exists": true }
-
-// Room does NOT exist:
-{ "exists": false }
-```
-
-#### WSS /api/rooms/stream
-
-The WebSocket endpoint for audio streaming. This is what the frontend connects to directly.
-
-| Property | Value |
-|---|---|
-| **Protocol** | WebSocket Secure (WSS) |
-| **URL (production)** | `wss://comm.sqrll.net/voice-ws/api/rooms/stream` |
-| **URL (local dev)** | Depends on Go service config; typically `ws://localhost:<port>/api/rooms/stream` |
-| **Auth** | Query parameters (`token` and `userid`) |
-| **Frame format** | Binary: `[userIdLen:1B][userId:variable][WebM/Opus audio]` |
-
-**Query parameters:**
-
-| Param | Required | Description |
-|---|---|---|
-| `room` | **yes** | Voice room name (e.g., `Server_42_6`) |
-| `token` | **yes** | Room access token from `server_join_voice` response |
-| `userid` | **yes** | Your numeric user ID |
-
-**Connection lifecycle:**
-- On connect: Go service validates the token against the room. If invalid → close with 4001.
-- While connected: Binary frames are relayed to all other peers in the same room.
-- On close: Peer is removed from the room. Go service has its own idle timeout.
-
----
-
-### 6.6 Room Naming Convention
-
-Voice rooms on the Go service follow a strict naming convention:
-
-```
-Server_<ServerId>_<ChannelId>
-```
-
-| Component | Example | Description |
-|---|---|---|
-| `Server` | `Server` | Literal prefix, capital S |
-| `_` | `_` | Separator |
-| `<ServerId>` | `42` | The server's numeric ID (from `room_id`) |
-| `_` | `_` | Separator |
-| `<ChannelId>` | `6` | The voice channel's numeric ID (from `channel_id`) |
-
-**Examples:**
-
-| Server ID | Channel ID | Voice Room Name |
-|---|---|---|
-| 42 | 6 | `Server_42_6` |
-| 1 | 3 | `Server_1_3` |
-| 9876543210 | 123 | `Server_9876543210_123` |
-
-**Why this format:**
-
-| Reason | Detail |
-|---|---|
-| **Capital `S` in `Server`** | Distinguishes server voice rooms from private conversation voice rooms which use `priv_voice_<sorted_ids>`. |
-| **Server ID + Channel ID** | Guarantees global uniqueness — two different servers cannot have colliding room names even if they have channels with the same ID. |
-| **Simple construction** | Frontend can predict the room name from `room_id` + `channel_id` without an API call. However, always use the `name` from the `server_join_voice` response — it's the authoritative source. |
-| **No special characters** | Safe for URL query parameters without encoding overhead. |
-
-**Private voice rooms** (for direct calls between users) use a different format:
-```
-priv_voice_<sorted_user_id_1><sorted_user_id_2>
-```
-Example: `priv_voice_799` for a call between users 7 and 99. These are managed by the `ConversationsManager`, not the servers system. The prefix `priv_voice_` vs `Server_` prevents any collision.
-
----
-
-### 6.7 Auto-Disconnect & Ghost Users
-
-When a user's **main WebSocket** connection drops (browser close, network loss, crash), the C++ backend automatically cleans up their voice state.
-
-#### What happens on disconnect
-
-1. `Socket::OnClientDisconnected()` is called in `Socket.cpp`
-2. `ServersSocketData.CleanupUserVoiceChannels(UserId, UserName)` is invoked
-3. The backend **scans all servers** the user belongs to, finds every voice channel they're in
-4. For each voice channel: removes the user from `ConnectedUsers`, broadcasts `server_voice_left` to other members
-
-#### What the frontend should do
-
-- **Do NOT** rely on the Go voice WebSocket `onclose` as your sole cleanup mechanism. Always send `server_leave_voice` before closing the voice WebSocket.
-- If the main WebSocket drops, assume voice state is cleaned up. On reconnect, you will need to re-join any voice channels.
-- The `server_voice_left` event may arrive from the **auto-cleanup** path — treat it identically to a voluntary leave.
-
-#### Go service idle timeout
-
-The Go voice service has its own timeout for idle connections. If your voice WebSocket stays connected but you stop sending audio frames, the Go service may close it. This does NOT trigger a `server_voice_left` broadcast — only the C++ backend manages voice presence. If your voice WebSocket drops unexpectedly, send `server_leave_voice` on the main WebSocket to keep state consistent.
-
----
-
-### 6.8 Voice Presence in Room Data
-
-Voice channel presence (`connected_users`) is included in all room data responses:
-
-- [`room_created`](#41-room_created) — when you create or join a server
-- [`server_list`](#48-server_list) — when you request your server list
-- [`server_joined`](#411-server_joined) — when you join via invite
-
-Example voice channel in room data:
-
-```json
-{
-  "channel_id": "6",
-  "channel_name": "General",
-  "channel_type": "voice",
-  "connected_users": [
-    { "user_id": "7", "user_name": "Alice" },
-    { "user_id": "99", "user_name": "Bob" }
-  ]
-}
-```
-
-**Rules:**
-
-| Rule | Detail |
-|---|---|
-| `connected_users` is **omitted** for text channels | Only voice channels have this field |
-| `connected_users` is **omitted** when empty | If no one is connected, the field is simply absent (not `[]`) |
-| User names are resolved from server members | The `user_name` comes from the same `JOIN` query used for `members[]` |
-| This data is **transient** | Not persisted to DB. On server restart, all voice channels start empty |
-| This is a **snapshot** | It reflects the state at the moment the room data was built. For real-time updates, listen to `server_voice_joined` / `server_voice_left` events |
-
-**Frontend usage:** On initial load (after receiving `room_created` or `server_list`), iterate `channels[]`, find `channel_type: "voice"` entries, and render the `connected_users` as voice indicators in the UI. Then keep them updated via the real-time events.
-
----
-
-### 6.9 Error Handling for Voice
-
-#### Main WebSocket errors (from `server_join_voice` / `server_leave_voice`)
-
-The C++ backend sends error frames on the main WebSocket:
-
-```json
-{
-  "type": "error",
-  "section": "rooms",
-  "message": "<error description>"
-}
-```
-
-| Error message | When it happens | Frontend action |
-|---|---|---|
-| `"not authenticated"` | UserId is 0 (session invalid) | Redirect to login |
-| `"not a member of this room"` | You are not a member of the server | Don't retry. The user needs to join the server first. |
-| `"room not found"` | Server ID doesn't exist | Don't retry. The server may have been deleted. |
-| `"invalid voice channel"` | Channel ID doesn't exist, or is a text channel | Check your channel data. Only use channels with `channel_type: "voice"`. |
-| (no response at all) | Main WebSocket is down | Reconnect main WebSocket first, then re-join voice. |
-
-#### Go voice WebSocket errors
-
-| Scenario | What happens | Frontend action |
-|---|---|---|
-| Invalid token | Go service closes with code 4001 | Re-send `server_join_voice` on main WS to get a fresh token |
-| Room doesn't exist | Go service closes with error | Re-send `server_join_voice` to trigger room creation |
-| Network error | `onerror` fires | Attempt reconnect to Go WS with same params (exponential backoff) |
-| Go service down | Connection refused or timeout | Retry with backoff. Show "reconnecting..." indicator. |
-
-#### Edge case: stale voice state
-
-If you think you're in voice but the backend disagrees (e.g., after a crash or network blip), sending `server_join_voice` is always safe:
-- It is **idempotent** — joining a voice channel you're already in does nothing harmful.
-- It returns fresh credentials — always use the latest `name` and `token` from the response.
-
----
-
-### 6.10 Complete Voice Lifecycle Summary
-
-```
-TIME ─────────────────────────────────────────────────────────────────►
-
-JOIN:
-  Frontend ──server_join_voice──► C++ Backend
-                                      │
-                                      ├─ Validate membership & channel
-                                      ├─ Add to ConnectedUsers (in-memory)
-                                      ├─ CheckRoom("Server_42_6") ──► Go Service
-                                      │◄── { exists: false } ────────
-                                      ├─ CreateRoom("Server_42_6") ──► Go Service
-                                      │◄── { created: true } ───────
-                                      ├─ GetRoomToken() → cache hit/miss
-                                      │
-  Frontend ◄──server_join_voice────── { name, token, user_name }
-  Frontend ◄──server_voice_joined───► Other members (broadcast)
-
-  Frontend ──WSS connect────────────► Go Voice Service
-              ?room=Server_42_6
-              &token=...
-              &userid=7
-  Frontend ◄══ binary audio ═══════► Go Service ◄═══► Other peers
-
-LEAVE:
-  Frontend ──server_leave_voice────► C++ Backend
-                                      ├─ Remove from ConnectedUsers
-                                      │
-  Frontend ◄──server_leave_voice──── { status: "disconnected" }
-  Frontend ◄──server_voice_left────► Other members (broadcast)
-
-  Frontend ──WSS close──────────────► Go Voice Service
-
-AUTO-CLEANUP (WebSocket drop/crash):
-  C++ Backend detects close
-      ├─ CleanupUserVoiceChannels(UserId, UserName)
-      ├─ For each voice channel:
-      │    ├─ LeaveVoiceChannel()
-      │    └─ Broadcast server_voice_left
-      └─ (Go service handles its own idle timeout separately)
-```
-
----
-
-## 7. Data Models
-
-### FServer (in-memory)
-
-| Field | Type | Description |
-|---|---|---|
-| `ServerId` | Uint64 | Primary key |
-| `ServerName` | string | Display name (1–128 chars) |
-| `OwnerId` | Uint64 | User ID of creator |
-| `Token` | string | 48-char random alphanum (voice auth) |
-| `CreatedAt` | string | Epoch nanoseconds as string |
-| `Channels` | map<Uint64, FServerChannel> | Channel ID → channel |
-| `Members` | map<Uint64, FServerMember> | User ID → member |
-| `ChannelMessages` | map<Uint64, vector<FServerMessage>> | Channel ID → messages (newest first) |
-
-**Thread safety:** `std::shared_mutex` — `shared_lock` for reads, `unique_lock` for writes.
-
-### FServerChannel
-
-| Field | Type | Description |
-|---|---|---|
-| `ChannelId` | Uint64 | Auto-increment PK |
-| `ServerId` | Uint64 | Parent server |
-| `ChannelName` | string | Display name |
-| `ChannelType` | enum | `Text` or `Voice` |
-| `ConnectedUsers` | vector<Uint64> | **(voice only, transient)** User IDs currently in this voice channel. Not persisted to DB. |
-
-### FServerMessage
-
-| Field | Type | Description |
-|---|---|---|
-| `MessageId` | Uint64 | Auto-increment PK |
-| `ChannelId` | Uint64 | Parent channel |
-| `SenderId` | Uint64 | Sender user ID |
-| `SenderName` | string | Resolved at insert time (from users table) |
-| `Content` | string | Message text |
-| `CreatedAt` | string | Epoch nanoseconds as string |
-
-### FServerMember
-
-| Field | Type | Description |
-|---|---|---|
-| `UserId` | Uint64 | User PK |
-| `UserName` | string | Display name (from users JOIN) |
-| `Status` | string | `"online"`, `"offline"`, or `"away"` |
-
----
-
-## 8. Rate Limiting & Abuse Protection
-
-Server creation is rate-limited to prevent spam:
-
-```
-FAbuseProtection::CanAddressRequestCreateServer(ClientIP)
-  → FRateLimiter::IsServerOperationAddressBlocked(ClientIP)
-```
-
-- Dedicated counter: `ServerOperationAddressToLimits` (separate from login/registration limits)
-- Threshold: ~10 creations per minute per IP (configurable)
-- When blocked: response `"service abuse"`
-- IP source: `ws->getRemoteAddressAsText()` or `X-Forwarded-For` header (if behind proxy)
-
-**For tests:** `FAbuseProtection::ResetRateLimits()` clears all counters. Call this between test batches.
-
----
-
-## 9. Database Schema
-
-5 tables, all in `utf8mb4` charset, InnoDB engine.
-
-### servers
-
-```sql
-CREATE TABLE servers (
-    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    name        VARCHAR(128) NOT NULL,
-    owner_id    BIGINT UNSIGNED NOT NULL,      -- FK → users(id)
-    token       VARCHAR(128) NOT NULL,          -- 48-char random token
-    created_at  VARCHAR(32) NOT NULL DEFAULT '', -- epoch nanoseconds string
-    INDEX idx_servers_owner (owner_id),
-    INDEX idx_servers_token (token)
-);
-```
-
-### server_channels
-
-```sql
-CREATE TABLE server_channels (
-    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    server_id   BIGINT UNSIGNED NOT NULL,      -- FK → servers(id) ON DELETE CASCADE
-    name        VARCHAR(128) NOT NULL,
-    type        ENUM('text', 'voice') NOT NULL DEFAULT 'text',
-    INDEX idx_channels_server (server_id)
-);
-```
-
-### server_members
-
-```sql
-CREATE TABLE server_members (
-    server_id   BIGINT UNSIGNED NOT NULL,      -- FK → servers(id)
-    user_id     BIGINT UNSIGNED NOT NULL,       -- FK → users(id)
-    joined_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (server_id, user_id),
-    INDEX idx_members_user (user_id)
-);
-```
-
-### server_messages
-
-```sql
-CREATE TABLE server_messages (
-    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    channel_id  BIGINT UNSIGNED NOT NULL,      -- FK → server_channels(id)
-    sender_id   BIGINT UNSIGNED NOT NULL,       -- FK → users(id)
-    content     TEXT NOT NULL,
-    created_at  VARCHAR(32) NOT NULL DEFAULT '', -- epoch nanoseconds string
-    INDEX idx_messages_channel (channel_id),
-    INDEX idx_messages_sender (sender_id),
-    INDEX idx_messages_created (channel_id, id)
-);
-```
-
-### server_invites
-
-```sql
-CREATE TABLE server_invites (
-    invite_code VARCHAR(16) NOT NULL PRIMARY KEY,  -- 10-char random alphanum
-    server_id   BIGINT UNSIGNED NOT NULL,          -- FK → servers(id)
-    created_by  BIGINT UNSIGNED NOT NULL,           -- FK → users(id)
-    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at  TIMESTAMP NULL DEFAULT NULL         -- NULL = never expires
-);
-```
-
-**Key DB patterns:**
-- Members query JOINs `users` table: `SELECT sm.user_id, u.username FROM server_members sm JOIN users u ON sm.user_id = u.id WHERE sm.server_id = ?`
-- Messages query JOINs `users` table: `SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at FROM server_messages sm JOIN users u ON sm.sender_id = u.id WHERE sm.channel_id = ? ... ORDER BY sm.id DESC`
-- `INSERT IGNORE` used for members to prevent duplicate key errors
-- Timestamp-based pagination: `WHERE ... AND sm.created_at < :before`
-- Deletion cascade: deleting a server deletes its channels, members, messages, and invites
-
-**Note:** Voice channel connected users are **not persisted** to DB — they live only in the in-memory `FServerChannel::ConnectedUsers` vector.
-
----
-
-## 10. Deprecated REST Endpoints
-
-The following REST endpoints previously existed under `/api/v1/rooms/*`. They have been **removed** — all functionality moved to the WebSocket protocol described above.
-
-| Old endpoint | Replaced by WebSocket type |
-|---|---|
-| `GET /api/v1/rooms/list` | [`get_server_list`](#39-get_server_list) |
-| `GET /api/v1/rooms/:id/messages` | [`get_server_messages`](#310-get_server_messages) |
-| `POST /api/v1/rooms/:id/invite` | [`server_create_invite`](#311-server_create_invite) |
-| `POST /api/v1/rooms/join` | [`server_join_invite`](#312-server_join_invite) |
-| `POST /api/v1/rooms/create` | [`create_room`](#31-create_room) (was always WS) |
-
-There are **zero** REST endpoints for servers in the current codebase. All server operations go through the persistent WebSocket connection.
-
----
-
-## Design Decisions Summary
-
-| Decision | Rationale |
-|---|---|
-| IDs as strings on wire | JavaScript cannot safely represent 64-bit unsigned integers. String encoding avoids precision loss. |
-| Timestamps as nanoseconds in strings | Same reason — high precision, safe for JS as string comparison. |
-| FNV-1a compile-time hashing | O(1) string→enum dispatch with zero runtime overhead. Compiler optimizes to integer switch. |
-| Auth via WebSocket session data | Pointer deref, no DB lookup per message. Zero overhead. |
-| `shared_mutex` per server | Read-heavy workload (broadcasts, membership checks). Multiple concurrent readers, exclusive writers. |
-| Cache + lazy DB load | `GetServerById` tries cache → DB download → cache insert. Servers not accessed stay on disk. |
-| Broadcast excludes sender | `BroadcastToServerMembers` takes `ExcludeUserId` param. Status broadcasts exclude the user themselves. |
-| `SendToUser` skips offline | Checks `User->GetUserStatus() == Online` before enqueuing. No offline message queue (yet). |
-| uWS pub/sub per user | Each user subscribes to topic `"user_<id>"`. Cross-thread message delivery via `EnqueueTaskForUserAtSocket`. |
-| Invite codes not consumed | Currently not deleted after use — reusable. Can be changed to single-use by uncommenting the DELETE in `ConsumeInviteFromDB`. |
-| Voice state is transient | `ConnectedUsers` in `FServerChannel` is in-memory only. On restart, all voice channels start empty. |
-| Voice auto-cleanup on disconnect | `CleanupUserVoiceChannels` iterates all servers/channels on WebSocket close. Prevents ghost users. |
-| Voice naming: `server_voice_joined` / `server_voice_left` | Past-tense event names (no "user") distinguish from imperative C→S actions `server_join_voice` / `server_leave_voice`. |
-| Voice room naming: `Server_<ServerId>_<ChannelId>` | Capitalized `Server` prefix distinguishes server voice rooms from private voice rooms (`priv_voice_...`). Consistent with frontend's "servers" naming. |
-| Two WebSocket architecture for voice | Main WS for commands/presence, Voice WS for audio. Separation keeps JSON parser off the audio hot path and allows independent scaling of the Go voice layer. |
-| Token reuse across users | Same voice room token shared by all members. Generated once, cached, reused. Keeps Go room management simple — one room, one token. |
+    type: load_more_messages
+        Load older messages from conversation history with pagination.
+
+        data:
+            conversation_id  string  Conversation ID
+            offset           number  Starting offset
+            limit            number  Number of messages to load
+
+        Server response type: load_more_messages
+            status   success or no_more_messages or unauthorized
+            message  Array of message objects with message, sender_id fields
+
+    type: get_conversations
+        Get list of recent conversations for the current user.
+
+        data:
+            offset  number  Pagination offset
+            limit   number  Number of conversations to return
+
+        Server response type: get_conversations
+            message contains JSON array of conversation objects with:
+                id          Conversation ID
+                users       Array of user objects id, name, status
+                userids     Array of user IDs
+                messages    Array of last 25 messages with message, message_id, sender_id, time, status
+
+    type: add_conversation
+        Create or open a conversation with another user. Only works if users are friends.
+
+        data:
+            user_id  string  Target user ID
+
+        Server response type: add_conversation
+            message contains conversation JSON object same format as get_conversations.
+
+2.1.2 Friend List Messages
+
+    type: get_friend_list
+        Get paginated list of friends.
+
+        data:
+            offset  number  Pagination offset
+            limit   number  Number of friends per page
+
+        Server response type: get_friend_list
+            data:
+                friends  Array of user objects id, name, status
+                offset   Current offset
+                limit    Page limit
+
+    type: get_friend_request_list
+        Get paginated list of sent and incoming friend requests.
+
+        data:
+            offset  number  Pagination offset
+            limit   number  Number of requests per page
+
+        Server response type: get_friend_request_list
+            data:
+                sent      Array of sent request user objects id, name, status
+                incoming  Array of incoming request user objects id, name, status
+                offset    Current offset
+                limit     Page limit
+
+    type: create_friend_request
+        Send a friend request to another user.
+
+        data:
+            other_id  string  Target user ID
+
+        Server response type: create_friend_request
+            message: friend request added or already friends or sent requests limit reached or target incoming requests limit reached
+
+    type: accept_friend_request
+        Accept an incoming friend request.
+
+        data:
+            other_id  string  Requester user ID
+
+        Server response type: accept_friend_request
+            message: friend request accepted or no friend request or friends limit reached
+
+    type: reject_friend_request
+        Reject an incoming friend request.
+
+        data:
+            other_id  string  Requester user ID
+
+        Server response type: reject_friend_request
+            message: friend request rejected or friend request not found
+
+    type: cancel_friend_request
+        Cancel a sent friend request.
+
+        data:
+            other_id  string  Target user ID
+
+        Server response type: cancel_friend_request
+            message: friend request canceled or friend request not found
+
+    type: remove_friend
+        Remove a user from the friend list.
+
+        data:
+            other_id  string  Target user ID
+
+        Server response type: remove_friend
+            message: friend removed or friend not found
+
+2.1.3 Voice and Calling
+
+    type: data_stream_channel
+        Request a voice chat with another user. Both users must be friends. Creates or gets a voice room from the Go voice service.
+
+        data:
+            other_id  string  Target user ID
+
+        Server response type: data_stream_channel
+            data:
+                name   Voice room name
+                token  Voice room access token
+
+    type: user_calling
+        Notify another user about an incoming call.
+
+        data:
+            other_id  string  Target user ID
+
+        Server pushes type: user_calling to the target user:
+            data:
+                user_id  Caller user ID
+
+--------------------------------------------
+2.2 SERVERS
+--------------------------------------------
+
+These messages handle the community server system with channels and voice chat. Messages use the servers section.
+
+2.2.1 Client to Server Messages
+
+    type: create_room
+        Create a new server. Rate limited per IP address.
+
+        data:
+            room_name  string  Name of the new server
+
+        Server response type: room_created
+            data: Full server object with members, channels, id, name, token, owner_id, created_at.
+
+    type: join_room
+        Rejoin a server by ID. Only works if the user is already a member.
+        New members must use server_join_invite with a valid invite code.
+
+        data:
+            room_id  string  Server ID to rejoin
+
+        Server response type: room_created
+            data: Full server object.
+
+        Server broadcasts type: room_user_joined to all server members with user_id and user_name.
+
+    type: leave_room
+        Leave a server.
+
+        data:
+            room_id  string  Server ID to leave
+
+        Server response type: leave_room
+            data:
+                room_id  Server ID
+                status   left
+
+        Server broadcasts type: room_user_left to remaining server members.
+
+    type: room_message
+        Send a text message in a server channel.
+
+        data:
+            room_id     string  Server ID
+            channel_id  string  Channel ID
+            content     string  Message text
+
+        Server broadcasts type: room_message to all server members with:
+            room_id, channel_id, message_id, sender_id, sender_name, content, timestamp.
+
+    type: create_channel
+        Create a new channel in a server.
+
+        data:
+            room_id       string  Server ID
+            channel_name  string  Channel name
+            channel_type  string  text or voice
+
+        Server broadcasts type: room_channel_created to all server members with:
+            room_id, channel_id, channel_name, channel_type.
+
+    type: server_invite
+        Directly invite a user to a server by user ID. Sends a push notification to the target user.
+
+        data:
+            room_id  string  Server ID
+            user_id  string  Target user ID to invite
+
+        Server response type: server_invite
+            data:
+                status   sent
+                room_id  Server ID
+                user_id  Invited user ID
+
+        Server pushes type: server_invite to the invited user with:
+            room_id, room_name, inviter_id, inviter_name.
+
+    type: server_join_voice
+        Join a voice channel in a server. Creates Go voice service room if needed.
+
+        data:
+            room_id     string  Server ID
+            channel_id  string  Voice channel ID
+
+        Server response type: server_join_voice
+            data:
+                name       Voice room name for Go service
+                token      Voice room access token
+                user_name  Current user name
+
+        Server broadcasts type: server_voice_joined to server members with:
+            room_id, channel_id, user_id, user_name.
+
+    type: server_leave_voice
+        Leave a voice channel.
+
+        data:
+            room_id     string  Server ID
+            channel_id  string  Voice channel ID
+
+        Server response type: server_leave_voice
+            data:
+                status  disconnected
+
+        Server broadcasts type: server_voice_left to server members with:
+            room_id, channel_id, user_id, user_name.
+
+    type: get_server_list
+        Get list of all servers the current user belongs to.
+
+        data: none required
+
+        Server response type: server_list
+            data:
+                rooms  Array of server objects, each with full server data.
+
+    type: get_server_messages
+        Get channel message history with timestamp based pagination.
+
+        data:
+            room_id     string  Server ID
+            channel_id  string  Channel ID
+            before      string  Optional. Timestamp to fetch messages before.
+            limit       string  Optional. Max 100, default 50.
+
+        Server response type: server_messages
+            data:
+                messages  Array of message objects with message_id, channel_id, sender_id, sender_name, content, timestamp
+                has_more  boolean
+
+    type: server_create_invite
+        Generate an invite code for a server. Invites are never permanent; they always have
+        a configurable expiration (max 12 months) and a configurable usage limit.
+        Requires CAN_CREATE_INVITES permission or server owner.
+
+        data:
+            room_id             string  REQUIRED. Server ID to create invite for.
+            max_uses            number  Optional. Max times invite can be used. Default 1000 from config. Set 0 to use default.
+            expires_in_seconds  number  Optional. Lifetime in seconds. Max 31536000 (12 months). Default 2592000 (30 days). Set 0 to use default.
+
+        Example request:
+            {
+                "type": "server_create_invite",
+                "data": {
+                    "room_id": "123456789",
+                    "max_uses": 50,
+                    "expires_in_seconds": 86400
+                }
+            }
+
+        Server response type: server_invite_created
+            data:
+                invite_code         Generated invite code string (10 random alphanumeric characters)
+                invite_url          Full invite URL https://comm.sqrll.net/invite/code
+                max_uses            Actual max uses value applied
+                expires_at          Unix timestamp (seconds) when invite expires
+                expires_in_seconds  Actual expiration duration in seconds applied
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_CREATE_INVITES permission
+
+    type: server_join_invite
+        Join a server using an invite code. New members via invite get zero special permissions
+        (can chat freely but cannot create invites, manage channels, etc.).
+
+        IP based abuse protection is active on this endpoint: too many failed attempts
+        from the same IP will result in a temporary ban. Successful joins reset the counter.
+
+        data:
+            invite_code  string  Invite code from server_invite_created
+
+        Server response type: server_joined
+            data: Full server object.
+
+        Server broadcasts type: room_user_joined to server members.
+
+        Error if banned for too many failed attempts:
+            type: error
+            message: abuse ban: too many failed invite attempts. Try again later.
+
+        Error if invite is invalid or expired:
+            type: error
+            message: invalid or expired invite code
+
+    type: server_delete_invite
+        Delete an invite by its code. The invite is permanently removed and can no longer be used.
+        Requires CAN_CREATE_INVITES permission or server owner.
+
+        data:
+            room_id     string  REQUIRED. Server ID the invite belongs to.
+            invite_code string  REQUIRED. The invite code to delete.
+
+        Example request:
+            {
+                "type": "server_delete_invite",
+                "data": {
+                    "room_id": "123456789",
+                    "invite_code": "aB3xK7mQ2p"
+                }
+            }
+
+        Server response type: server_invite_deleted
+            data:
+                room_id     Server ID (number)
+                invite_code The deleted invite code (string)
+
+        Error if invite not found:
+            type: error
+            message: invite not found or already deleted
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_CREATE_INVITES permission
+
+    type: server_list_invites
+        List invites for a server with pagination. Returns invites sorted by creation time
+        (newest first). Requires CAN_CREATE_INVITES permission or server owner.
+
+        data:
+            room_id  string  REQUIRED. Server ID to list invites for.
+            start    number  Optional. Zero based offset into the result set. Default 0.
+            count    number  Optional. Max invites to return. Default 50, capped at 200.
+
+        Example request (first page of 20):
+            {
+                "type": "server_list_invites",
+                "data": {
+                    "room_id": "123456789",
+                    "start": 0,
+                    "count": 20
+                }
+            }
+
+        Server response type: server_invites_list
+            data:
+                room_id  Server ID (number)
+                start    Offset used (number)
+                count    Number of invites in this page (number)
+                total    Total number of invites for this server (number)
+                invites  Array of invite objects, each containing:
+                    invite_code     The alphanumeric invite token (string)
+                    created_by      User ID who created the invite (string)
+                    max_uses        Configured max usage count (number)
+                    current_uses    How many times it has been used (number)
+                    remaining_uses  How many uses remain = max_uses - current_uses (number)
+                    created_at      Creation timestamp, MySQL TIMESTAMP (string)
+                    expires_at      Expiration timestamp, MySQL TIMESTAMP (string)
+
+        Example response:
+            {
+                "type": "server_invites_list",
+                "data": {
+                    "room_id": 123456789,
+                    "start": 0,
+                    "count": 2,
+                    "total": 5,
+                    "invites": [
+                        {
+                            "invite_code": "zY9xW8vU7t",
+                            "created_by": "42",
+                            "max_uses": 50,
+                            "current_uses": 3,
+                            "remaining_uses": 47,
+                            "created_at": "2026-07-29 10:15:00",
+                            "expires_at": "2026-08-05 10:15:00"
+                        },
+                        {
+                            "invite_code": "aB3xK7mQ2p",
+                            "created_by": "42",
+                            "max_uses": 1000,
+                            "current_uses": 0,
+                            "remaining_uses": 1000,
+                            "created_at": "2026-07-28 22:00:00",
+                            "expires_at": "2026-08-27 22:00:00"
+                        }
+                    ]
+                }
+            }
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_CREATE_INVITES permission
+
+    type: server_update_member_permissions
+        Update a members permissions. Only the server owner can use this.
+
+        data:
+            room_id         string  Server ID
+            target_user_id  string  User ID whose permissions to update
+            permissions     string  New permission bitfield as decimal string
+
+        Server response type: server_member_permissions_updated
+            data:
+                room_id     Server ID
+                user_id     Updated user ID
+                permissions New permission bitfield
+
+        Server broadcasts type: server_member_permissions_updated to all server members.
+
+        Error if not owner:
+            type: error
+            message: permission denied: only the server owner can manage member permissions
+
+        Error if targeting owner:
+            type: error
+            message: cannot modify the server owners permissions
+
+2.2.2 Server to Client Push Messages
+
+    type: room_member_status
+        Broadcast when a member status changes (online, offline, idle, do_not_disturb).
+
+        data:
+            room_id    Server ID
+            user_id    User ID whose status changed
+            user_name  User name
+            status     New status string
+
+    type: server_member_permissions_updated
+        Broadcast when a members permissions have been updated.
+
+        data:
+            room_id     Server ID
+            user_id     User ID
+            permissions New permissions bitfield
+
+    type: error
+        Sent when an error occurs processing a request.
+
+        data:
+            message  Error description string
+
+============================================
+SECTION 3: DATA STRUCTURES
+============================================
+
+3.1 Server Object
+
+    {
+        room_id    string  Server ID
+        room_name  string  Display name
+        room_token string  Internal access token
+        owner_id   string  Owner user ID
+        created_at number  Creation timestamp
+        members    array   Array of member objects
+        channels   array   Array of channel objects
+    }
+
+3.2 Member Object
+
+    {
+        user_id      string  User ID
+        user_name    string  Display name
+        status       string  online, offline, idle, do_not_disturb
+        permissions  string  Permission bitfield as decimal string
+        is_owner     boolean True if this member is the server owner
+    }
+
+3.3 Channel Object
+
+    {
+        channel_id      string  Channel ID
+        channel_name    string  Display name
+        channel_type    string  text or voice
+        connected_users array   Present only for voice channels. Array of user_id, user_name objects currently connected.
+    }
+
+3.4 Invite Object (from server_invites_list)
+
+    {
+        invite_code     string  The alphanumeric invite token
+        created_by      string  User ID who created this invite
+        max_uses        number  Configured max usage count
+        current_uses    number  Times the invite has been consumed
+        remaining_uses  number  Uses remaining (max_uses - current_uses)
+        created_at      string  MySQL TIMESTAMP when invite was created
+        expires_at      string  MySQL TIMESTAMP when invite expires
+    }
+
+3.5 Conversation Object
+
+    {
+        id       number  Conversation ID
+        users    array   Array of member user objects
+        userids  array   Array of member user IDs
+        messages array   Array of message objects (last 25)
+    }
+
+3.6 Message Object
+
+    {
+        message     string  Message content
+        message_id  number  Unique message identifier
+        sender_id   number  User ID of sender
+        time        number  Creation timestamp
+        status      number  Message status code
+    }
+
+============================================
+SECTION 4: PERMISSION SYSTEM
+============================================
+
+Squirrel Communicator uses a Discord like permission system for server members. Permissions are stored as a bitfield (Uint64) on each member. The server owner always has all permissions.
+
+4.1 Permission Bits
+
+    Bit 0  0x01  CAN_CREATE_INVITES     Allow member to create invite codes
+    Bit 1  0x02  CAN_KICK_MEMBERS       Allow member to kick others (future)
+    Bit 2  0x04  CAN_BAN_MEMBERS        Allow member to ban others (future)
+    Bit 3  0x08  CAN_MANAGE_CHANNELS    Allow member to create, edit, delete channels (future)
+    Bit 4  0x10  CAN_MANAGE_PERMISSIONS Allow member to manage other members permissions (future)
+
+    All bits set  0xFFFFFFFFFFFFFFFF  means all permissions (granted to owner).
+
+4.2 Default Permissions
+
+    Server owner              All permissions (0xFFFFFFFFFFFFFFFF)
+    New member via invite     Zero permissions (0x0): can chat freely but no special actions
+    New member added directly Configurable via API, defaults to 0
+
+4.3 Checking Permissions
+
+    Permissions are checked using bitwise AND:
+        has_permission = (member_permissions & CAN_CREATE_INVITES) != 0
+
+    Server owners bypass all permission checks and always have access.
+
+4.4 Managing Permissions
+
+    Only the server owner can update member permissions via:
+        server_update_member_permissions
+
+    The owner cannot modify their own permissions. Future releases will allow delegation via CAN_MANAGE_PERMISSIONS.
+
+4.5 Migration
+
+    For existing databases, run migration_member_permissions.sql to add the permissions column and grant all permissions to existing server owners.
+
+============================================
+SECTION 5: INVITE SYSTEM
+============================================
+
+Invites are never permanent. Every invite has a mandatory expiration time with a maximum of 12 months (31536000 seconds). The number of uses per invite is also configurable. Only members with CAN_CREATE_INVITES permission or the server owner can create invites.
+
+5.1 Configuration
+
+    BackendSettings.ini parameters:
+
+    InviteDefaultMaxUses            Default 1000
+        Number of times an invite can be used when not specified in the API call.
+
+    InviteDefaultExpiresInSeconds   Default 2592000 (30 days)
+        Default invite lifetime when not specified in the API call.
+
+    InviteMaxExpiresInSeconds       Default 31536000 (12 months)
+        Hard cap on invite lifetime. Values above this are clamped down to this maximum.
+
+    InviteAbuseMaxAttempts          Default 10
+        Number of failed invite attempts from a single IP before a temporary ban is applied.
+
+    InviteAbuseWindowSeconds        Default 120
+        Rolling window in seconds for counting failed invite attempts. Attempts older than this window are not counted.
+
+    InviteAbuseBanDurationSeconds   Default 3600 (1 hour)
+        Duration of the temporary ban when an IP exceeds the max attempts within the window.
+
+5.2 Creating an Invite
+
+    Use the server_create_invite WebSocket message. You can optionally specify:
+
+        max_uses           Custom usage limit (max 1000 by default, or set higher via config)
+        expires_in_seconds Custom lifetime in seconds (max 31536000 = 12 months)
+
+    If not specified, backend defaults from BackendSettings.ini are applied.
+
+    Example: Create an invite valid for 7 days with 50 max uses:
+        {
+            "type": "server_create_invite",
+            "data": {
+                "room_id": "123456789",
+                "max_uses": 50,
+                "expires_in_seconds": 604800
+            }
+        }
+
+5.3 Invite Lifecycle
+
+    1. Authorized server member with CAN_CREATE_INVITES calls server_create_invite with optional max_uses and expires_in_seconds.
+    2. Server generates a random invite code and stores it in the database with expiration and usage limits.
+    3. New user calls server_join_invite with the code.
+    4. Server atomically checks: code exists, not expired (expires_at is in the future), usage count below max_uses.
+    5. If valid, user is added to the server with zero special permissions and usage count increments.
+    6. If invalid (expired or max used), an error is returned.
+
+5.4 Listing Invites
+
+    Use server_list_invites to view all invites for a server. Results are paginated with start/count
+    and include each invite's code, creator, usage stats, and timestamps. Requires CAN_CREATE_INVITES
+    permission or server owner.
+
+    Example: Get first page of 20 invites:
+        {
+            "type": "server_list_invites",
+            "data": {
+                "room_id": "123456789",
+                "start": 0,
+                "count": 20
+            }
+        }
+
+    Response includes total count for building pagination UI:
+        {
+            "type": "server_invites_list",
+            "data": {
+                "room_id": 123456789,
+                "start": 0,
+                "count": 20,
+                "total": 47,
+                "invites": [ ... ]
+            }
+        }
+
+5.5 Deleting Invites
+
+    Use server_delete_invite to permanently remove an invite by its code. Once deleted, the code
+    can no longer be used to join the server. Requires CAN_CREATE_INVITES permission or server owner.
+
+    Example:
+        {
+            "type": "server_delete_invite",
+            "data": {
+                "room_id": "123456789",
+                "invite_code": "aB3xK7mQ2p"
+            }
+        }
+
+5.6 Invite Abuse Protection
+
+    To prevent brute force guessing of invite codes, the server tracks failed invite attempts per IP address:
+
+    1. When a user submits an invalid, expired, or depleted invite code:
+       a. The failure is recorded against the clients IP address.
+       b. Failures are counted within a rolling window (default 120 seconds).
+       c. If the count reaches the maximum allowed (default 10), the IP is banned.
+    2. When banned, all subsequent invite attempts from that IP return an abuse ban error.
+    3. The ban lasts for the configured duration (default 3600 seconds = 1 hour).
+    4. On a successful invite join, the failure counter for that IP is reset.
+    5. Periodic cleanup removes expired bans and stale records every 5 minutes.
+
+    Configuration (BackendSettings.ini):
+        InviteAbuseMaxAttempts = 10           Max failures before ban
+        InviteAbuseWindowSeconds = 120        Rolling window for counting failures
+        InviteAbuseBanDurationSeconds = 3600  Ban duration in seconds (1 hour)
+
+5.7 Migration
+
+    For existing databases, run migration_invite_limits.sql to add the required columns (max_uses, current_uses) and ensure expires_at is NOT NULL with a 30 day default. Also run migration_member_permissions.sql to add the permissions column.
+
+============================================
+SECTION 6: ERROR HANDLING
+============================================
+
+REST API errors return HTTP status codes:
+
+    200  Success
+    204  No content
+    400  Bad request, invalid input
+    401  Unauthorized, invalid token
+    403  Forbidden, wrong credentials
+    429  Too many requests, rate limited
+    500  Internal server error
+
+WebSocket errors return:
+
+    type  error
+    data:
+        message  Error description
+
+Common WebSocket error messages:
+
+    missing type              Message has no type field
+    missing data              Message has no data field
+    not authenticated         Session token invalid or missing
+    not a member of this room User is not in the specified server
+    message too large         Content exceeds maximum message size
+    invalid or expired invite code  Invite code is not valid
+    abuse ban: too many failed invite attempts. Try again later.  IP banned for too many wrong invite codes
+    service abuse             Specific rate limit exceeded (login, register, server creation)
+    Global rate limit exceeded    IP has exceeded 5000 req/hr global cap
+    failed to create room     Server creation failed
+    failed to join room       Server join operation failed
+    failed to leave room      Server leave operation failed
+    permission denied: you lack CAN_CREATE_INVITES permission            User needs invite creation permission
+    permission denied: only the server owner can manage member permissions  Not the server owner
+    cannot modify the server owners permissions  Owner permissions are immutable
+    invite not found or already deleted  Invite code does not exist or was already deleted
+
+============================================
+SECTION 7: RATE LIMITING
+============================================
+
+Squirrel Communicator uses a layered rate limiting strategy to protect against abuse.
+
+7.1 Global Rate Limit
+
+    Every request (REST endpoint + WebSocket message) counts against a per-IP hourly cap.
+
+    Default:  5000 requests per hour per IP (~83/min, ~1.4/sec)
+    Config:   GlobalRequestsPerHour in BackendSettings.ini
+    Reset:    Counters reset every RateLimitTimeToClearInMins (default 60 minutes)
+    Scope:    Applied in CrowAppMiddleware::before_handle (REST) and FSocket::OnMessageReceived_TEXT (WebSocket)
+    Error:    HTTP 429 or WebSocket error message "Global rate limit exceeded"
+
+    This prevents any single IP from flooding the server with thousands of requests per second,
+    regardless of which endpoint is targeted.
+
+7.2 Specific Operation Rate Limits
+
+    Certain sensitive operations have stricter per-IP limits:
+
+    Operation         Limit (per hour)  Config key
+    Authentication    55                RateLimitNumberPerIP
+    Password reset    25                PasswordRateLimitNumberPerIP
+    Server creation   2                 CreateRoomRateLimitNumberPerIP
+
+7.3 Invite Abuse Protection
+
+    Separate from general rate limiting. See Section 5.6 for the invite-specific IP ban system
+    that triggers after 10 failed invite attempts in a 120 second window.
+
+7.4 Configuration Summary
+
+    BackendSettings.ini parameters:
+
+    GlobalRequestsPerHour           Default 5000
+        Maximum total requests (REST + WebSocket) per IP per hour.
+
+    RateLimitTimeToClearInMins      Default 60
+        How often all rate limit counters reset (in minutes).
+
+    RateLimitNumberPerIP            Default 55
+        Max login/register attempts per IP per window.
+
+    PasswordRateLimitNumberPerIP    Default 25
+        Max password reset requests per IP per window.
+
+    CreateRoomRateLimitNumberPerIP  Default 2
+        Max server creation requests per IP per window.
+
+    InviteAbuseMaxAttempts          Default 10
+        Failed invite attempts before temporary ban.
+
+    InviteAbuseWindowSeconds        Default 120
+        Rolling window for counting failed invite attempts.
+
+    InviteAbuseBanDurationSeconds   Default 3600
+        Duration of the invite abuse ban in seconds.
