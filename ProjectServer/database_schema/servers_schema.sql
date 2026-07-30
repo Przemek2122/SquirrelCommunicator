@@ -6,7 +6,7 @@
 --
 -- Tables created:
 --   1. servers          - Core server/room definitions
---   2. server_channels  - Channels within servers (text + voice)
+--   2. server_channels  - Channels within servers (text + voice) with position ordering
 --   3. server_members   - Server membership (user_id to server_id) with permissions
 --   4. server_messages  - Messages in server text channels
 --   5. server_invites   - Invite codes for joining servers
@@ -34,8 +34,10 @@ CREATE TABLE IF NOT EXISTS server_channels (
     server_id   BIGINT UNSIGNED NOT NULL,
     name        VARCHAR(128)    NOT NULL,
     type        ENUM('text', 'voice') NOT NULL DEFAULT 'text',
+    position    INT             NOT NULL DEFAULT 0,
 
     INDEX idx_channels_server (server_id),
+    INDEX idx_channels_position (server_id, position),
 
     CONSTRAINT fk_channels_server
         FOREIGN KEY (server_id) REFERENCES servers(id)

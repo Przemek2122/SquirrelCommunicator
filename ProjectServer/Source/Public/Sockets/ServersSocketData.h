@@ -65,6 +65,30 @@ public:
     void HandleServerListInvites(AnyWebSocket wsVariant, uWS::OpCode opCode,
                                  Uint64 RoomId, Uint32 Start, Uint32 Count);
 
+    /**
+     * Move a channel to a new position in the channel list.
+     * Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     * All channels are renumbered after the move to eliminate gaps.
+     */
+    void HandleMoveChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                           Uint64 RoomId, Uint64 ChannelId, int32 NewPosition);
+
+    /**
+     * Delete a channel from a server.
+     * Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     * Deletes the channel and all its messages permanently.
+     */
+    void HandleDeleteChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                             Uint64 RoomId, Uint64 ChannelId);
+
+    /**
+     * Rename a channel in a server.
+     * Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     * Updates the channel name in DB and in-memory cache, then broadcasts room_channel_renamed.
+     */
+    void HandleRenameChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                             Uint64 RoomId, Uint64 ChannelId, const std::string& NewName);
+
     /** Broadcast a member's status change to all servers they belong to */
     void BroadcastMemberStatus(Uint64 UserId, const std::string& UserName, EUserStatus NewStatus);
 

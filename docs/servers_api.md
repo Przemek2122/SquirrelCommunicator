@@ -1,6 +1,6 @@
-Squirrel Communicator Server API Documentation
+# Squirrel Communicator Server API Documentation
 
-Version 1.3
+Version 1.5
 
 This document describes all server endpoints and WebSocket message types available in Squirrel Communicator. The system uses two communication channels: REST API over HTTPS for authentication and account management, and WebSocket for real time messaging and server operations.
 
@@ -485,7 +485,8 @@ These messages handle the community server system with channels and voice chat. 
             room_id, channel_id, message_id, sender_id, sender_name, content, timestamp.
 
     type: create_channel
-        Create a new channel in a server.
+        Create a new channel in a server. The channel is auto-assigned the next
+        available position (appears at the bottom of the channel list).
 
         data:
             room_id       string  Server ID
@@ -494,6 +495,111 @@ These messages handle the community server system with channels and voice chat. 
 
         Server broadcasts type: room_channel_created to all server members with:
             room_id, channel_id, channel_name, channel_type.
+
+        New in channel data response: position field indicating the display order.
+
+    type: move_channel
+        Move a channel to a new position in the server's channel list.
+        All channels are renumbered to eliminate gaps after the move.
+        Requires CAN_MANAGE_CHANNELS permission or server owner.
+
+        data:
+            room_id      string  REQUIRED. Server ID.
+            channel_id   string  REQUIRED. Channel ID to move.
+            new_position number  REQUIRED. Target position (0-based). Clamped to valid range.
+
+        Example request:
+            {
+                "type": "move_channel",
+                "data": {
+                    "room_id": "123456789",
+                    "channel_id": "42",
+                    "new_position": 0
+                }
+            }
+
+        Server response type: room_channel_moved
+            data:
+                room_id      Server ID (number)
+                channel_id   Moved channel ID (number)
+                new_position New position (number)
+
+        Server broadcasts type: room_channel_moved to all server members (same data).
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_MANAGE_CHANNELS permission
+
+        Error if channel not found:
+            type: error
+            message: failed to move channel
+
+    type: delete_channel
+        Permanently delete a channel and all its messages.
+        Requires CAN_MANAGE_CHANNELS permission or server owner.
+
+        data:
+            room_id     string  REQUIRED. Server ID.
+            channel_id  string  REQUIRED. Channel ID to delete.
+
+        Example request:
+            {
+                "type": "delete_channel",
+                "data": {
+                    "room_id": "123456789",
+                    "channel_id": "42"
+                }
+            }
+
+        Server response type: room_channel_deleted
+            data:
+                room_id     Server ID (number)
+                channel_id  Deleted channel ID (number)
+
+        Server broadcasts type: room_channel_deleted to all server members (same data).
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_MANAGE_CHANNELS permission
+
+        Error if channel not found:
+            type: error
+            message: failed to delete channel or channel not found
+
+    type: rename_channel
+        Rename a channel in a server. Updates both DB and in-memory cache.
+        Requires CAN_MANAGE_CHANNELS permission or server owner.
+
+        data:
+            room_id     string  REQUIRED. Server ID.
+            channel_id  string  REQUIRED. Channel ID to rename.
+            new_name    string  REQUIRED. New name for the channel. Must not be empty.
+
+        Example request:
+            {
+                "type": "rename_channel",
+                "data": {
+                    "room_id": "123456789",
+                    "channel_id": "42",
+                    "new_name": "general-chat"
+                }
+            }
+
+        Server response type: room_channel_renamed
+            data:
+                room_id     Server ID (number)
+                channel_id  Renamed channel ID (number)
+                new_name    New channel name (string)
+
+        Server broadcasts type: room_channel_renamed to all server members (same data).
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_MANAGE_CHANNELS permission
+
+        Error if channel not found or name is empty:
+            type: error
+            message: failed to rename channel or channel not found
 
     type: server_invite
         Directly invite a user to a server by user ID. Sends a push notification to the target user.
@@ -753,6 +859,32 @@ These messages handle the community server system with channels and voice chat. 
             user_name  User name
             status     New status string
 
+    type: room_channel_moved
+        Broadcast when a channel is reordered. All members receive this so
+        their channel lists stay in sync.
+
+        data:
+            room_id      Server ID (number)
+            channel_id   Moved channel ID (number)
+            new_position New position (number)
+
+    type: room_channel_deleted
+        Broadcast when a channel is deleted. All members receive this so
+        their channel lists stay in sync.
+
+        data:
+            room_id     Server ID (number)
+            channel_id  Deleted channel ID (number)
+
+    type: room_channel_renamed
+        Broadcast when a channel is renamed. All members receive this so
+        their channel names stay in sync.
+
+        data:
+            room_id     Server ID (number)
+            channel_id  Renamed channel ID (number)
+            new_name    New channel name (string)
+
     type: server_member_permissions_updated
         Broadcast when a members permissions have been updated.
 
@@ -799,7 +931,10 @@ SECTION 3: DATA STRUCTURES
         channel_id      string  Channel ID
         channel_name    string  Display name
         channel_type    string  text or voice
-        connected_users array   Present only for voice channels. Array of user_id, user_name objects currently connected.
+        position        number  Display order (0-based, lower = first). Channels are
+                                always returned sorted by position ascending.
+        connected_users array   Present only for voice channels. Array of user_id,
+                                user_name objects currently connected.
     }
 
 3.4 Invite Object (from server_invites_list)
@@ -844,7 +979,7 @@ Squirrel Communicator uses a Discord like permission system for server members. 
     Bit 0  0x01  CAN_CREATE_INVITES     Allow member to create invite codes
     Bit 1  0x02  CAN_KICK_MEMBERS       Allow member to kick others (future)
     Bit 2  0x04  CAN_BAN_MEMBERS        Allow member to ban others (future)
-    Bit 3  0x08  CAN_MANAGE_CHANNELS    Allow member to create, edit, delete channels (future)
+    Bit 3  0x08  CAN_MANAGE_CHANNELS    Allow member to create, delete, rename, and reorder channels
     Bit 4  0x10  CAN_MANAGE_PERMISSIONS Allow member to manage other members permissions (future)
 
     All bits set  0xFFFFFFFFFFFFFFFF  means all permissions (granted to owner).
@@ -1027,7 +1162,11 @@ Common WebSocket error messages:
     failed to create room     Server creation failed
     failed to join room       Server join operation failed
     failed to leave room      Server leave operation failed
+    failed to move channel    Channel reorder operation failed (channel not found or DB error)
+    failed to delete channel or channel not found  Channel deletion failed
+    failed to rename channel or channel not found  Channel rename failed (channel not found, empty name, or DB error)
     permission denied: you lack CAN_CREATE_INVITES permission            User needs invite creation permission
+    permission denied: you lack CAN_MANAGE_CHANNELS permission           User needs channel management permission
     permission denied: only the server owner can manage member permissions  Not the server owner
     cannot modify the server owners permissions  Owner permissions are immutable
     invite not found or already deleted  Invite code does not exist or was already deleted
@@ -1092,3 +1231,79 @@ Squirrel Communicator uses a layered rate limiting strategy to protect against a
 
     InviteAbuseBanDurationSeconds   Default 3600
         Duration of the invite abuse ban in seconds.
+
+============================================
+SECTION 8: CHANNEL MANAGEMENT
+============================================
+
+Channels within a server have a position field that determines their display order.
+Lower position values appear first in the channel list.
+
+8.1 Channel Position
+
+    When channels are returned in any server object (via room_created, server_list,
+    server_joined, etc.), they are always sorted by position ascending. Each channel
+    object includes its position:
+
+        {
+            "channel_id": "42",
+            "channel_name": "general",
+            "channel_type": "text",
+            "position": 0
+        }
+
+    The frontend should display channels in the order they are received — the server
+    guarantees correct ordering.
+
+8.2 Creating Channels
+
+    New channels created via create_channel are auto-assigned the next available position
+    (highest existing position + 1), so they appear at the bottom of the list by default.
+
+8.3 Reordering Channels
+
+    Use move_channel to change a channel's position. The new_position parameter is
+    clamped to the valid range [0, channel_count - 1]. All channels are renumbered
+    sequentially (0, 1, 2, ...) after the move to eliminate position gaps.
+
+    Requires CAN_MANAGE_CHANNELS permission (or server owner).
+
+    The move is broadcast to all server members via room_channel_moved so every
+    connected client can update their channel list in real time.
+
+8.4 Renaming Channels
+
+    Use rename_channel to change a channel's name. The new name must not be empty.
+    The change is persisted to the database and reflected in the in-memory cache
+    immediately.
+
+    Requires CAN_MANAGE_CHANNELS permission (or server owner).
+
+    The rename is broadcast to all server members via room_channel_renamed so every
+    connected client can update their channel list in real time.
+
+    Example:
+        {
+            "type": "rename_channel",
+            "data": {
+                "room_id": "123456789",
+                "channel_id": "42",
+                "new_name": "general-chat"
+            }
+        }
+
+8.5 Deleting Channels
+
+    Use delete_channel to permanently remove a channel and all its messages.
+    After deletion, remaining channels are renumbered to eliminate position gaps.
+
+    Requires CAN_MANAGE_CHANNELS permission (or server owner).
+
+    The deletion is broadcast to all server members via room_channel_deleted so every
+    connected client can remove the channel from their UI.
+
+8.6 Database Schema
+
+    The server_channels table has a position column (INT NOT NULL DEFAULT 0)
+    used for ordering. For existing databases, run migration_channel_position.sql
+    to add this column and backfill positions for existing channels.

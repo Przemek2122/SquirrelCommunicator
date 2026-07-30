@@ -35,7 +35,7 @@ public:
 	std::unordered_map<std::string_view, FRateLimit> RateLimitMap;
 	std::shared_mutex RateLimitMutex;
 	std::mutex ClearMutex;
-	bool bIsClearing;
+	bool bIsClearing = false;
 };
 
 /**

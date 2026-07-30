@@ -74,6 +74,9 @@ enum class ESocketMessageServersType : uint8
     LeaveRoom,
     RoomMessage,
     CreateChannel,
+    MoveChannel,            // Request to reorder a channel (change position)
+    DeleteChannel,          // Request to delete a channel
+    RenameChannel,          // Request to rename a channel
     ServerInvite,
     RoomJoinVoice,
     RoomLeaveVoice,
@@ -90,6 +93,9 @@ enum class ESocketMessageServersType : uint8
     RoomUserJoined,
     RoomUserLeft,
     RoomChannelCreated,
+    RoomChannelMoved,       // Channel was reordered (broadcast + response)
+    RoomChannelDeleted,     // Channel was deleted (broadcast + response)
+    RoomChannelRenamed,     // Channel was renamed (broadcast + response)
     RoomUserVoiceJoin,
     RoomUserVoiceLeave,
     RoomMemberStatus,

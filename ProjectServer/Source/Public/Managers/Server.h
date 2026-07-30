@@ -29,7 +29,7 @@ namespace EServerPermission
     /** Allow member to ban other members (future) */
     constexpr Uint64 CAN_BAN_MEMBERS    = 1ULL << 2;
 
-    /** Allow member to create, edit, delete channels (future) */
+    /** Allow member to create, edit, delete, and reorder channels */
     constexpr Uint64 CAN_MANAGE_CHANNELS = 1ULL << 3;
 
     /** Allow member to manage other members permissions (future) */
@@ -39,19 +39,19 @@ namespace EServerPermission
     constexpr Uint64 ALL_PERMISSIONS = 0xFFFFFFFFFFFFFFFFULL;
 
     /** Helper: check if a permission bit is set */
-    inline bool HasPermission(Uint64 Permissions, Uint64 Permission)
+    inline bool HasPermission(const Uint64 Permissions, const Uint64 Permission)
     {
         return (Permissions & Permission) != 0;
     }
 
     /** Helper: grant a permission */
-    inline void Grant(Uint64& Permissions, Uint64 Permission)
+    inline void Grant(Uint64& Permissions, const Uint64 Permission)
     {
         Permissions |= Permission;
     }
 
     /** Helper: revoke a permission */
-    inline void Revoke(Uint64& Permissions, Uint64 Permission)
+    inline void Revoke(Uint64& Permissions, const Uint64 Permission)
     {
         Permissions &= ~Permission;
     }
@@ -64,6 +64,7 @@ struct FServerChannel
     Uint64 ServerId = 0;
     std::string ChannelName;
     EServerChannelType ChannelType = EServerChannelType::Text;
+    int32 Position = 0;  // Display ordering (0-based). Lower = shown first.
 
     /** For voice channels: set of user IDs currently connected */
     std::vector<Uint64> ConnectedUsers;
@@ -95,7 +96,7 @@ struct FServerMember
     FServerMember() = default;
 
     /** Check if this member has a specific permission */
-    bool HasPermission(Uint64 Permission) const
+    bool HasPermission(const Uint64 Permission) const
     {
         return EServerPermission::HasPermission(Permissions, Permission);
     }
@@ -155,7 +156,8 @@ public:
     void AddChannel(const FServerChannel& Channel);
     bool RemoveChannel(Uint64 ChannelId);
     std::shared_ptr<FServerChannel> GetChannel(Uint64 ChannelId);
-    std::vector<std::shared_ptr<FServerChannel>> GetAllChannels();
+    /** Returns channels sorted by Position ascending (lower = first) */
+    std::vector<std::shared_ptr<FServerChannel>> GetAllChannels() const;
 
     /** Member management */
     void AddMember(const FServerMember& Member);
@@ -172,10 +174,10 @@ public:
     void AddMessage(const FServerMessage& Message);
 
     /** Get messages before a timestamp. BeforeTimestamp=0 means no filter (get most recent). */
-    std::vector<FServerMessage> GetChannelMessages(Uint64 ChannelId, Uint64 BeforeTimestamp, int32 Limit);
+    std::vector<FServerMessage> GetChannelMessages(Uint64 ChannelId, Uint64 BeforeTimestamp, Uint32 Limit);
 
     /** Thread-safe access */
-    std::shared_mutex& GetMutex() { return ServerMutex; }
+    std::shared_mutex& GetMutex() const { return ServerMutex; }
 
 private:
     /** Server id */

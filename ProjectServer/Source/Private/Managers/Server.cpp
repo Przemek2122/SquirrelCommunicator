@@ -15,16 +15,16 @@ void FServer::AddChannel(const FServerChannel& Channel)
     Channels[Channel.ChannelId] = std::make_shared<FServerChannel>(Channel);
 }
 
-bool FServer::RemoveChannel(Uint64 ChannelId)
+bool FServer::RemoveChannel(const Uint64 ChannelId)
 {
     std::unique_lock Lock(ServerMutex);
     return Channels.erase(ChannelId) > 0;
 }
 
-std::shared_ptr<FServerChannel> FServer::GetChannel(Uint64 ChannelId)
+std::shared_ptr<FServerChannel> FServer::GetChannel(const Uint64 ChannelId)
 {
     std::shared_lock Lock(ServerMutex);
-    auto Iter = Channels.find(ChannelId);
+    const auto Iter = Channels.find(ChannelId);
     if (Iter != Channels.end())
     {
         return Iter->second;
@@ -32,7 +32,7 @@ std::shared_ptr<FServerChannel> FServer::GetChannel(Uint64 ChannelId)
     return nullptr;
 }
 
-std::vector<std::shared_ptr<FServerChannel>> FServer::GetAllChannels()
+std::vector<std::shared_ptr<FServerChannel>> FServer::GetAllChannels() const
 {
     std::shared_lock Lock(ServerMutex);
     std::vector<std::shared_ptr<FServerChannel>> Result;
@@ -41,6 +41,15 @@ std::vector<std::shared_ptr<FServerChannel>> FServer::GetAllChannels()
     {
         Result.push_back(Pair.second);
     }
+
+    // Sort by Position ascending so channels appear in the order
+    // the user arranged them (lower position = shown first).
+    std::ranges::sort(Result,
+        [](const std::shared_ptr<FServerChannel>& A, const std::shared_ptr<FServerChannel>& B)
+        {
+          return A->Position < B->Position;
+        });
+
     return Result;
 }
 
@@ -50,29 +59,29 @@ void FServer::AddMember(const FServerMember& Member)
     Members[Member.UserId] = Member;
 }
 
-bool FServer::RemoveMember(Uint64 UserId)
+bool FServer::RemoveMember(const Uint64 UserId)
 {
     std::unique_lock Lock(ServerMutex);
     return Members.erase(UserId) > 0;
 }
 
-bool FServer::HasMember(Uint64 UserId) const
+bool FServer::HasMember(const Uint64 UserId) const
 {
     std::shared_lock Lock(ServerMutex);
-    return Members.find(UserId) != Members.end();
+    return Members.contains(UserId);
 }
 
-void FServer::UpdateMemberStatus(Uint64 UserId, const std::string& NewStatus)
+void FServer::UpdateMemberStatus(const Uint64 UserId, const std::string& NewStatus)
 {
     std::unique_lock Lock(ServerMutex);
-    auto Iter = Members.find(UserId);
+    const auto Iter = Members.find(UserId);
     if (Iter != Members.end())
     {
         Iter->second.Status = NewStatus;
     }
 }
 
-void FServer::UpdateMemberUserName(Uint64 UserId, const std::string& UserName)
+void FServer::UpdateMemberUserName(const Uint64 UserId, const std::string& UserName)
 {
     std::unique_lock Lock(ServerMutex);
     auto Iter = Members.find(UserId);
@@ -127,28 +136,28 @@ void FServer::AddMessage(const FServerMessage& Message)
     // Newest messages at front (index 0) - sorted by MessageId descending
     auto& Vec = ChannelMessages[Message.ChannelId];
     // Insert maintaining descending order by MessageId
-    auto it = std::lower_bound(Vec.begin(), Vec.end(), Message,
+    const auto it = std::ranges::lower_bound(Vec, Message,
         [](const FServerMessage& a, const FServerMessage& b) {
-            return a.MessageId > b.MessageId;
+         return a.MessageId > b.MessageId;
         });
     Vec.insert(it, Message);
 }
 
-std::vector<FServerMessage> FServer::GetChannelMessages(Uint64 ChannelId, Uint64 BeforeTimestamp, int32 Limit)
+std::vector<FServerMessage> FServer::GetChannelMessages(const Uint64 ChannelId, const Uint64 BeforeTimestamp, const Uint32 Limit)
 {
     std::shared_lock Lock(ServerMutex);
-    auto Iter = ChannelMessages.find(ChannelId);
+    const auto Iter = ChannelMessages.find(ChannelId);
     if (Iter == ChannelMessages.end())
     {
         return {};
     }
 
-    const auto& Messages = Iter->second;
+    const std::vector<FServerMessage>& Messages = Iter->second;
     std::vector<FServerMessage> Result;
     Result.reserve(std::min(static_cast<size_t>(Limit), Messages.size()));
 
     // Messages are stored newest-first. Iterate and collect messages before the timestamp.
-    for (const auto& Msg : Messages)
+    for (const FServerMessage& Msg : Messages)
     {
         if (Result.size() >= static_cast<size_t>(Limit))
         {
@@ -165,7 +174,7 @@ std::vector<FServerMessage> FServer::GetChannelMessages(Uint64 ChannelId, Uint64
             // Compare timestamps: CreatedAt is stored as string epoch nanoseconds
             try
             {
-                Uint64 MsgTimestamp = std::stoull(Msg.CreatedAt);
+                const Uint64 MsgTimestamp = std::stoull(Msg.CreatedAt);
                 if (MsgTimestamp < BeforeTimestamp)
                 {
                     Result.push_back(Msg);

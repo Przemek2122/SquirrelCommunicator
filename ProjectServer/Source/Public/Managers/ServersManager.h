@@ -16,7 +16,7 @@ class FServer;
  * Handles:
  *  - Server creation and deletion
  *  - Server membership (join/leave/invite)
- *  - Channel CRUD within servers
+ *  - Channel CRUD within servers (including reordering via MoveChannel and renaming via RenameChannel)
  *  - Messages within text channels
  *  - Invite code generation, resolution, listing, and deletion (with abuse protection)
  *  - Member permission management (bitfield)
@@ -58,13 +58,31 @@ public:
     /** Check if a user has a specific permission in a server (owner always has all) */
     bool UserHasPermission(Uint64 ServerId, Uint64 UserId, Uint64 Permission);
 
-    /** Channel operations */
+    /**
+     * Channel operations
+     *
+     * AddChannel: creates a new channel and auto-assigns it the next available position
+     *   (max position + 1) so it appears at the bottom of the channel list.
+     *
+     * RemoveChannel: deletes a channel and all its messages permanently.
+     *   Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     *   Returns true on success, false if the channel wasn't found or permission denied.
+     *
+     * MoveChannel: changes a channel's display position. All other channels are
+     *   renumbered to fill gaps. NewPosition is clamped to the valid range.
+     *   Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     *
+     * RenameChannel: changes a channel's name. Updates both DB and in-memory cache.
+     *   Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     */
     Uint64 AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType);
-    bool RemoveChannel(Uint64 ServerId, Uint64 ChannelId);
+    bool RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 RequestedByUserId);
+    bool MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPosition, Uint64 RequestedByUserId);
+    bool RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName, Uint64 RequestedByUserId);
 
     /** Message operations */
     Uint64 AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 SenderId, const std::string& SenderName, const std::string& Content);
-    std::vector<FServerMessage> GetChannelMessages(Uint64 ServerId, Uint64 ChannelId, Uint64 BeforeTimestamp, int32 Limit);
+    std::vector<FServerMessage> GetChannelMessages(Uint64 ServerId, Uint64 ChannelId, Uint64 BeforeTimestamp, Uint32 Limit);
 
     /**
      * Invite operations
@@ -119,6 +137,8 @@ protected:
     bool UploadNewServerToDB(const std::shared_ptr<FServer>& ServerPtr);
     bool DeleteServerFromDB(Uint64 InServerId);
     bool UploadChannelToDB(Uint64 ServerId, FServerChannel& Channel);
+    bool DeleteChannelFromDB(Uint64 ServerId, Uint64 ChannelId);
+    bool UpdateChannelNameInDB(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName);
     bool UploadMessageToDB(const FServerMessage& Message, Uint64& OutMessageId);
     bool UploadMemberToDB(Uint64 ServerId, Uint64 UserId, Uint64 Permissions);
     bool RemoveMemberFromDB(Uint64 ServerId, Uint64 UserId);
@@ -136,6 +156,18 @@ protected:
      */
     int32 GetActiveInviteCountForServer(Uint64 ServerId);
 
+    /**
+     * Get the next available position for a new channel.
+     * Returns max(position) + 1 for channels in this server, or 0 if no channels exist.
+     */
+    int32 GetNextChannelPosition(Uint64 ServerId);
+
+    /**
+     * Renumber all channel positions for a server sequentially (0, 1, 2, ...)
+     * after a move or delete to eliminate gaps. Updates both DB and in-memory cache.
+     */
+    void RenumberChannelPositions(Uint64 ServerId);
+
     /** Download server data from DB into cache */
     bool DownloadServerFromDB(Uint64 ServerId);
 
@@ -146,7 +178,7 @@ protected:
     bool DownloadMembersFromDB(Uint64 ServerId, std::shared_ptr<FServer> Server);
 
     /** Download messages for a channel from DB (timestamp-paginated) */
-    bool DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<FServer> Server, Uint64 BeforeTimestamp = 0, int32 Limit = 50);
+    bool DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<FServer> Server, Uint64 BeforeTimestamp = 0, Uint32 Limit = 50);
 
     /** Generate a unique token for a server */
     static std::string GenerateServerToken();

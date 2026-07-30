@@ -8,43 +8,43 @@
 
 FUserSessionData::FUserSessionData()
 	: UserId(0)
-	, SessionStartTime(0)
+	, SessionTime(0)
 {
 }
 
-FUserSessionData::FUserSessionData(const Uint64 InUserId, const Uint64 InSessionStartTime)
+FUserSessionData::FUserSessionData(const Uint64 InUserId, const Uint64 InSessionTime)
 	: UserId(InUserId)
-	, SessionStartTime(InSessionStartTime)
+	, SessionTime(InSessionTime)
 {
 }
 
 FUserSessionData::FUserSessionData(const FUserSessionData& UserSessionData)
 	: UserId(UserSessionData.UserId)
-	, SessionStartTime(UserSessionData.SessionStartTime)
+	, SessionTime(UserSessionData.SessionTime)
 {
 }
 
 FUserSessionData::FUserSessionData(FUserSessionData&& UserSessionData) noexcept
 	: UserId(UserSessionData.UserId)
-	, SessionStartTime(UserSessionData.SessionStartTime)
+	, SessionTime(UserSessionData.SessionTime)
 {
 }
 
 bool FUserSessionData::IsValid() const
 {
-	return (UserId != 0 && SessionStartTime != 0);
+	return (UserId != 0 && SessionTime != 0);
 }
 
-void FUserSessionData::SetSessionStartTime(Uint64 InSessionStartTime)
+void FUserSessionData::SetSessionTimeLeft(const Uint64 InSessionTime)
 {
 	std::unique_lock MutexScopeLock(SessionUpdateMutex);
 
-	SessionStartTime = InSessionStartTime;
+	SessionTime = InSessionTime;
 }
 
-Uint64 FUserSessionData::GetSessionStartTime() const
+Uint64 FUserSessionData::GetSessionTime() const
 {
-	return SessionStartTime;
+	return SessionTime;
 }
 
 FSessionManager::FSessionManager(const Uint64 InSessionExpirationTime)
@@ -54,19 +54,9 @@ FSessionManager::FSessionManager(const Uint64 InSessionExpirationTime)
 {
 }
 
-FSessionManager::~FSessionManager()
-{
-	// std::jthread auto-requests stop and joins on destruction
-}
-
 void FSessionManager::Init()
 {
 	CurrentTimeCached = FUtil::GetSeconds();
-
-	if (EncryptionKey.empty())
-	{
-		EncryptionKey = FEncryptionUtil::GenerateSecureSalt(64);
-	}
 
 	WorkerThread = std::jthread([this](std::stop_token stoken)
 	{
@@ -156,7 +146,7 @@ bool FSessionManager::RefreshSessionToken(const std::string& InSessionToken)
 	{
 		std::lock_guard<std::shared_mutex> MutexScopeLock(SessionIdToUserIdMapMutex);
 		FUserSessionData& SessionData = SessionIdToUserIdMap[InSessionToken];
-		SessionData.SetSessionStartTime(CurrentTimeCached + SessionExpirationTime);
+		SessionData.SetSessionTimeLeft(CurrentTimeCached + SessionExpirationTime);
 
 		bIsAlive = true;
 	}
@@ -204,7 +194,7 @@ bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)
 		const std::optional<FUserSessionData> UserSessionData = SessionIdToUserIdMap.FindValueByKey(InSessionToken);
 		if (UserSessionData.has_value())
 		{
-			const Uint64 SessionExpirationTime = UserSessionData->GetSessionStartTime();
+			const Uint64 SessionExpirationTime = UserSessionData->GetSessionTime();
 			bIsSessionTokenAlive = CurrentTimeCached < SessionExpirationTime;
 		}
 	}
@@ -214,26 +204,19 @@ bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)
 
 std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const
 {
-	std::string OutSession;
-	std::string TemporaryString;
-
-	// Add salt
-	const std::string Salt = FEncryptionUtil::GenerateSecureSalt(64);
-	const std::string SaltAsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt, FPredefinedCharsets::BASE62);
-	TemporaryString += SaltAsBase62;
-
-	const std::string Salt2 = FEncryptionUtil::GenerateSecureSalt(64);
-	const std::string Salt2AsBase62 = FEncryptionUtil::ToBaseN_Irreversible(Salt2, FPredefinedCharsets::BASE62);
-
+	// Bit-flip input ID - Does not need to be safe, user knows his Id anyway
 	static constexpr uint64_t SessionFlipMask = 0x9E3779B97F4A7C15ULL;
 	const Uint64 FlippedNumber = FBitFlipping::FlipBits(InUserId, SessionFlipMask);
-	const std::string NumberAsBase62 = FEncryptionUtil::ToBaseNNum(FlippedNumber, FPredefinedCharsets::BASE62);
 
-	TemporaryString += NumberAsBase62;
-	TemporaryString += Salt2AsBase62;
+	// Prepare buffer with exact capacity: salt (32) + flipped ID (8) + salt (32)
+	std::string RawPayload;
+	RawPayload.reserve(32 + sizeof(Uint64) + 32);
 
-	const std::string EncryptedData = FEncryptionUtil::Encrypt(TemporaryString, EncryptionKey);
-	const std::string SimpleData = FEncryptionUtil::ToBaseN_Irreversible(EncryptedData, FPredefinedCharsets::BASE62);
+	// Append salt 1, flipped ID bytes, salt 2
+	RawPayload.append(FEncryptionUtil::GenerateSecureSalt(32));
+	RawPayload.append(reinterpret_cast<const char*>(&FlippedNumber), sizeof(FlippedNumber));
+	RawPayload.append(FEncryptionUtil::GenerateSecureSalt(32));
 
-	return SimpleData;
+	// Encrypt & Encode
+	return FEncryptionUtil::ToBaseN_Irreversible(RawPayload, FPredefinedCharsets::BASE62);
 }

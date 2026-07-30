@@ -142,7 +142,7 @@ Uint64 FServersManager::AddServer(const std::string& InServerName, Uint64 OwnerI
     NewServer->AddMember(OwnerMember);
     UploadMemberToDB(NewServerId, OwnerId, EServerPermission::ALL_PERMISSIONS);
 
-    // Create default channels
+    // Create default channels (position 0 and 1)
     AddChannel(NewServerId, "general", EServerChannelType::Text);
     AddChannel(NewServerId, "General", EServerChannelType::Voice);
 
@@ -302,6 +302,10 @@ Uint64 FServersManager::AddChannel(Uint64 ServerId, const std::string& ChannelNa
     Channel.ChannelName = ChannelName;
     Channel.ChannelType = ChannelType;
 
+    // Auto-assign the next available position so the new channel
+    // appears at the bottom of the list by default.
+    Channel.Position = GetNextChannelPosition(ServerId);
+
     // Upload to DB first to get channel ID
     if (!UploadChannelToDB(ServerId, Channel))
     {
@@ -313,34 +317,186 @@ Uint64 FServersManager::AddChannel(Uint64 ServerId, const std::string& ChannelNa
     return Channel.ChannelId;
 }
 
-bool FServersManager::RemoveChannel(Uint64 ServerId, Uint64 ChannelId)
+bool FServersManager::RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 RequestedByUserId)
 {
-    auto Server = GetServerById(ServerId);
+    std::shared_ptr<FServer> Server = GetServerById(ServerId);
     if (!Server)
+    {
+        LOG_ERROR("RemoveChannel: Server not found: " << ServerId);
+        return false;
+    }
+
+    // Check permission: user must have CAN_MANAGE_CHANNELS or be owner
+    if (!UserHasPermission(ServerId, RequestedByUserId, EServerPermission::CAN_MANAGE_CHANNELS))
+    {
+        LOG_WARN("RemoveChannel: User " << RequestedByUserId << " lacks CAN_MANAGE_CHANNELS permission"
+                 << " in server " << ServerId);
+        return false;
+    }
+
+    // Verify channel exists before deleting
+    if (!Server->GetChannel(ChannelId))
+    {
+        LOG_ERROR("RemoveChannel: Channel not found: " << ChannelId << " in server " << ServerId);
+        return false;
+    }
+
+    if (!DeleteChannelFromDB(ServerId, ChannelId))
+    {
+        LOG_ERROR("RemoveChannel: Failed to delete channel from DB");
+        return false;
+    }
+
+    Server->RemoveChannel(ChannelId);
+
+    // Renumber to eliminate position gaps after deletion
+    RenumberChannelPositions(ServerId);
+
+    LOG_INFO("Channel " << ChannelId << " deleted from server " << ServerId
+             << " by user " << RequestedByUserId);
+    return true;
+}
+
+bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPosition, Uint64 RequestedByUserId)
+{
+    std::shared_ptr<FServer> Server = GetServerById(ServerId);
+    if (!Server)
+    {
+        LOG_ERROR("MoveChannel: Server not found: " << ServerId);
+        return false;
+    }
+
+    // Check permission: user must have CAN_MANAGE_CHANNELS or be owner
+    if (!UserHasPermission(ServerId, RequestedByUserId, EServerPermission::CAN_MANAGE_CHANNELS))
+    {
+        LOG_WARN("MoveChannel: User " << RequestedByUserId << " lacks CAN_MANAGE_CHANNELS permission"
+                 << " in server " << ServerId);
+        return false;
+    }
+
+    // Get channels sorted by current position
+    std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
+    if (Channels.empty())
     {
         return false;
     }
 
+    // Clamp NewPosition to valid range [0, Channels.size() - 1]
+    if (NewPosition < 0)
+        NewPosition = 0;
+    if (NewPosition >= static_cast<int32>(Channels.size()))
+        NewPosition = static_cast<int32>(Channels.size()) - 1;
+
+    // Find the channel to move by ID
+    std::shared_ptr<FServerChannel> MovedChannel = nullptr;
+    int32 OldPosition = -1;
+    for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+    {
+        if (Channels[i]->ChannelId == ChannelId)
+        {
+            MovedChannel = Channels[i];
+            OldPosition = i;
+            break;
+        }
+    }
+
+    if (!MovedChannel || OldPosition < 0)
+    {
+        LOG_ERROR("MoveChannel: Channel " << ChannelId << " not found in server " << ServerId);
+        return false;
+    }
+
+    // No-op if already at the requested position
+    if (OldPosition == NewPosition)
+    {
+        return true;
+    }
+
+    // Remove the channel from its current position
+    Channels.erase(Channels.begin() + OldPosition);
+
+    // Insert at the new position
+    Channels.insert(Channels.begin() + NewPosition, MovedChannel);
+
+    // Renumber all positions sequentially (0, 1, 2, ...)
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
     {
+        LOG_ERROR("MoveChannel: Database connection failed");
         return false;
     }
 
     try
     {
         soci::session& Session = Connect.GetSession();
-        Session << "DELETE FROM server_channels WHERE id = :cid AND server_id = :sid",
-            soci::use(ChannelId),
-            soci::use(ServerId);
+
+        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+        {
+            Channels[i]->Position = i;
+
+            Session << "UPDATE server_channels SET position = :pos WHERE id = :cid AND server_id = :sid",
+                soci::use(i),
+                soci::use(Channels[i]->ChannelId),
+                soci::use(ServerId);
+        }
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("RemoveChannel DB error: " << e.what());
+        LOG_ERROR("MoveChannel DB error: " << e.what());
         return false;
     }
 
-    return Server->RemoveChannel(ChannelId);
+    LOG_INFO("Channel " << ChannelId << " moved from position " << OldPosition
+             << " to " << NewPosition << " in server " << ServerId
+             << " by user " << RequestedByUserId);
+    return true;
+}
+
+bool FServersManager::RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName, Uint64 RequestedByUserId)
+{
+    std::shared_ptr<FServer> Server = GetServerById(ServerId);
+    if (!Server)
+    {
+        LOG_ERROR("RenameChannel: Server not found: " << ServerId);
+        return false;
+    }
+
+    // Check permission: user must have CAN_MANAGE_CHANNELS or be owner
+    if (!UserHasPermission(ServerId, RequestedByUserId, EServerPermission::CAN_MANAGE_CHANNELS))
+    {
+        LOG_WARN("RenameChannel: User " << RequestedByUserId << " lacks CAN_MANAGE_CHANNELS permission"
+                 << " in server " << ServerId);
+        return false;
+    }
+
+    // Validate the new name
+    if (NewName.empty())
+    {
+        LOG_ERROR("RenameChannel: New channel name is empty");
+        return false;
+    }
+
+    // Verify channel exists
+    const std::shared_ptr<FServerChannel> Channel = Server->GetChannel(ChannelId);
+    if (!Channel)
+    {
+        LOG_ERROR("RenameChannel: Channel " << ChannelId << " not found in server " << ServerId);
+        return false;
+    }
+
+    // Persist to DB
+    if (!UpdateChannelNameInDB(ServerId, ChannelId, NewName))
+    {
+        LOG_ERROR("RenameChannel: Failed to update channel name in DB");
+        return false;
+    }
+
+    // Update in-memory cache (shared_ptr, so this modifies the server's cached copy directly)
+    Channel->ChannelName = NewName;
+
+    LOG_INFO("Channel " << ChannelId << " renamed to '" << NewName << "' in server " << ServerId
+             << " by user " << RequestedByUserId);
+    return true;
 }
 
 Uint64 FServersManager::AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 SenderId, const std::string& SenderName, const std::string& Content)
@@ -372,7 +528,7 @@ Uint64 FServersManager::AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 Sen
     return OutMessageId;
 }
 
-std::vector<FServerMessage> FServersManager::GetChannelMessages(const Uint64 ServerId, const Uint64 ChannelId, const Uint64 BeforeTimestamp, const int32 Limit)
+std::vector<FServerMessage> FServersManager::GetChannelMessages(const Uint64 ServerId, const Uint64 ChannelId, const Uint64 BeforeTimestamp, const Uint32 Limit)
 {
     const std::shared_ptr<FServer> Server = GetServerById(ServerId);
     if (!Server)
@@ -413,14 +569,14 @@ std::string FServersManager::CreateInvite(const Uint64 ServerId, const Uint64 Cr
     // Resolve defaults from backend settings
     const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
 
-    if (MaxUses <= 0)
-        MaxUses = Settings->GetInviteDefaultMaxUses();
+    if (MaxUses == 0)
+        MaxUses = static_cast<Uint32>(Settings->GetInviteDefaultMaxUses());
 
-    if (ExpiresInSeconds <= 0)
-        ExpiresInSeconds = Settings->GetInviteDefaultExpiresInSeconds();
+    if (ExpiresInSeconds == 0)
+        ExpiresInSeconds = static_cast<Uint32>(Settings->GetInviteDefaultExpiresInSeconds());
 
     // Clamp expiration to the hard maximum (12 months)
-    const int32 MaxExpiry = Settings->GetInviteMaxExpiresInSeconds();
+    const Uint32 MaxExpiry = static_cast<Uint32>(Settings->GetInviteMaxExpiresInSeconds());
     if (ExpiresInSeconds > MaxExpiry)
     {
         LOG_WARN("CreateInvite: Requested expiry " << ExpiresInSeconds
@@ -638,8 +794,7 @@ std::vector<FInviteInfo> FServersManager::ListInvites(const Uint64 ServerId, con
     }
 
     // Clamp pagination parameters
-    if (Start < 0) Start = 0;
-    if (Count <= 0) Count = 50;
+    if (Count == 0) Count = 50;
     else if (Count > 200) Count = 200;
 
     std::vector<FInviteInfo> Invites;
@@ -676,7 +831,7 @@ void FServersManager::JoinVoiceChannel(const Uint64 ServerId, const Uint64 Chann
     std::unique_lock Lock(Server->GetMutex());
     // Add user to connected users if not already there
     std::vector<Uint64>& Users = Channel->ConnectedUsers;
-    if (std::find(Users.begin(), Users.end(), UserId) == Users.end())
+    if (std::ranges::find(Users, UserId) == Users.end())
     {
         Users.push_back(UserId);
     }
@@ -698,10 +853,10 @@ void FServersManager::LeaveVoiceChannel(const Uint64 ServerId, const Uint64 Chan
 
     std::unique_lock Lock(Server->GetMutex());
     std::vector<Uint64>& Users = Channel->ConnectedUsers;
-    Users.erase(std::remove(Users.begin(), Users.end(), UserId), Users.end());
+    Users.erase(std::ranges::remove(Users, UserId).begin(), Users.end());
 }
 
-std::vector<std::pair<Uint64, Uint64>> FServersManager::GetUserVoiceChannels(Uint64 UserId)
+std::vector<std::pair<Uint64, Uint64>> FServersManager::GetUserVoiceChannels(const Uint64 UserId)
 {
     std::vector<std::pair<Uint64, Uint64>> Result;
 
@@ -727,7 +882,7 @@ std::vector<std::pair<Uint64, Uint64>> FServersManager::GetUserVoiceChannels(Uin
 
             // Check if user is in ConnectedUsers
             const std::vector<Uint64>& Users = Channel->ConnectedUsers;
-            if (std::find(Users.begin(), Users.end(), UserId) != Users.end())
+            if (std::ranges::find(Users, UserId) != Users.end())
             {
                 Result.emplace_back(ServerId, Channel->ChannelId);
             }
@@ -789,7 +944,7 @@ bool FServersManager::DeleteServerFromDB(Uint64 InServerId)
     {
         soci::session& Session = Connect.GetSession();
 
-        // Delete in order: messages → channels → members → invites → server
+        // Delete in order: messages -> channels -> members -> invites -> server
         Session << "DELETE FROM server_messages WHERE channel_id IN (SELECT id FROM server_channels WHERE server_id = :sid)",
             soci::use(InServerId);
         Session << "DELETE FROM server_channels WHERE server_id = :sid",
@@ -824,10 +979,11 @@ bool FServersManager::UploadChannelToDB(Uint64 ServerId, FServerChannel& Channel
 
         std::string ChannelTypeStr = (Channel.ChannelType == EServerChannelType::Text) ? "text" : "voice";
 
-        Session << "INSERT INTO server_channels (server_id, name, type) VALUES (:sid, :name, :type)",
+        Session << "INSERT INTO server_channels (server_id, name, type, position) VALUES (:sid, :name, :type, :pos)",
             soci::use(ServerId),
             soci::use(Channel.ChannelName),
-            soci::use(ChannelTypeStr);
+            soci::use(ChannelTypeStr),
+            soci::use(Channel.Position);
 
         long long LastId = 0;
         Session.get_last_insert_id("server_channels", LastId);
@@ -838,6 +994,57 @@ bool FServersManager::UploadChannelToDB(Uint64 ServerId, FServerChannel& Channel
     catch (const std::exception& e)
     {
         LOG_ERROR("UploadChannelToDB error: " << e.what());
+        return false;
+    }
+}
+
+bool FServersManager::DeleteChannelFromDB(Uint64 ServerId, Uint64 ChannelId)
+{
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        return false;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        Session << "DELETE FROM server_channels WHERE id = :cid AND server_id = :sid",
+            soci::use(ChannelId),
+            soci::use(ServerId);
+
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("DeleteChannelFromDB error: " << e.what());
+        return false;
+    }
+}
+
+bool FServersManager::UpdateChannelNameInDB(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName)
+{
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        return false;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        Session << "UPDATE server_channels SET name = :name WHERE id = :cid AND server_id = :sid",
+            soci::use(NewName),
+            soci::use(ChannelId),
+            soci::use(ServerId);
+
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("UpdateChannelNameInDB error: " << e.what());
         return false;
     }
 }
@@ -1027,7 +1234,7 @@ bool FServersManager::ConsumeInviteFromDB(const std::string& InviteCode, Uint64&
             return true;
         }
 
-        // No valid invite found — rollback the empty transaction
+        // No valid invite found - rollback the empty transaction
         Session << "ROLLBACK";
     }
     catch (const std::exception& e)
@@ -1044,7 +1251,7 @@ bool FServersManager::ConsumeInviteFromDB(const std::string& InviteCode, Uint64&
             }
             catch (...)
             {
-                // Connection may be broken — nothing more we can do.
+                // Connection may be broken - nothing more we can do.
             }
         }
     }
@@ -1079,6 +1286,76 @@ int32 FServersManager::GetActiveInviteCountForServer(const Uint64 ServerId)
     }
 }
 
+int32 FServersManager::GetNextChannelPosition(const Uint64 ServerId)
+{
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        return 0;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        int MaxPos = -1;
+        soci::indicator Ind;
+        Session << "SELECT MAX(position) FROM server_channels WHERE server_id = :sid",
+            soci::into(MaxPos, Ind),
+            soci::use(ServerId);
+
+        // If no channels exist (Ind is null), start at 0. Otherwise max + 1.
+        return (Ind == soci::i_ok && MaxPos >= 0) ? (MaxPos + 1) : 0;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("GetNextChannelPosition error: " << e.what());
+        return 0;
+    }
+}
+
+void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
+{
+    std::shared_ptr<FServer> Server = GetServerById(ServerId);
+    if (!Server)
+    {
+        return;
+    }
+
+    // Get channels sorted by current position
+    std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
+    if (Channels.empty())
+    {
+        return;
+    }
+
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        LOG_ERROR("RenumberChannelPositions: Database connection failed");
+        return;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+        {
+            Channels[i]->Position = i;
+
+            Session << "UPDATE server_channels SET position = :pos WHERE id = :cid AND server_id = :sid",
+                soci::use(i),
+                soci::use(Channels[i]->ChannelId),
+                soci::use(ServerId);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("RenumberChannelPositions error: " << e.what());
+    }
+}
+
 bool FServersManager::DeleteInviteFromDB(const std::string& InviteCode, const Uint64 ServerId)
 {
     FDataBaseConnect Connect;
@@ -1101,7 +1378,7 @@ bool FServersManager::DeleteInviteFromDB(const std::string& InviteCode, const Ui
 
         St.execute();
 
-        // get_affected_rows() returns long long — no-arg, return-value form (SOCI 4.0+).
+        // get_affected_rows() returns long long - no-arg, return-value form (SOCI 4.0+).
         // Confirmed by ConversationsManager.cpp:493: if (St.get_affected_rows() == 0)
         const long long Affected = St.get_affected_rows();
 
@@ -1260,13 +1537,15 @@ bool FServersManager::DownloadChannelsFromDB(Uint64 ServerId, const std::shared_
 
         long long ChannelId = 0;
         std::string ChannelName, ChannelType;
-        soci::indicator IndId, IndName, IndType;
+        int32 Position = 0;
+        soci::indicator IndId, IndName, IndType, IndPos;
 
         soci::statement St = (Session.prepare <<
-            "SELECT id, name, type FROM server_channels WHERE server_id = :sid",
+            "SELECT id, name, type, position FROM server_channels WHERE server_id = :sid ORDER BY position ASC",
             soci::into(ChannelId, IndId),
             soci::into(ChannelName, IndName),
             soci::into(ChannelType, IndType),
+            soci::into(Position, IndPos),
             soci::use(ServerId));
 
         St.execute();
@@ -1277,6 +1556,7 @@ bool FServersManager::DownloadChannelsFromDB(Uint64 ServerId, const std::shared_
             Channel.ServerId = ServerId;
             Channel.ChannelName = ChannelName;
             Channel.ChannelType = (ChannelType == "voice") ? EServerChannelType::Voice : EServerChannelType::Text;
+            Channel.Position = (IndPos == soci::i_ok) ? Position : 0;
             Server->AddChannel(Channel);
         }
 
@@ -1336,7 +1616,7 @@ bool FServersManager::DownloadMembersFromDB(Uint64 ServerId, std::shared_ptr<FSe
     }
 }
 
-bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<FServer> Server, Uint64 BeforeTimestamp, int32 Limit)
+bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<FServer> Server, Uint64 BeforeTimestamp, Uint32 Limit)
 {
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
@@ -1423,50 +1703,30 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<F
     }
 }
 
-// ========== Helper Methods ==========
-
-static constexpr std::string_view Chars =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
 std::string FServersManager::GenerateServerToken()
 {
-    std::random_device Rd;
-    std::mt19937 Gen(Rd());
-    std::uniform_int_distribution<size_t> Dis(0, Chars.size() - 1);
-
-    std::string Token;
-    Token.reserve(48);
-    for (int i = 0; i < 48; ++i)
-    {
-        Token += Chars[Dis(Gen)];
-    }
-
-    return Token;
+    static constexpr int32 TokenLength = 32;
+    return FEncryptionUtil::GenerateSecureSalt(TokenLength);
 }
 
 std::string FServersManager::GenerateInviteCode()
 {
-    std::random_device Rd;
-    std::mt19937 Gen(Rd());
-    std::uniform_int_distribution<size_t> Dis(0, Chars.size() - 1);
-
-    std::string Code;
-    Code.reserve(10);
-    for (int i = 0; i < 10; ++i)
-    {
-        Code += Chars[Dis(Gen)];
-    }
-
-    return Code;
+    static constexpr int32 CodeLength = 16;
+    return FEncryptionUtil::GenerateSecureSalt(CodeLength);
 }
 
 std::string FServersManager::FormatTimestamp(const std::chrono::system_clock::time_point& Time)
 {
-    const std::time_t TimeT = std::chrono::system_clock::to_time_t(Time);
-    std::tm Tm = {};
-    gmtime_r(&TimeT, &Tm);
+    const time_t TimeT = std::chrono::system_clock::to_time_t(Time);
+    std::tm UtcTime{};
+
+#ifdef _WIN32
+    gmtime_s(&UtcTime, &TimeT);
+#else
+    gmtime_r(&TimeT, &UtcTime);
+#endif
 
     std::ostringstream Oss;
-    Oss << std::put_time(&Tm, "%Y-%m-%d %H:%M:%S");
+    Oss << std::put_time(&UtcTime, "%Y-%m-%d %H:%M:%S");
     return Oss.str();
 }

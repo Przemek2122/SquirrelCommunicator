@@ -9,21 +9,21 @@
 struct FUserSessionData
 {
 	FUserSessionData();
-	FUserSessionData(Uint64 InUserId, Uint64 InSessionStartTime);
+	FUserSessionData(Uint64 InUserId, Uint64 InSessionTime);
 	FUserSessionData(const FUserSessionData& UserSessionData);
 	FUserSessionData(FUserSessionData&& UserSessionData) noexcept;
 
 	bool IsValid() const;
 
-	void SetSessionStartTime(Uint64 InSessionStartTime);
-	Uint64 GetSessionStartTime() const;
+	void SetSessionTimeLeft(const Uint64 InSessionTime);
+	Uint64 GetSessionTime() const;
 
 	/** User ID which can be used to find correct user */
 	Uint64 UserId;
 
 private:
-	/** Session start time to know when session should not be alive anymore */
-	Uint64 SessionStartTime;
+	/** Session time to know when session should not be alive anymore */
+	Uint64 SessionTime;
 
 	/** Mutex for updating session */
 	std::shared_mutex SessionUpdateMutex;
@@ -34,7 +34,7 @@ class FSessionManager
 {
 public:
 	FSessionManager(Uint64 InSessionExpirationTime);
-	~FSessionManager();
+	~FSessionManager() = default;
 
 	void Init();
 	void PostSecondTick();
@@ -76,9 +76,6 @@ private:
 
 	/** Session expiration time in seconds */
 	Uint64 SessionExpirationTime;
-
-	/** Key for generating sessions */
-	std::string EncryptionKey;
 
 	/** Background worker thread */
 	std::jthread WorkerThread;
