@@ -137,6 +137,32 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             break;
         }
 
+        case ESocketMessageServersType::ReorderChannels:
+        {
+            if (DataJSON.contains("room_id") && DataJSON.contains("channel_ids") && DataJSON["channel_ids"].is_array())
+            {
+                const Uint64 RoomId = std::stoull(DataJSON["room_id"].get<std::string>());
+                std::vector<Uint64> ChannelIds;
+                for (const nlohmann::basic_json<>& IdJson : DataJSON["channel_ids"])
+                {
+                    if (IdJson.is_string())
+                    {
+                        ChannelIds.push_back(std::stoull(IdJson.get<std::string>()));
+                    }
+                    else if (IdJson.is_number())
+                    {
+                        ChannelIds.push_back(IdJson.get<Uint64>());
+                    }
+                }
+                HandleReorderChannels(wsVariant, opCode, RoomId, ChannelIds);
+            }
+            else
+            {
+                FSocket::EarlyExit(wsVariant, "missing reorder_channels fields (room_id, channel_ids array)", opCode);
+            }
+            break;
+        }
+
         case ESocketMessageServersType::DeleteChannel:
         {
             if (DataJSON.contains("room_id") && DataJSON.contains("channel_id"))
@@ -1205,6 +1231,65 @@ void FServersSocketData::HandleMoveChannel(AnyWebSocket wsVariant, uWS::OpCode o
 
     LOG_INFO("Channel " << ChannelId << " moved to position " << NewPosition
              << " in room " << RoomId << " by user " << CurrentUserId);
+}
+
+
+void FServersSocketData::HandleReorderChannels(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                                                const Uint64 RoomId, const std::vector<Uint64>& ChannelIds)
+{
+    const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
+    if (CurrentUserId == 0)
+    {
+        FSocket::EarlyExit(wsVariant, "not authenticated", opCode);
+        return;
+    }
+
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+
+    if (!ServersManager->IsUserInServer(RoomId, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "not a member of this room", opCode);
+        return;
+    }
+
+    if (!ServersManager->UserHasPermission(RoomId, CurrentUserId, EServerPermission::CAN_MANAGE_CHANNELS))
+    {
+        FSocket::EarlyExit(wsVariant, "permission denied: you lack CAN_MANAGE_CHANNELS permission", opCode);
+        return;
+    }
+
+    if (ChannelIds.empty())
+    {
+        FSocket::EarlyExit(wsVariant, "channel_ids array must not be empty", opCode);
+        return;
+    }
+
+    if (!ServersManager->ReorderChannels(RoomId, ChannelIds, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "failed to reorder channels", opCode);
+        return;
+    }
+
+    nlohmann::json ResponseJson;
+    ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::RoomChannelsReordered);
+    ResponseJson["data"]["room_id"] = RoomId;
+
+    nlohmann::json IdsArray = nlohmann::json::array();
+    for (const Uint64 Id : ChannelIds)
+    {
+        IdsArray.push_back(Id);
+    }
+    ResponseJson["data"]["channel_ids"] = IdsArray;
+
+    std::visit([&](auto* ws)
+    {
+        ws->send(ResponseJson.dump(), opCode);
+    }, wsVariant);
+
+    BroadcastToServerMembers(RoomId, ResponseJson);
+
+    LOG_INFO("Channels reordered in room " << RoomId << " by user " << CurrentUserId
+             << " (" << ChannelIds.size() << " channels)");
 }
 
 void FServersSocketData::HandleDeleteChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,

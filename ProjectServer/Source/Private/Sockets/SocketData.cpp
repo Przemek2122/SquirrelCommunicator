@@ -112,6 +112,7 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("room_message"):            return ESocketMessageServersType::RoomMessage;
         case HashString("create_channel"):          return ESocketMessageServersType::CreateChannel;
         case HashString("move_channel"):            return ESocketMessageServersType::MoveChannel;
+        case HashString("reorder_channels"):        return ESocketMessageServersType::ReorderChannels;
         case HashString("delete_channel"):          return ESocketMessageServersType::DeleteChannel;
         case HashString("rename_channel"):          return ESocketMessageServersType::RenameChannel;
         case HashString("server_invite"):           return ESocketMessageServersType::ServerInvite;
@@ -131,6 +132,7 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("room_user_left"):          return ESocketMessageServersType::RoomUserLeft;
         case HashString("room_channel_created"):    return ESocketMessageServersType::RoomChannelCreated;
         case HashString("room_channel_moved"):      return ESocketMessageServersType::RoomChannelMoved;
+        case HashString("room_channels_reordered"): return ESocketMessageServersType::RoomChannelsReordered;
         case HashString("room_channel_deleted"):    return ESocketMessageServersType::RoomChannelDeleted;
         case HashString("room_channel_renamed"):    return ESocketMessageServersType::RoomChannelRenamed;
         case HashString("server_voice_joined"):     return ESocketMessageServersType::RoomUserVoiceJoin;
@@ -161,6 +163,7 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::RoomMessage:          return "room_message";
         case ESocketMessageServersType::CreateChannel:        return "create_channel";
         case ESocketMessageServersType::MoveChannel:          return "move_channel";
+        case ESocketMessageServersType::ReorderChannels:      return "reorder_channels";
         case ESocketMessageServersType::DeleteChannel:        return "delete_channel";
         case ESocketMessageServersType::RenameChannel:        return "rename_channel";
         case ESocketMessageServersType::ServerInvite:         return "server_invite";
@@ -180,6 +183,7 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::RoomUserLeft:         return "room_user_left";
         case ESocketMessageServersType::RoomChannelCreated:   return "room_channel_created";
         case ESocketMessageServersType::RoomChannelMoved:     return "room_channel_moved";
+        case ESocketMessageServersType::RoomChannelsReordered: return "room_channels_reordered";
         case ESocketMessageServersType::RoomChannelDeleted:   return "room_channel_deleted";
         case ESocketMessageServersType::RoomChannelRenamed:   return "room_channel_renamed";
         case ESocketMessageServersType::RoomUserVoiceJoin:    return "server_voice_joined";

@@ -90,7 +90,8 @@ FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumbe
 	const int32 InNumberOfServerOperationAttemptsToBlock,
 	const int32 InUnauthenticatedRequestsPerHour, const int32 InAuthenticatedRequestsPerHour,
 	const int32 InInviteAbuseMaxAttempts, const int32 InInviteAbuseWindowSeconds, const int32 InInviteAbuseBanDurationSeconds,
-	const int32 InInviteCreateLimitPerHour, const int32 InInviteUseLimitPerHour)
+	const int32 InInviteCreateLimitPerHour, const int32 InInviteUseLimitPerHour,
+	const int32 InRegisterAccountLimitPerHour)
 	: ClearingTimeInMins(std::chrono::minutes(InClearingTimeInMins))
 	, NumberOfAttemptsToBlock(InNumberOfAttemptsToBlock)
 	, NumberOfPasswordResetAttemptsToBlock(InNumberOfPasswordResetAttemptsToBlock)
@@ -99,6 +100,7 @@ FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumbe
 	, AuthenticatedRequestsPerHour(InAuthenticatedRequestsPerHour)
 	, InviteCreateLimitPerHour(InInviteCreateLimitPerHour)
 	, InviteUseLimitPerHour(InInviteUseLimitPerHour)
+	, RegisterAccountLimitPerHour(InRegisterAccountLimitPerHour)
 	, InviteAbuseMaxAttempts(InInviteAbuseMaxAttempts)
 	, InviteAbuseWindowSeconds(InInviteAbuseWindowSeconds)
 	, InviteAbuseBanDurationSeconds(InInviteAbuseBanDurationSeconds)
@@ -201,6 +203,18 @@ void FRateLimiter::AddInviteUseAttempt(const std::string_view InAddress)
 	InviteUseLimits.AddAttempt(InAddress);
 }
 
+// --- Registration rate limiting ---
+
+bool FRateLimiter::IsRegisterAccountAddressBlocked(const std::string_view InAddress)
+{
+	return RegisterAccountLimits.IsBlockedKey(InAddress, RegisterAccountLimitPerHour);
+}
+
+void FRateLimiter::AddRegisterAccountAttempt(const std::string_view InAddress)
+{
+	RegisterAccountLimits.AddAttempt(InAddress);
+}
+
 void FRateLimiter::ResetRateLimits()
 {
 	DefaultIPAddressToLimits.Reset();
@@ -210,6 +224,7 @@ void FRateLimiter::ResetRateLimits()
 	AuthenticatedUserLimits.Reset();
 	InviteCreateLimits.Reset();
 	InviteUseLimits.Reset();
+	RegisterAccountLimits.Reset();
 
 	// NOTE: Invite abuse records are NOT cleared here.
 	// They use a rolling-window + ban model with their own independent lifecycle

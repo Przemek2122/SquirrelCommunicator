@@ -58,6 +58,11 @@ public:
     /** Max invite use attempts per IP per hour (default 30) */
     int32 GetInviteUseLimitPerHour() const { return InviteUseLimitPerHour; }
 
+    // --- Registration rate limiting ---
+
+    /** Max new account registrations per IP per hour (default 10) */
+    int32 GetRegisterAccountLimitPerHour() const { return RegisterAccountLimitPerHour; }
+
 protected:
     /** Settings ini object */
     std::shared_ptr<FIniObject> BackendSettingsIniObject;
@@ -83,4 +88,7 @@ protected:
     // --- Invite hourly rate limits ---
     int32 InviteCreateLimitPerHour;
     int32 InviteUseLimitPerHour;
+
+    // --- Registration rate limiting ---
+    int32 RegisterAccountLimitPerHour;
 };

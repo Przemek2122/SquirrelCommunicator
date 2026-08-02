@@ -28,6 +28,9 @@ FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 		const int32 InviteCreateLimitPerHour = InBackendSettings->GetInviteCreateLimitPerHour();
 		const int32 InviteUseLimitPerHour = InBackendSettings->GetInviteUseLimitPerHour();
 
+		// Read registration rate limit from BackendSettings (already parsed)
+		const int32 RegisterAccountLimitPerHour = InBackendSettings->GetRegisterAccountLimitPerHour();
+
 		RateLimiter = std::make_unique<FRateLimiter>(
 			RateLimitTimeToClearInMinsField.GetValueAsInt(),
 			RateLimitNumberPerIPField.GetValueAsInt(),
@@ -39,12 +42,13 @@ FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 			InviteAbuseWindowSeconds,
 			InviteAbuseBanDurationSeconds,
 			InviteCreateLimitPerHour,
-			InviteUseLimitPerHour
+			InviteUseLimitPerHour,
+			RegisterAccountLimitPerHour
 		);
 	}
 	else
 	{
-		RateLimiter = std::make_unique<FRateLimiter>(60, 10, 8, 10, 300, 2000, 10, 120, 3600, 20, 30);
+		RateLimiter = std::make_unique<FRateLimiter>(60, 10, 8, 10, 300, 2000, 10, 120, 3600, 20, 30, 10);
 
 		LOG_ERROR("FAbuseProtection missing BackendSettingsIni");
 	}
@@ -144,6 +148,18 @@ bool FAbuseProtection::CanAddressUseInvite(const std::string_view InAddress) con
 void FAbuseProtection::AddUseInviteAttempt(const std::string_view InAddress) const
 {
 	RateLimiter->AddInviteUseAttempt(InAddress);
+}
+
+// --- Registration Rate Limiting ---
+
+bool FAbuseProtection::CanAddressRegisterAccount(const std::string_view InAddress) const
+{
+	return !RateLimiter->IsRegisterAccountAddressBlocked(InAddress);
+}
+
+void FAbuseProtection::AddRegisterAccountAttempt(const std::string_view InAddress) const
+{
+	RateLimiter->AddRegisterAccountAttempt(InAddress);
 }
 
 CUnorderedMap<std::string, std::string> FAbuseProtection::GetCORHeaders() const

@@ -16,7 +16,7 @@ class FServer;
  * Handles:
  *  - Server creation and deletion
  *  - Server membership (join/leave/invite)
- *  - Channel CRUD within servers (including reordering via MoveChannel and renaming via RenameChannel)
+ *  - Channel CRUD within servers (including reordering via MoveChannel, batch reorder via ReorderChannels, and renaming via RenameChannel)
  *  - Messages within text channels
  *  - Invite code generation, resolution, listing, and deletion (with abuse protection)
  *  - Member permission management (bitfield)
@@ -68,8 +68,14 @@ public:
      *   Requires CAN_MANAGE_CHANNELS permission (or server owner).
      *   Returns true on success, false if the channel wasn't found or permission denied.
      *
-     * MoveChannel: changes a channel's display position. All other channels are
+     * MoveChannel: changes a single channel's display position. All other channels are
      *   renumbered to fill gaps. NewPosition is clamped to the valid range.
+     *   Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     *
+     * ReorderChannels: batch reorder all channels at once by providing the complete
+     *   ordered array of channel IDs. Designed for drag-and-drop UIs. The array must
+     *   contain every channel in the server exactly once. Updates all positions in a
+     *   single DB transaction for atomicity.
      *   Requires CAN_MANAGE_CHANNELS permission (or server owner).
      *
      * RenameChannel: changes a channel's name. Updates both DB and in-memory cache.
@@ -78,6 +84,7 @@ public:
     Uint64 AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType, Uint64 RequestedByUserId);
     bool RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 RequestedByUserId);
     bool MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPosition, Uint64 RequestedByUserId);
+    bool ReorderChannels(Uint64 ServerId, const std::vector<Uint64>& ChannelIds, Uint64 RequestedByUserId);
     bool RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName, Uint64 RequestedByUserId);
 
     /** Message operations */

@@ -18,6 +18,7 @@ FBackendSettings::FBackendSettings()
     , InviteAbuseBanDurationSeconds(3600)       // 1 hour
     , InviteCreateLimitPerHour(20)
     , InviteUseLimitPerHour(30)
+    , RegisterAccountLimitPerHour(10)
 {
 }
 
@@ -101,6 +102,13 @@ void FBackendSettings::LoadBackendSettings()
         if (InviteUseLimitPerHourField.IsValid())
         {
             InviteUseLimitPerHour = InviteUseLimitPerHourField.GetValueAsInt();
+        }
+
+        // --- Registration rate limiting ---
+        const FIniField RegisterAccountLimitPerHourField = BackendSettingsIniObject->FindFieldByName("RegisterAccountLimitPerHour");
+        if (RegisterAccountLimitPerHourField.IsValid())
+        {
+            RegisterAccountLimitPerHour = RegisterAccountLimitPerHourField.GetValueAsInt();
         }
     }
     else

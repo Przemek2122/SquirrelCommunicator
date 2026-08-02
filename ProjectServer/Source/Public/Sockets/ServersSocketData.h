@@ -66,12 +66,24 @@ public:
                                  Uint64 RoomId, Uint32 Start, Uint32 Count);
 
     /**
-     * Move a channel to a new position in the channel list.
+     * Move a single channel to a new position in the channel list.
      * Requires CAN_MANAGE_CHANNELS permission (or server owner).
      * All channels are renumbered after the move to eliminate gaps.
      */
     void HandleMoveChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
                            Uint64 RoomId, Uint64 ChannelId, int32 NewPosition);
+
+    /**
+     * Reorder all channels at once using a complete ordered array of channel IDs.
+     * Designed for drag-and-drop UIs: the frontend sends the final desired order
+     * and the server atomically updates all positions in a single DB transaction.
+     * Requires CAN_MANAGE_CHANNELS permission (or server owner).
+     *
+     * The channel_ids array must contain every channel in the server exactly once.
+     * Missing channels, duplicate IDs, or extra IDs are rejected.
+     */
+    void HandleReorderChannels(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                               Uint64 RoomId, const std::vector<Uint64>& ChannelIds);
 
     /**
      * Delete a channel from a server.

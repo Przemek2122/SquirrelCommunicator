@@ -44,7 +44,8 @@ public:
  *
  * Also manages invite abuse protection (IP-based rolling-window + ban system),
  * invite hourly rate limits (simple counter per clearing interval),
- * and two-tier global rate limiting (unauthenticated per-IP + authenticated per-UserID).
+ * two-tier global rate limiting (unauthenticated per-IP + authenticated per-UserID),
+ * and registration rate limiting (per-IP counter).
  */
 class FRateLimiter
 {
@@ -53,7 +54,8 @@ public:
 		int32 InNumberOfServerOperationAttemptsToBlock,
 		int32 InUnauthenticatedRequestsPerHour, int32 InAuthenticatedRequestsPerHour,
 		int32 InInviteAbuseMaxAttempts, int32 InInviteAbuseWindowSeconds, int32 InInviteAbuseBanDurationSeconds,
-		int32 InInviteCreateLimitPerHour, int32 InInviteUseLimitPerHour);
+		int32 InInviteCreateLimitPerHour, int32 InInviteUseLimitPerHour,
+		int32 InRegisterAccountLimitPerHour);
 	~FRateLimiter();
 
 	/** Check if we have user blocked */
@@ -103,6 +105,14 @@ public:
 
 	/** Record an invite use attempt */
 	void AddInviteUseAttempt(const std::string_view InAddress);
+
+	// --- Registration rate limiting ---
+
+	/** Check if an IP has exceeded the registration rate limit */
+	bool IsRegisterAccountAddressBlocked(const std::string_view InAddress);
+
+	/** Record a registration attempt */
+	void AddRegisterAccountAttempt(const std::string_view InAddress);
 
 	void ResetRateLimits();
 
@@ -167,6 +177,9 @@ protected:
 	/** Object for limiting invite use per IP */
 	FRateLimitObject InviteUseLimits;
 
+	/** Object for limiting new account registrations per IP */
+	FRateLimitObject RegisterAccountLimits;
+
 	/** Time when we clear limits */
 	std::chrono::minutes ClearingTimeInMins;
 
@@ -192,6 +205,9 @@ protected:
 
 	/** Max invite uses per IP per clearing interval */
 	int32 InviteUseLimitPerHour;
+
+	/** Max new account registrations per IP per clearing interval */
+	int32 RegisterAccountLimitPerHour;
 
 	// --- Invite Abuse Protection data ---
 

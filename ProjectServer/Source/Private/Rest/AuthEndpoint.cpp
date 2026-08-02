@@ -22,6 +22,18 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 			// Get IP address
 			const std::string& ClientIP = req.remote_ip_address;
 
+			// --- Registration rate limiting (per-IP, default 10/hr) ---
+			// Check BEFORE calling RegisterUser to prevent mass account creation.
+			FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+			if (!AbuseProtection->CanAddressRegisterAccount(ClientIP))
+			{
+				OutResponse = FCrowUtils::CreateResponse(crow::status::TOO_MANY_REQUESTS, {
+					{ FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error },
+					{ "message", "Too many registrations. Try again later." }
+				});
+				return OutResponse;
+			}
+
 			const crow::json::rvalue JsonData = crow::json::load(req.body);
 			if (JsonData)
 			{
@@ -30,6 +42,10 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 				const std::string EMail = JsonData["email"].s();
 
 				const ERegisterUserStatus RegisterStatus = ProjectEngine->GetUserManager()->RegisterUser(UserName, UserPassword, EMail);
+
+				// Count every registration attempt against the hourly limit (success or failure).
+				// This prevents spammers from retrying with different usernames/emails/passwords.
+				AbuseProtection->AddRegisterAccountAttempt(ClientIP);
 
 				switch (RegisterStatus)
 				{

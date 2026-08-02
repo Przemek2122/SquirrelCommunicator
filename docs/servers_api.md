@@ -17,7 +17,7 @@ REST endpoints are subject to two-tier global rate limiting: unauthenticated req
 
 POST /api/v1/users/register
 
-    Register a new user account.
+    Register a new user account. Subject to per-IP registration rate limiting (default 10 registrations/hour, configurable via RegisterAccountLimitPerHour).
 
     Request body:
         username  string  Display name 4 to 109 characters
@@ -25,6 +25,10 @@ POST /api/v1/users/register
         email     string  Valid email address
 
     Responses:
+        429 Too Many Requests
+            status  error
+            message  Too many registrations. Try again later.
+
         200 OK
             status  success
             message  User registered successfully.
@@ -534,6 +538,41 @@ These messages handle the community server system with channels and voice chat. 
             type: error
             message: failed to move channel
 
+    type: reorder_channels
+        Reorder all channels at once by providing the complete ordered array of channel IDs.
+        Designed for drag-and-drop UIs. The array must contain every channel in the server
+        exactly once (no missing, no duplicates, no extras). All positions are updated
+        atomically in a single DB transaction.
+        Requires CAN_MANAGE_CHANNELS permission or server owner.
+
+        data:
+            room_id     string  REQUIRED. Server ID.
+            channel_ids array   REQUIRED. Array of channel ID strings (or numbers) in the desired order.
+
+        Example request:
+            {
+                "type": "reorder_channels",
+                "data": {
+                    "room_id": "123456789",
+                    "channel_ids": ["42", "17", "5", "99"]
+                }
+            }
+
+        Server response type: room_channels_reordered
+            data:
+                room_id     Server ID (number)
+                channel_ids Array of channel IDs in the new order (array of numbers)
+
+        Server broadcasts type: room_channels_reordered to all server members (same data).
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_MANAGE_CHANNELS permission
+
+        Error if channel_ids is invalid (wrong count, missing IDs, duplicates):
+            type: error
+            message: failed to reorder channels
+
     type: delete_channel
         Permanently delete a channel and all its messages.
         Requires CAN_MANAGE_CHANNELS permission or server owner.
@@ -884,6 +923,14 @@ These messages handle the community server system with channels and voice chat. 
             channel_id   Moved channel ID (number)
             new_position New position (number)
 
+    type: room_channels_reordered
+        Broadcast when all channels are reordered at once via drag-and-drop.
+        All members receive the complete new order so their channel lists stay in sync.
+
+        data:
+            room_id     Server ID (number)
+            channel_ids Array of channel IDs in the new order (array of numbers)
+
     type: room_channel_deleted
         Broadcast when a channel is deleted. All members receive this so
         their channel lists stay in sync.
@@ -1214,6 +1261,7 @@ Common WebSocket error messages:
     failed to join room       Server join operation failed
     failed to leave room      Server leave operation failed
     failed to move channel    Channel reorder operation failed (channel not found or DB error)
+    failed to reorder channels  Batch channel reorder failed (invalid channel_ids array, wrong count, or DB error)
     failed to delete channel or channel not found  Channel deletion failed
     failed to rename channel or channel not found  Channel rename failed (channel not found, empty name, or DB error)
     permission denied: you lack CAN_CREATE_INVITES permission            User needs invite creation permission
@@ -1271,6 +1319,7 @@ Squirrel Communicator uses a layered rate limiting strategy to protect against a
     Authentication    55                RateLimitNumberPerIP
     Password reset    25                PasswordRateLimitNumberPerIP
     Server creation   2                 CreateRoomRateLimitNumberPerIP
+    Registration      10                RegisterAccountLimitPerHour
 
     These limits are much stricter and target specific attack vectors (credential
     stuffing, reset spam, server flooding). They apply per-IP regardless of
@@ -1319,6 +1368,9 @@ Squirrel Communicator uses a layered rate limiting strategy to protect against a
 
     CreateRoomRateLimitNumberPerIP  Default 2
         Max server creation requests per IP per window.
+
+    RegisterAccountLimitPerHour      Default 10
+        Max new account registrations per IP per hour.
 
     --- Invite hourly rate limits (per IP) ---
     InviteCreateLimitPerHour        Default 20

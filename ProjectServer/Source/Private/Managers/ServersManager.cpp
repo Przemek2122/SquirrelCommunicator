@@ -10,6 +10,8 @@
 #include <random>
 #include <iomanip>
 #include <sstream>
+#include <unordered_set>
+
 #include "BackendSettings.h"
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
@@ -458,6 +460,110 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
     LOG_INFO("Channel " << ChannelId << " moved from position " << OldPosition
              << " to " << NewPosition << " in server " << ServerId
              << " by user " << RequestedByUserId);
+    return true;
+}
+
+bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<Uint64>& ChannelIds, const Uint64 RequestedByUserId)
+{
+    std::shared_ptr<FServer> Server = GetServerById(ServerId);
+    if (!Server)
+    {
+        LOG_ERROR("ReorderChannels: Server not found: " << ServerId);
+        return false;
+    }
+
+    // Check permission: user must have CAN_MANAGE_CHANNELS or be owner
+    if (!UserHasPermission(ServerId, RequestedByUserId, EServerPermission::CAN_MANAGE_CHANNELS))
+    {
+        LOG_DEBUG("ReorderChannels: User " << RequestedByUserId << " lacks CAN_MANAGE_CHANNELS permission"
+                 << " in server " << ServerId);
+        return false;
+    }
+
+    // Get existing channels sorted by current position
+    std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
+    if (Channels.empty())
+    {
+        LOG_DEBUG("ReorderChannels: No channels in server " << ServerId);
+        return false;
+    }
+
+    // Validate: channel_ids must contain every channel exactly once
+    if (ChannelIds.size() != Channels.size())
+    {
+        LOG_DEBUG("ReorderChannels: channel_ids size (" << ChannelIds.size()
+                  << ") does not match server channel count (" << Channels.size() << ")");
+        return false;
+    }
+
+    // Build a set of existing channel IDs for O(1) lookup
+    std::unordered_set<Uint64> ExistingIds;
+    for (const std::shared_ptr<FServerChannel>& Ch : Channels)
+    {
+        ExistingIds.insert(Ch->ChannelId);
+    }
+
+    // Validate: every ID in channel_ids must exist, and no duplicates
+    std::unordered_set<Uint64> Seen;
+    for (const Uint64 Id : ChannelIds)
+    {
+        if (!ExistingIds.contains(Id))
+        {
+            LOG_ERROR("ReorderChannels: Channel " << Id << " does not exist in server " << ServerId);
+            return false;
+        }
+        if (!Seen.insert(Id).second)
+        {
+            LOG_ERROR("ReorderChannels: Duplicate channel ID " << Id << " in channel_ids array");
+            return false;
+        }
+    }
+
+    // Build a lookup map: channel_id -> channel shared_ptr for fast position assignment
+    std::unordered_map<Uint64, std::shared_ptr<FServerChannel>> ChannelMap;
+    for (std::shared_ptr<FServerChannel>& Ch : Channels)
+    {
+        ChannelMap[Ch->ChannelId] = Ch;
+    }
+
+    // Update all positions atomically in a single DB transaction
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        LOG_ERROR("ReorderChannels: Database connection failed");
+        return false;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        for (int32 i = 0; i < static_cast<int32>(ChannelIds.size()); ++i)
+        {
+            const Uint64 ChannelId = ChannelIds[i];
+            auto It = ChannelMap.find(ChannelId);
+            if (It == ChannelMap.end())
+            {
+                // Should never reach here (validated above), but be defensive
+                continue;
+            }
+
+            It->second->Position = i;
+
+            Session << "UPDATE server_channels SET position = :pos WHERE id = :cid AND server_id = :sid",
+                soci::use(i),
+                soci::use(ChannelId),
+                soci::use(ServerId);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("ReorderChannels DB error: " << e.what());
+        return false;
+    }
+
+    LOG_INFO("Channels reordered in server " << ServerId
+             << " (" << ChannelIds.size() << " channels) by user " << RequestedByUserId);
     return true;
 }
 

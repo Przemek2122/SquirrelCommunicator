@@ -8,7 +8,8 @@
 /**
  * Class used for abuse protection
  * Supports: Rate limiting, blocking address, invite abuse protection, invite hourly rate limits,
- * two-tier global rate limiting (unauthenticated per-IP + authenticated per-UserID)
+ * two-tier global rate limiting (unauthenticated per-IP + authenticated per-UserID),
+ * and registration rate limiting (per-IP).
  * Currently also used for COR Headers
  */
 class FAbuseProtection
@@ -69,6 +70,14 @@ public:
 
 	/** Record an invite use attempt for the given IP */
 	void AddUseInviteAttempt(const std::string_view InAddress) const;
+
+	// --- Registration Rate Limiting (per-IP counter) ---
+
+	/** Check if an IP can register a new account (has not exceeded hourly limit, default 10/hr) */
+	bool CanAddressRegisterAccount(const std::string_view InAddress) const;
+
+	/** Record a registration attempt for the given IP */
+	void AddRegisterAccountAttempt(const std::string_view InAddress) const;
 
 	[[nodiscard]] CUnorderedMap<std::string, std::string> GetCORHeaders() const;
 
