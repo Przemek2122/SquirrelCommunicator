@@ -78,7 +78,7 @@ void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, 
 	}
 }
 
-void FCrowAppMiddleware::after_handle(const crow::request& Req, crow::response& Res, context& Ctx)
+void FCrowAppMiddleware::after_handle(crow::request& Req, crow::response& Res, context& Ctx)
 {
 	static const std::string AccessControlAllowOriginHeaderName = "Access-Control-Allow-Origin";
 
