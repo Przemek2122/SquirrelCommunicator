@@ -42,14 +42,18 @@ public:
  * Class ensuring user do not spam with register requests or with login attempts, very simple we count then and clear every x time.
  * Attempts are cleared every x time where x is value in config, we do not keep time of failed attempts as it would be more complex
  *
- * Also manages invite abuse protection (IP-based rolling-window + ban system).
+ * Also manages invite abuse protection (IP-based rolling-window + ban system),
+ * invite hourly rate limits (simple counter per clearing interval),
+ * and two-tier global rate limiting (unauthenticated per-IP + authenticated per-UserID).
  */
 class FRateLimiter
 {
 public:
 	FRateLimiter(int32 InClearingTimeInMins, int32 InNumberOfAttemptsToBlock, int32 InNumberOfPasswordResetAttemptsToBlock,
-		int32 InNumberOfServerOperationAttemptsToBlock, int32 InGlobalRequestsPerHour,
-		int32 InInviteAbuseMaxAttempts, int32 InInviteAbuseWindowSeconds, int32 InInviteAbuseBanDurationSeconds);
+		int32 InNumberOfServerOperationAttemptsToBlock,
+		int32 InUnauthenticatedRequestsPerHour, int32 InAuthenticatedRequestsPerHour,
+		int32 InInviteAbuseMaxAttempts, int32 InInviteAbuseWindowSeconds, int32 InInviteAbuseBanDurationSeconds,
+		int32 InInviteCreateLimitPerHour, int32 InInviteUseLimitPerHour);
 	~FRateLimiter();
 
 	/** Check if we have user blocked */
@@ -70,11 +74,35 @@ public:
 	/** Add server operation attempt */
 	void AddServerOperationAttempt(const std::string_view InAddress);
 
-	/** Check if an IP has exceeded the global request cap (all endpoints combined) */
-	bool IsAddressGloballyBlocked(const std::string_view InAddress);
+	// --- Two-tier global rate limiting ---
 
-	/** Add a global request attempt (called for every REST + WebSocket message) */
-	void AddGlobalRequestAttempt(const std::string_view InAddress);
+	/** Tier 1: Check if an unauthenticated IP has exceeded the strict per-IP cap */
+	bool IsUnauthenticatedIPBlocked(const std::string_view InAddress);
+
+	/** Tier 1: Record an unauthenticated request for this IP */
+	void AddUnauthenticatedIPAttempt(const std::string_view InAddress);
+
+	/** Tier 2: Check if an authenticated UserID has exceeded the per-user cap */
+	bool IsAuthenticatedUserBlocked(const std::string_view UserIdStr);
+
+	/** Tier 2: Record an authenticated request for this UserID */
+	void AddAuthenticatedUserAttempt(const std::string_view UserIdStr);
+
+	// --- Invite create hourly rate limit ---
+
+	/** Check if an IP has exceeded the invite creation rate limit */
+	bool IsInviteCreateAddressBlocked(const std::string_view InAddress);
+
+	/** Record an invite creation attempt */
+	void AddInviteCreateAttempt(const std::string_view InAddress);
+
+	// --- Invite use hourly rate limit ---
+
+	/** Check if an IP has exceeded the invite use rate limit */
+	bool IsInviteUseAddressBlocked(const std::string_view InAddress);
+
+	/** Record an invite use attempt */
+	void AddInviteUseAttempt(const std::string_view InAddress);
 
 	void ResetRateLimits();
 
@@ -125,8 +153,19 @@ protected:
 	/** Object for limiting access when using server operations */
 	FRateLimitObject ServerOperationAddressToLimits;
 
-	/** Object for global request cap (REST + WebSocket combined per IP) */
-	FRateLimitObject GlobalRequestLimits;
+	// --- Two-tier global rate limiting ---
+
+	/** Tier 1: Strict per-IP limit for unauthenticated requests (default 300/hr) */
+	FRateLimitObject UnauthenticatedIPLimits;
+
+	/** Tier 2: Per-UserID limit for authenticated requests (default 2000/hr) */
+	FRateLimitObject AuthenticatedUserLimits;
+
+	/** Object for limiting invite creation per IP */
+	FRateLimitObject InviteCreateLimits;
+
+	/** Object for limiting invite use per IP */
+	FRateLimitObject InviteUseLimits;
 
 	/** Time when we clear limits */
 	std::chrono::minutes ClearingTimeInMins;
@@ -140,8 +179,19 @@ protected:
 	/** How many attempts are needed to block server operation */
 	int32 NumberOfServerOperationAttemptsToBlock;
 
-	/** Global cap: max requests per IP per ClearingTimeInMins (default 5000/hr) */
-	int32 GlobalRequestsPerHour;
+	// --- Two-tier global rate limiting ---
+
+	/** Tier 1: Max unauthenticated requests per IP per clearing interval (default 300/hr) */
+	int32 UnauthenticatedRequestsPerHour;
+
+	/** Tier 2: Max authenticated requests per UserID per clearing interval (default 2000/hr) */
+	int32 AuthenticatedRequestsPerHour;
+
+	/** Max invite creations per IP per clearing interval */
+	int32 InviteCreateLimitPerHour;
+
+	/** Max invite uses per IP per clearing interval */
+	int32 InviteUseLimitPerHour;
 
 	// --- Invite Abuse Protection data ---
 

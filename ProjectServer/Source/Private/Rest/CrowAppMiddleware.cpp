@@ -1,6 +1,8 @@
 #include "Rest/CrowAppMiddleware.h"
 #include "ProjectEngine.h"
 #include "AbuseProtection/AbuseProtection.h"
+#include "Auth/UserManager.h"
+#include "WebUtils/CookieHelper.h"
 
 void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, context& Ctx)
 {
@@ -10,16 +12,52 @@ void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, 
 	// Get IP address
 	const std::string& ClientIP = Req.remote_ip_address;
 
-	// --- Global rate limit: blocks IPs that exceed 5000 req/hr across ALL endpoints ---
-	if (AbuseProtection->IsAddressGloballyBlocked(ClientIP))
+	// --- Two-tier global rate limiting ---
+	// Determine if the request is authenticated (has a valid session token).
+	// Authenticated users get their own per-UserID quota (generous, e.g. 2000/hr).
+	// Unauthenticated requests are strictly limited per-IP (e.g. 300/hr).
+
+	const std::string_view CookieHeader = Req.get_header_value("Cookie");
+	const std::string AuthToken = FCookieHelper::GetCookieValue(CookieHeader, "auth_token");
+
+	bool bIsAuthenticated = false;
+	Uint64 UserId = 0;
+
+	if (!AuthToken.empty())
 	{
-		Res.code = crow::status::TOO_MANY_REQUESTS;
-		Res.body = R"({"error":"Global rate limit exceeded"})";
-		Res.end();
-		return;
+		const FUserManager* UserManager = ProjectEngine->GetUserManager();
+		if (UserManager->VerifyToken(AuthToken))
+		{
+			UserId = UserManager->GetIdFromToken(AuthToken);
+			bIsAuthenticated = (UserId != 0);
+		}
 	}
-	// Count this request against the global cap
-	AbuseProtection->AddGlobalRequestAttempt(ClientIP);
+
+	if (bIsAuthenticated)
+	{
+		// Tier 2: per-UserID rate limit (default 2000/hr)
+		const std::string UserIdStr = std::to_string(UserId);
+		if (AbuseProtection->IsAuthenticatedUserBlocked(UserIdStr))
+		{
+			Res.code = crow::status::TOO_MANY_REQUESTS;
+			Res.body = R"({"error":"Global rate limit exceeded"})";
+			Res.end();
+			return;
+		}
+		AbuseProtection->AddAuthenticatedUserAttempt(UserIdStr);
+	}
+	else
+	{
+		// Tier 1: per-IP rate limit for unauthenticated requests (default 300/hr)
+		if (AbuseProtection->IsUnauthenticatedIPBlocked(ClientIP))
+		{
+			Res.code = crow::status::TOO_MANY_REQUESTS;
+			Res.body = R"({"error":"Global rate limit exceeded"})";
+			Res.end();
+			return;
+		}
+		AbuseProtection->AddUnauthenticatedIPAttempt(ClientIP);
+	}
 
 	// --- Specific abuse check (auth-sensitive operations like login, register) ---
 	if (!AbuseProtection->IsAddressBlocked(ClientIP))
@@ -40,7 +78,7 @@ void FCrowAppMiddleware::before_handle(crow::request& Req, crow::response& Res, 
 	}
 }
 
-void FCrowAppMiddleware::after_handle(crow::request& Req, crow::response& Res, context& Ctx)
+void FCrowAppMiddleware::after_handle(const crow::request& Req, crow::response& Res, context& Ctx)
 {
 	static const std::string AccessControlAllowOriginHeaderName = "Access-Control-Allow-Origin";
 

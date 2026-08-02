@@ -12,5 +12,5 @@ struct FCrowAppMiddleware
 	struct context {};
 
 	void before_handle(crow::request& Req, crow::response& Res, context& Ctx);
-	void after_handle(crow::request& Req, crow::response& Res, context& Ctx);
+	void after_handle(const crow::request& Req, crow::response& Res, context& Ctx);
 };

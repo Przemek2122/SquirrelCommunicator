@@ -87,13 +87,18 @@ void FRateLimitObject::Reset()
 }
 
 FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock,
-	const int32 InNumberOfServerOperationAttemptsToBlock, const int32 InGlobalRequestsPerHour,
-	const int32 InInviteAbuseMaxAttempts, const int32 InInviteAbuseWindowSeconds, const int32 InInviteAbuseBanDurationSeconds)
+	const int32 InNumberOfServerOperationAttemptsToBlock,
+	const int32 InUnauthenticatedRequestsPerHour, const int32 InAuthenticatedRequestsPerHour,
+	const int32 InInviteAbuseMaxAttempts, const int32 InInviteAbuseWindowSeconds, const int32 InInviteAbuseBanDurationSeconds,
+	const int32 InInviteCreateLimitPerHour, const int32 InInviteUseLimitPerHour)
 	: ClearingTimeInMins(std::chrono::minutes(InClearingTimeInMins))
 	, NumberOfAttemptsToBlock(InNumberOfAttemptsToBlock)
 	, NumberOfPasswordResetAttemptsToBlock(InNumberOfPasswordResetAttemptsToBlock)
 	, NumberOfServerOperationAttemptsToBlock(InNumberOfServerOperationAttemptsToBlock)
-	, GlobalRequestsPerHour(InGlobalRequestsPerHour)
+	, UnauthenticatedRequestsPerHour(InUnauthenticatedRequestsPerHour)
+	, AuthenticatedRequestsPerHour(InAuthenticatedRequestsPerHour)
+	, InviteCreateLimitPerHour(InInviteCreateLimitPerHour)
+	, InviteUseLimitPerHour(InInviteUseLimitPerHour)
 	, InviteAbuseMaxAttempts(InInviteAbuseMaxAttempts)
 	, InviteAbuseWindowSeconds(InInviteAbuseWindowSeconds)
 	, InviteAbuseBanDurationSeconds(InInviteAbuseBanDurationSeconds)
@@ -150,14 +155,50 @@ void FRateLimiter::AddServerOperationAttempt(const std::string_view InAddress)
 	ServerOperationAddressToLimits.AddAttempt(InAddress);
 }
 
-bool FRateLimiter::IsAddressGloballyBlocked(const std::string_view InAddress)
+// --- Two-tier global rate limiting ---
+
+bool FRateLimiter::IsUnauthenticatedIPBlocked(const std::string_view InAddress)
 {
-	return GlobalRequestLimits.IsBlockedKey(InAddress, GlobalRequestsPerHour);
+	return UnauthenticatedIPLimits.IsBlockedKey(InAddress, UnauthenticatedRequestsPerHour);
 }
 
-void FRateLimiter::AddGlobalRequestAttempt(const std::string_view InAddress)
+void FRateLimiter::AddUnauthenticatedIPAttempt(const std::string_view InAddress)
 {
-	GlobalRequestLimits.AddAttempt(InAddress);
+	UnauthenticatedIPLimits.AddAttempt(InAddress);
+}
+
+bool FRateLimiter::IsAuthenticatedUserBlocked(const std::string_view UserIdStr)
+{
+	return AuthenticatedUserLimits.IsBlockedKey(UserIdStr, AuthenticatedRequestsPerHour);
+}
+
+void FRateLimiter::AddAuthenticatedUserAttempt(const std::string_view UserIdStr)
+{
+	AuthenticatedUserLimits.AddAttempt(UserIdStr);
+}
+
+// --- Invite create hourly rate limit ---
+
+bool FRateLimiter::IsInviteCreateAddressBlocked(const std::string_view InAddress)
+{
+	return InviteCreateLimits.IsBlockedKey(InAddress, InviteCreateLimitPerHour);
+}
+
+void FRateLimiter::AddInviteCreateAttempt(const std::string_view InAddress)
+{
+	InviteCreateLimits.AddAttempt(InAddress);
+}
+
+// --- Invite use hourly rate limit ---
+
+bool FRateLimiter::IsInviteUseAddressBlocked(const std::string_view InAddress)
+{
+	return InviteUseLimits.IsBlockedKey(InAddress, InviteUseLimitPerHour);
+}
+
+void FRateLimiter::AddInviteUseAttempt(const std::string_view InAddress)
+{
+	InviteUseLimits.AddAttempt(InAddress);
 }
 
 void FRateLimiter::ResetRateLimits()
@@ -165,7 +206,10 @@ void FRateLimiter::ResetRateLimits()
 	DefaultIPAddressToLimits.Reset();
 	PasswordResetIPAddressToLimits.Reset();
 	ServerOperationAddressToLimits.Reset();
-	GlobalRequestLimits.Reset();
+	UnauthenticatedIPLimits.Reset();
+	AuthenticatedUserLimits.Reset();
+	InviteCreateLimits.Reset();
+	InviteUseLimits.Reset();
 
 	// NOTE: Invite abuse records are NOT cleared here.
 	// They use a rolling-window + ban model with their own independent lifecycle

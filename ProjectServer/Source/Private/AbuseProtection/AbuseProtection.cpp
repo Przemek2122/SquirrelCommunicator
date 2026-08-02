@@ -15,28 +15,36 @@ FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 		const FIniField RateLimitPasswordField = BackendSettingsIni->FindFieldByName("PasswordRateLimitNumberPerIP");
 		const FIniField RateLimitCreateServerField = BackendSettingsIni->FindFieldByName("CreateRoomRateLimitNumberPerIP");
 
-		// Read global request cap from BackendSettings (already parsed)
-		const int32 GlobalRequestsPerHour = InBackendSettings->GetGlobalRequestsPerHour();
+		// Read two-tier global rate limits from BackendSettings (already parsed)
+		const int32 UnauthenticatedRequestsPerHour = InBackendSettings->GetUnauthenticatedRequestsPerHour();
+		const int32 AuthenticatedRequestsPerHour = InBackendSettings->GetAuthenticatedRequestsPerHour();
 
 		// Read invite abuse config from BackendSettings (already parsed)
 		const int32 InviteAbuseMaxAttempts = InBackendSettings->GetInviteAbuseMaxAttempts();
 		const int32 InviteAbuseWindowSeconds = InBackendSettings->GetInviteAbuseWindowSeconds();
 		const int32 InviteAbuseBanDurationSeconds = InBackendSettings->GetInviteAbuseBanDurationSeconds();
 
+		// Read invite hourly rate limits from BackendSettings (already parsed)
+		const int32 InviteCreateLimitPerHour = InBackendSettings->GetInviteCreateLimitPerHour();
+		const int32 InviteUseLimitPerHour = InBackendSettings->GetInviteUseLimitPerHour();
+
 		RateLimiter = std::make_unique<FRateLimiter>(
 			RateLimitTimeToClearInMinsField.GetValueAsInt(),
 			RateLimitNumberPerIPField.GetValueAsInt(),
 			RateLimitPasswordField.GetValueAsInt(),
 			RateLimitCreateServerField.GetValueAsInt(),
-			GlobalRequestsPerHour,
+			UnauthenticatedRequestsPerHour,
+			AuthenticatedRequestsPerHour,
 			InviteAbuseMaxAttempts,
 			InviteAbuseWindowSeconds,
-			InviteAbuseBanDurationSeconds
+			InviteAbuseBanDurationSeconds,
+			InviteCreateLimitPerHour,
+			InviteUseLimitPerHour
 		);
 	}
 	else
 	{
-		RateLimiter = std::make_unique<FRateLimiter>(60, 10, 8, 10, 5000, 10, 120, 3600);
+		RateLimiter = std::make_unique<FRateLimiter>(60, 10, 8, 10, 300, 2000, 10, 120, 3600, 20, 30);
 
 		LOG_ERROR("FAbuseProtection missing BackendSettingsIni");
 	}
@@ -72,14 +80,26 @@ void FAbuseProtection::AddCreateServerAttempt(const std::string_view InAddress) 
 	RateLimiter->AddServerOperationAttempt(InAddress);
 }
 
-bool FAbuseProtection::IsAddressGloballyBlocked(const std::string_view InAddress) const
+// --- Two-tier global rate limiting ---
+
+bool FAbuseProtection::IsUnauthenticatedIPBlocked(const std::string_view InAddress) const
 {
-	return RateLimiter->IsAddressGloballyBlocked(InAddress);
+	return RateLimiter->IsUnauthenticatedIPBlocked(InAddress);
 }
 
-void FAbuseProtection::AddGlobalRequestAttempt(const std::string_view InAddress) const
+void FAbuseProtection::AddUnauthenticatedIPAttempt(const std::string_view InAddress) const
 {
-	RateLimiter->AddGlobalRequestAttempt(InAddress);
+	RateLimiter->AddUnauthenticatedIPAttempt(InAddress);
+}
+
+bool FAbuseProtection::IsAuthenticatedUserBlocked(const std::string_view UserIdStr) const
+{
+	return RateLimiter->IsAuthenticatedUserBlocked(UserIdStr);
+}
+
+void FAbuseProtection::AddAuthenticatedUserAttempt(const std::string_view UserIdStr) const
+{
+	RateLimiter->AddAuthenticatedUserAttempt(UserIdStr);
 }
 
 // --- Invite Abuse Protection ---
@@ -102,6 +122,28 @@ void FAbuseProtection::ClearInviteAbuseForIp(const std::string& Ip) const
 void FAbuseProtection::PeriodicInviteAbuseCleanup() const
 {
 	RateLimiter->PeriodicInviteAbuseCleanup();
+}
+
+// --- Invite Hourly Rate Limits ---
+
+bool FAbuseProtection::CanAddressCreateInvite(const std::string_view InAddress) const
+{
+	return !RateLimiter->IsInviteCreateAddressBlocked(InAddress);
+}
+
+void FAbuseProtection::AddCreateInviteAttempt(const std::string_view InAddress) const
+{
+	RateLimiter->AddInviteCreateAttempt(InAddress);
+}
+
+bool FAbuseProtection::CanAddressUseInvite(const std::string_view InAddress) const
+{
+	return !RateLimiter->IsInviteUseAddressBlocked(InAddress);
+}
+
+void FAbuseProtection::AddUseInviteAttempt(const std::string_view InAddress) const
+{
+	RateLimiter->AddInviteUseAttempt(InAddress);
 }
 
 CUnorderedMap<std::string, std::string> FAbuseProtection::GetCORHeaders() const

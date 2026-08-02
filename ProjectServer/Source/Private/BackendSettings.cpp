@@ -7,7 +7,8 @@
 
 FBackendSettings::FBackendSettings()
     : MaxMessageSize(1024)
-    , GlobalRequestsPerHour(5000)
+    , UnauthenticatedRequestsPerHour(300)
+    , AuthenticatedRequestsPerHour(2000)
     , InviteDefaultMaxUses(1000)
     , InviteDefaultExpiresInSeconds(2592000)   // 30 days
     , InviteMaxExpiresInSeconds(31536000)       // 365 days (12 months)
@@ -15,6 +16,8 @@ FBackendSettings::FBackendSettings()
     , InviteAbuseMaxAttempts(10)
     , InviteAbuseWindowSeconds(120)
     , InviteAbuseBanDurationSeconds(3600)       // 1 hour
+    , InviteCreateLimitPerHour(20)
+    , InviteUseLimitPerHour(30)
 {
 }
 
@@ -31,11 +34,17 @@ void FBackendSettings::LoadBackendSettings()
             MaxMessageSize = MaxMessageSizeField.GetValueAsInt();
         }
 
-        // --- Global rate limiting ---
-        const FIniField GlobalRequestsPerHourField = BackendSettingsIniObject->FindFieldByName("GlobalRequestsPerHour");
-        if (GlobalRequestsPerHourField.IsValid())
+        // --- Two-tier global rate limiting ---
+        const FIniField UnauthenticatedRequestsPerHourField = BackendSettingsIniObject->FindFieldByName("UnauthenticatedRequestsPerHour");
+        if (UnauthenticatedRequestsPerHourField.IsValid())
         {
-            GlobalRequestsPerHour = GlobalRequestsPerHourField.GetValueAsInt();
+            UnauthenticatedRequestsPerHour = UnauthenticatedRequestsPerHourField.GetValueAsInt();
+        }
+
+        const FIniField AuthenticatedRequestsPerHourField = BackendSettingsIniObject->FindFieldByName("AuthenticatedRequestsPerHour");
+        if (AuthenticatedRequestsPerHourField.IsValid())
+        {
+            AuthenticatedRequestsPerHour = AuthenticatedRequestsPerHourField.GetValueAsInt();
         }
 
         const FIniField InviteDefaultMaxUsesField = BackendSettingsIniObject->FindFieldByName("InviteDefaultMaxUses");
@@ -79,6 +88,19 @@ void FBackendSettings::LoadBackendSettings()
         if (InviteAbuseBanDurationSecondsField.IsValid())
         {
             InviteAbuseBanDurationSeconds = InviteAbuseBanDurationSecondsField.GetValueAsInt();
+        }
+
+        // --- Invite hourly rate limits ---
+        const FIniField InviteCreateLimitPerHourField = BackendSettingsIniObject->FindFieldByName("InviteCreateLimitPerHour");
+        if (InviteCreateLimitPerHourField.IsValid())
+        {
+            InviteCreateLimitPerHour = InviteCreateLimitPerHourField.GetValueAsInt();
+        }
+
+        const FIniField InviteUseLimitPerHourField = BackendSettingsIniObject->FindFieldByName("InviteUseLimitPerHour");
+        if (InviteUseLimitPerHourField.IsValid())
+        {
+            InviteUseLimitPerHour = InviteUseLimitPerHourField.GetValueAsInt();
         }
     }
     else

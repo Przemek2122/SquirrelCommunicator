@@ -143,8 +143,8 @@ Uint64 FServersManager::AddServer(const std::string& InServerName, Uint64 OwnerI
     UploadMemberToDB(NewServerId, OwnerId, EServerPermission::ALL_PERMISSIONS);
 
     // Create default channels (position 0 and 1)
-    AddChannel(NewServerId, "general", EServerChannelType::Text);
-    AddChannel(NewServerId, "General", EServerChannelType::Voice);
+    AddChannel(NewServerId, "general", EServerChannelType::Text, OwnerId);
+    AddChannel(NewServerId, "General", EServerChannelType::Voice, OwnerId);
 
     // Add to cache
     {
@@ -288,12 +288,21 @@ bool FServersManager::UserHasPermission(const Uint64 ServerId, const Uint64 User
 }
 
 
-Uint64 FServersManager::AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType)
+Uint64 FServersManager::AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType, Uint64 RequestedByUserId)
 {
     auto Server = GetServerById(ServerId);
     if (!Server)
     {
         LOG_ERROR("AddChannel: Server not found: " << ServerId);
+        return 0;
+    }
+
+
+    // Check permission: user must have CAN_MANAGE_CHANNELS or be owner
+    if (!UserHasPermission(ServerId, RequestedByUserId, EServerPermission::CAN_MANAGE_CHANNELS))
+    {
+        LOG_WARN("AddChannel: User " << RequestedByUserId << " lacks CAN_MANAGE_CHANNELS permission"
+                 << " in server " << ServerId);
         return 0;
     }
 

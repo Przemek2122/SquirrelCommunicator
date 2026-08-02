@@ -19,8 +19,7 @@ ESocketMessageSection StringToSocketMessageSection(const std::string_view InType
     switch (HashString(InTypeString))
     {
         case HashString("priv"):    return ESocketMessageSection::Priv;
-        case HashString("rooms"):   return ESocketMessageSection::Rooms;
-        case HashString("servers"): return ESocketMessageSection::Rooms;  // alias: matches docs & frontend convention
+        case HashString("servers"): return ESocketMessageSection::Servers;
         case HashString("error"):   return ESocketMessageSection::Error;
         default:                    return ESocketMessageSection::Unknown;
     }
@@ -31,7 +30,7 @@ std::string SocketMessageSectionToString(const ESocketMessageSection InTypeEnum)
     switch (InTypeEnum)
     {
         case ESocketMessageSection::Priv:       return "priv";
-        case ESocketMessageSection::Rooms:      return "rooms";
+        case ESocketMessageSection::Servers:    return "servers";
         case ESocketMessageSection::Error:      return "error";
         case ESocketMessageSection::Unknown:
         default:                                return "unknown";

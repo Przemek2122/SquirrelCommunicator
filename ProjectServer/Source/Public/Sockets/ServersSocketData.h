@@ -28,7 +28,7 @@ public:
     void RoomLeaveVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 ChannelId);
 
     // New WebSocket-based handlers (replacing REST endpoints)
-    void HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode opCode);
+    void HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint32 Offset = 0, Uint32 Limit = 50);
     void HandleGetServerMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 ChannelId, Uint64 Before, Uint32 Limit);
 
     /**

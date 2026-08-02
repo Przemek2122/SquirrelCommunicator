@@ -217,7 +217,24 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 
         case ESocketMessageServersType::GetServerList:
         {
-            HandleGetServerList(wsVariant, opCode);
+                Uint32 Offset = 0;
+                Uint32 Limit = 50;
+                if (DataJSON.contains("offset"))
+                {
+                    if (DataJSON["offset"].is_string())
+                        Offset = static_cast<Uint32>(std::stoul(DataJSON["offset"].get<std::string>()));
+                    else
+                        Offset = DataJSON["offset"].get<Uint32>();
+                }
+                if (DataJSON.contains("limit"))
+                {
+                    if (DataJSON["limit"].is_string())
+                        Limit = static_cast<Uint32>(std::stoul(DataJSON["limit"].get<std::string>()));
+                    else
+                        Limit = DataJSON["limit"].get<Uint32>();
+                }
+                if (Limit == 0 || Limit > 200) Limit = 50;
+                HandleGetServerList(wsVariant, opCode, Offset, Limit);
             break;
         }
 
@@ -562,7 +579,7 @@ void FServersSocketData::CreateChannel(AnyWebSocket wsVariant, uWS::OpCode opCod
     }
 
     const EServerChannelType Type = (ChannelType == "voice") ? EServerChannelType::Voice : EServerChannelType::Text;
-    const Uint64 NewChannelId = ServersManager->AddChannel(RoomId, ChannelName, Type);
+    const Uint64 NewChannelId = ServersManager->AddChannel(RoomId, ChannelName, Type, CurrentUserId);
 
     if (NewChannelId == 0)
     {
@@ -745,7 +762,7 @@ void FServersSocketData::RoomLeaveVoice(AnyWebSocket wsVariant, uWS::OpCode opCo
 
 // ========== NEW: WebSocket handlers replacing REST endpoints ==========
 
-void FServersSocketData::HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode opCode)
+void FServersSocketData::HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint32 Offset, Uint32 Limit)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)
@@ -757,17 +774,26 @@ void FServersSocketData::HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode
     FServersManager* ServersManager = ProjectEngine->GetServersManager();
     const std::vector<std::shared_ptr<FServer>> Servers = ServersManager->GetUserServers(CurrentUserId);
 
+    const Uint32 Total = static_cast<Uint32>(Servers.size());
+
+    // Apply offset/limit pagination for efficient frontend loading
+    const Uint32 StartIndex = (Offset < Total) ? Offset : Total;
+    const Uint32 EndIndex = (StartIndex + Limit < Total) ? (StartIndex + Limit) : Total;
+    const bool bHasMore = (EndIndex < Total);
+
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerList);
 
     nlohmann::json RoomsArray = nlohmann::json::array();
 
-    for (const auto& Server : Servers)
+    for (Uint32 i = StartIndex; i < EndIndex; ++i)
     {
-        RoomsArray.push_back(BuildRoomDataJson(Server->GetServerId()));
+        RoomsArray.push_back(BuildRoomDataJson(Servers[i]->GetServerId()));
     }
 
     ResponseJson["data"]["rooms"] = RoomsArray;
+    ResponseJson["data"]["total"] = Total;
+    ResponseJson["data"]["has_more"] = bHasMore;
 
     std::visit([&](auto* ws)
     {
@@ -832,6 +858,16 @@ void FServersSocketData::HandleServerCreateInvite(AnyWebSocket wsVariant, uWS::O
         return;
     }
 
+    // Rate-limit: check hourly invite creation cap per IP
+    const std::string ClientIP = GetRemoteIP(wsVariant);
+    FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+    if (!ClientIP.empty() && !AbuseProtection->CanAddressCreateInvite(ClientIP))
+    {
+        FSocket::EarlyExit(wsVariant, "invite create rate limit exceeded", opCode);
+        return;
+    }
+    AbuseProtection->AddCreateInviteAttempt(ClientIP);
+
     FServersManager* ServersManager = ProjectEngine->GetServersManager();
 
     if (!ServersManager->IsUserInServer(RoomId, CurrentUserId))
@@ -894,6 +930,17 @@ void FServersSocketData::HandleServerJoinInvite(AnyWebSocket wsVariant, uWS::OpC
 
     const std::string UserName = GetUserName(CurrentUserId);
     const std::string ClientIP = GetRemoteIP(wsVariant);
+
+    // Rate-limit: check hourly invite use cap per IP
+    {
+        FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
+        if (!ClientIP.empty() && !AbuseProtection->CanAddressUseInvite(ClientIP))
+        {
+            FSocket::EarlyExit(wsVariant, "invite use rate limit exceeded", opCode);
+            return;
+        }
+        AbuseProtection->AddUseInviteAttempt(ClientIP);
+    }
 
     FServersManager* ServersManager = ProjectEngine->GetServersManager();
 

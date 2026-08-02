@@ -75,7 +75,7 @@ public:
      * RenameChannel: changes a channel's name. Updates both DB and in-memory cache.
      *   Requires CAN_MANAGE_CHANNELS permission (or server owner).
      */
-    Uint64 AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType);
+    Uint64 AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType, Uint64 RequestedByUserId);
     bool RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 RequestedByUserId);
     bool MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPosition, Uint64 RequestedByUserId);
     bool RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName, Uint64 RequestedByUserId);

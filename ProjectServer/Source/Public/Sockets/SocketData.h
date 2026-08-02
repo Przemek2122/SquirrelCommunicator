@@ -24,8 +24,8 @@ enum class ESocketMessageSection : uint8
     /** Private message section */
     Priv,
 
-    /** Rooms section */
-    Rooms,
+    /** Servers section (handles room/server creation, channel ops, invites, voice, etc.) */
+    Servers,
 
     Error = 255
 };
@@ -80,7 +80,7 @@ enum class ESocketMessageServersType : uint8
     ServerInvite,
     RoomJoinVoice,
     RoomLeaveVoice,
-    GetServerList,          // Request list of servers user belongs to
+    GetServerList,          // Request list of servers user belongs to (supports offset/limit pagination)
     GetServerMessages,      // Request message history for a channel
     ServerCreateInvite,     // Request to generate an invite code
     ServerJoinInvite,       // Request to join via invite code

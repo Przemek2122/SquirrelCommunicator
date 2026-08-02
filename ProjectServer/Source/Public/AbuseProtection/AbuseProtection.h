@@ -7,7 +7,8 @@
 
 /**
  * Class used for abuse protection
- * Supports: Rate limiting, blocking address, invite abuse protection
+ * Supports: Rate limiting, blocking address, invite abuse protection, invite hourly rate limits,
+ * two-tier global rate limiting (unauthenticated per-IP + authenticated per-UserID)
  * Currently also used for COR Headers
  */
 class FAbuseProtection
@@ -24,11 +25,19 @@ public:
 	bool CanAddressRequestCreateServer(const std::string_view InAddress) const;
 	void AddCreateServerAttempt(const std::string_view InAddress) const;
 
-	/** Check if an IP has exceeded the global request cap (5000/hr, all endpoints) */
-	bool IsAddressGloballyBlocked(const std::string_view InAddress) const;
+	// --- Two-tier global rate limiting ---
 
-	/** Record a global request attempt (called on every REST + WebSocket message) */
-	void AddGlobalRequestAttempt(const std::string_view InAddress) const;
+	/** Tier 1: Check if an unauthenticated IP has exceeded the strict per-IP cap (default 300/hr) */
+	bool IsUnauthenticatedIPBlocked(const std::string_view InAddress) const;
+
+	/** Tier 1: Record an unauthenticated request for this IP */
+	void AddUnauthenticatedIPAttempt(const std::string_view InAddress) const;
+
+	/** Tier 2: Check if an authenticated UserID has exceeded the per-user cap (default 2000/hr) */
+	bool IsAuthenticatedUserBlocked(const std::string_view UserIdStr) const;
+
+	/** Tier 2: Record an authenticated request for this UserID */
+	void AddAuthenticatedUserAttempt(const std::string_view UserIdStr) const;
 
 	// --- Invite Abuse Protection (rolling-window + ban) ---
 
@@ -47,7 +56,21 @@ public:
 	/** Periodic cleanup of expired bans and stale records. */
 	void PeriodicInviteAbuseCleanup() const;
 
-	CUnorderedMap<std::string, std::string> GetCORHeaders() const;
+	// --- Invite Hourly Rate Limits (simple per-IP counter, configurable in INI) ---
+
+	/** Check if an IP can create an invite (has not exceeded hourly limit, default 20/hr) */
+	bool CanAddressCreateInvite(const std::string_view InAddress) const;
+
+	/** Record an invite creation attempt for the given IP */
+	void AddCreateInviteAttempt(const std::string_view InAddress) const;
+
+	/** Check if an IP can attempt to use an invite (has not exceeded hourly limit, default 30/hr) */
+	bool CanAddressUseInvite(const std::string_view InAddress) const;
+
+	/** Record an invite use attempt for the given IP */
+	void AddUseInviteAttempt(const std::string_view InAddress) const;
+
+	[[nodiscard]] CUnorderedMap<std::string, std::string> GetCORHeaders() const;
 
 protected:
 	std::unique_ptr<FCORPolicy> CORPolicyPtr;

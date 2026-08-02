@@ -452,21 +452,26 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 	LOG_INFO("Received: " << message);
 #endif
 
-	// --- Global rate limit: count every WebSocket message against the per-IP cap ---
+	// --- Two-tier global rate limit: WebSocket connections are always authenticated ---
+	// Per-UserID rate limit (Tier 2). Each token/user gets their own quota.
 	{
-		const std::string_view ClientIP = ws->getRemoteAddressAsText();
-		FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
-
-		if (!ClientIP.empty() && AbuseProtection->IsAddressGloballyBlocked(ClientIP))
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
 		{
-			nlohmann::json ErrorJson;
-			ErrorJson["type"] = "error";
-			ErrorJson["message"] = "Global rate limit exceeded";
+			const std::string UserIdStr = std::to_string(WebSocketSessionData->UserId);
+			FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
 
-			ws->send(ErrorJson.dump(), opCode);
-			return;
+			if (AbuseProtection->IsAuthenticatedUserBlocked(UserIdStr))
+			{
+				nlohmann::json ErrorJson;
+				ErrorJson["type"] = "error";
+				ErrorJson["message"] = "Global rate limit exceeded";
+
+				ws->send(ErrorJson.dump(), opCode);
+				return;
+			}
+			AbuseProtection->AddAuthenticatedUserAttempt(UserIdStr);
 		}
-		AbuseProtection->AddGlobalRequestAttempt(ClientIP);
 	}
 
 	try
@@ -495,7 +500,7 @@ void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::Op
 				break;
 			}
 
-			case ESocketMessageSection::Rooms:
+			case ESocketMessageSection::Servers:
 			{
 				ServersSocketData.PrimarySwitch(ws, JsonMessage, opCode);
 

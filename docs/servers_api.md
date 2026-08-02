@@ -1,6 +1,6 @@
 # Squirrel Communicator Server API Documentation
 
-Version 1.5
+Version 1.6
 
 This document describes all server endpoints and WebSocket message types available in Squirrel Communicator. The system uses two communication channels: REST API over HTTPS for authentication and account management, and WebSocket for real time messaging and server operations.
 
@@ -9,7 +9,7 @@ SECTION 1: REST API ENDPOINTS
 ============================================
 
 All REST endpoints are prefixed with /api/v1/ and accept JSON request bodies. Responses are JSON with status and message fields. Authentication is handled via cookies after login.
-All REST endpoints are subject to the global rate limit (default 5000 requests/hour/IP).
+REST endpoints are subject to two-tier global rate limiting: unauthenticated requests (no valid session token) are limited per-IP (default 300/hour), while authenticated requests (valid session token) are limited per-UserID (default 2000/hour). See Section 7 for details.
 
 --------------------------------------------
 1.1 USER AUTHENTICATION
@@ -246,7 +246,7 @@ SECTION 2: WEBSOCKET API
 ============================================
 
 The WebSocket connection uses a JSON based protocol. Every message must contain a type field identifying the action and a data field with payload. The connection requires prior authentication via REST login; the session cookie is used to identify the user.
-All WebSocket messages are subject to the global rate limit (default 5000 messages/hour/IP).
+All WebSocket messages are subject to the authenticated per-UserID rate limit (default 2000 messages/hour per user). Since WebSocket connections always require a valid session token, only the authenticated tier applies. See Section 7 for details.
 
 Base message format:
     type  string  Message type identifier
@@ -440,7 +440,7 @@ These messages handle the community server system with channels and voice chat. 
 2.2.1 Client to Server Messages
 
     type: create_room
-        Create a new server. Rate limited per IP address.
+        Create a new server. Rate limited per IP address (default 2 per hour, configurable via CreateRoomRateLimitNumberPerIP).
 
         data:
             room_name  string  Name of the new server
@@ -648,13 +648,17 @@ These messages handle the community server system with channels and voice chat. 
             room_id, channel_id, user_id, user_name.
 
     type: get_server_list
-        Get list of all servers the current user belongs to.
+        Get list of all servers the current user belongs to. Supports pagination.
 
-        data: none required
+        data:
+            offset  number  Optional. Zero-based offset. Default 0.
+            limit   number  Optional. Max servers to return. Default 50, capped at 200.
 
         Server response type: server_list
             data:
-                rooms  Array of server objects, each with full server data.
+                rooms    Array of server objects, each with full server data.
+                total    Total number of servers the user belongs to.
+                has_more Boolean. True if more servers exist beyond the returned page.
 
     type: get_server_messages
         Get channel message history with timestamp based pagination.
@@ -674,6 +678,7 @@ These messages handle the community server system with channels and voice chat. 
         Generate an invite code for a server. Invites are never permanent; they always have
         a configurable expiration (max 12 months) and a configurable usage limit.
         Requires CAN_CREATE_INVITES permission or server owner.
+        Subject to hourly invite creation rate limit per IP (default 20/hour, configurable via InviteCreateLimitPerHour).
 
         data:
             room_id             string  REQUIRED. Server ID to create invite for.
@@ -702,12 +707,19 @@ These messages handle the community server system with channels and voice chat. 
             type: error
             message: permission denied: you lack CAN_CREATE_INVITES permission
 
+        Error if IP exceeds hourly invite creation limit:
+            type: error
+            message: invite create rate limit exceeded
+
     type: server_join_invite
         Join a server using an invite code. New members via invite get zero special permissions
         (can chat freely but cannot create invites, manage channels, etc.).
+        Subject to hourly invite use rate limit per IP (default 30/hour, configurable via InviteUseLimitPerHour).
 
-        IP based abuse protection is active on this endpoint: too many failed attempts
-        from the same IP will result in a temporary ban. Successful joins reset the counter.
+        Two-layer invite protection is active on this endpoint:
+        Layer 1 — Hourly rate limit: max 30 invite use attempts per IP per hour.
+        Layer 2 — Abuse detection: too many failed attempts from the same IP within a
+        rolling window will result in a temporary ban. Successful joins reset the counter.
 
         data:
             invite_code  string  Invite code from server_invite_created
@@ -716,6 +728,10 @@ These messages handle the community server system with channels and voice chat. 
             data: Full server object.
 
         Server broadcasts type: room_user_joined to server members.
+
+        Error if IP exceeds hourly invite use limit:
+            type: error
+            message: invite use rate limit exceeded
 
         Error if banned for too many failed attempts:
             type: error
@@ -1027,6 +1043,15 @@ Invites are never permanent. Every invite has a mandatory expiration time with a
     InviteMaxExpiresInSeconds       Default 31536000 (12 months)
         Hard cap on invite lifetime. Values above this are clamped down to this maximum.
 
+    MaxInvitesPerServer             Default 10
+        Maximum number of active (non-expired) invites per server.
+
+    InviteCreateLimitPerHour        Default 20
+        Maximum number of invite codes an IP can create per hour.
+
+    InviteUseLimitPerHour           Default 30
+        Maximum number of invite use attempts (successful or failed) per IP per hour.
+
     InviteAbuseMaxAttempts          Default 10
         Number of failed invite attempts from a single IP before a temporary ban is applied.
 
@@ -1044,6 +1069,9 @@ Invites are never permanent. Every invite has a mandatory expiration time with a
         expires_in_seconds Custom lifetime in seconds (max 31536000 = 12 months)
 
     If not specified, backend defaults from BackendSettings.ini are applied.
+
+    Creating invites is also subject to an hourly per-IP rate limit (default 20/hour)
+    to prevent flooding. See Section 5.6.
 
     Example: Create an invite valid for 7 days with 50 max uses:
         {
@@ -1106,23 +1134,44 @@ Invites are never permanent. Every invite has a mandatory expiration time with a
             }
         }
 
-5.6 Invite Abuse Protection
+5.6 Invite Rate Limiting (Two Layers)
 
-    To prevent brute force guessing of invite codes, the server tracks failed invite attempts per IP address:
+    Invite operations are protected by two independent rate limiting layers:
 
-    1. When a user submits an invalid, expired, or depleted invite code:
-       a. The failure is recorded against the clients IP address.
-       b. Failures are counted within a rolling window (default 120 seconds).
-       c. If the count reaches the maximum allowed (default 10), the IP is banned.
-    2. When banned, all subsequent invite attempts from that IP return an abuse ban error.
-    3. The ban lasts for the configured duration (default 3600 seconds = 1 hour).
-    4. On a successful invite join, the failure counter for that IP is reset.
-    5. Periodic cleanup removes expired bans and stale records every 5 minutes.
+    Layer 1 — Hourly Rate Limits (simple per-IP counters):
 
-    Configuration (BackendSettings.ini):
-        InviteAbuseMaxAttempts = 10           Max failures before ban
-        InviteAbuseWindowSeconds = 120        Rolling window for counting failures
-        InviteAbuseBanDurationSeconds = 3600  Ban duration in seconds (1 hour)
+        Creating invites:  max 20 invites created per IP per hour.
+        Using invites:     max 30 invite use attempts per IP per hour (both successful and failed).
+
+        These limits reset every RateLimitTimeToClearInMins (default 60 minutes).
+        Exceeding the limit returns "invite create rate limit exceeded" or
+        "invite use rate limit exceeded".
+
+        Configuration:
+            InviteCreateLimitPerHour = 20
+            InviteUseLimitPerHour    = 30
+
+    Layer 2 — Abuse Detection (rolling-window + IP ban):
+
+        To prevent brute force guessing of invite codes, the server tracks failed
+        invite attempts per IP address:
+
+        1. When a user submits an invalid, expired, or depleted invite code:
+           a. The failure is recorded against the clients IP address.
+           b. Failures are counted within a rolling window (default 120 seconds).
+           c. If the count reaches the maximum allowed (default 10), the IP is banned.
+        2. When banned, all subsequent invite attempts from that IP return an abuse ban error.
+        3. The ban lasts for the configured duration (default 3600 seconds = 1 hour).
+        4. On a successful invite join, the failure counter for that IP is reset.
+        5. Periodic cleanup removes expired bans and stale records every 5 minutes.
+
+        Configuration:
+            InviteAbuseMaxAttempts = 10
+            InviteAbuseWindowSeconds = 120
+            InviteAbuseBanDurationSeconds = 3600
+
+    Both layers coexist. Layer 1 stops broad flooding; Layer 2 catches aggressive
+    brute-forcing patterns.
 
 5.7 Migration
 
@@ -1157,8 +1206,10 @@ Common WebSocket error messages:
     message too large         Content exceeds maximum message size
     invalid or expired invite code  Invite code is not valid
     abuse ban: too many failed invite attempts. Try again later.  IP banned for too many wrong invite codes
-    service abuse             Specific rate limit exceeded (login, register, server creation)
-    Global rate limit exceeded    IP has exceeded 5000 req/hr global cap
+    invite create rate limit exceeded  IP has exceeded the hourly invite creation limit (default 20/hour)
+    invite use rate limit exceeded     IP has exceeded the hourly invite use limit (default 30/hour)
+    service abuse             Specific operation rate limit exceeded (login, register, server creation)
+    Global rate limit exceeded    Two-tier: unauthenticated IP has exceeded 300 req/hr (Tier 1) OR authenticated UserID has exceeded 2000 req/hr (Tier 2)
     failed to create room     Server creation failed
     failed to join room       Server join operation failed
     failed to leave room      Server leave operation failed
@@ -1177,43 +1228,89 @@ SECTION 7: RATE LIMITING
 
 Squirrel Communicator uses a layered rate limiting strategy to protect against abuse.
 
-7.1 Global Rate Limit
+7.1 Two-Tier Global Rate Limiting
 
-    Every request (REST endpoint + WebSocket message) counts against a per-IP hourly cap.
+    All requests are classified as either unauthenticated (no valid session token) or
+    authenticated (valid session token). Each tier has its own rate limit:
 
-    Default:  5000 requests per hour per IP (~83/min, ~1.4/sec)
-    Config:   GlobalRequestsPerHour in BackendSettings.ini
-    Reset:    Counters reset every RateLimitTimeToClearInMins (default 60 minutes)
-    Scope:    Applied in CrowAppMiddleware::before_handle (REST) and FSocket::OnMessageReceived_TEXT (WebSocket)
-    Error:    HTTP 429 or WebSocket error message "Global rate limit exceeded"
+    Tier 1 — Unauthenticated Requests (per-IP):
+        Applied to requests without a valid auth_token cookie (e.g., /login, /register,
+        static assets, any REST call without a valid session).
+        Default:  300 requests per hour per IP
+        Config:   UnauthenticatedRequestsPerHour in BackendSettings.ini
+        Reset:    Counters reset every RateLimitTimeToClearInMins (default 60 minutes)
+        Scope:    Applied in CrowAppMiddleware::before_handle (REST) for requests
+                  where the auth_token cookie is missing or invalid.
+        Error:    HTTP 429 "Global rate limit exceeded"
 
-    This prevents any single IP from flooding the server with thousands of requests per second,
-    regardless of which endpoint is targeted.
+    Tier 2 — Authenticated Requests (per-UserID):
+        Applied to REST requests with a valid auth_token cookie AND all WebSocket
+        messages. Each authenticated user gets their own independent quota.
+        50 users behind the same IP address get 50 separate quotas,
+        totaling 50 × 2000 = 100,000 req/h for that IP.
+        Default:  2000 requests per hour per UserID
+        Config:   AuthenticatedRequestsPerHour in BackendSettings.ini
+        Reset:    Counters reset every RateLimitTimeToClearInMins (default 60 minutes)
+        Scope:    Applied in CrowAppMiddleware::before_handle (REST with valid token)
+                  and FSocket::OnMessageReceived_TEXT (all WebSocket messages).
+        Error:    HTTP 429 or WebSocket error "Global rate limit exceeded"
+
+    This two-tier design ensures that:
+    - Unauthenticated endpoints are protected from port scanning and brute-force.
+    - Authenticated users behind shared IPs (NAT, office, school) are never unfairly
+      rate-limited by other users on the same network.
+    - WebSocket traffic has a generous per-user quota since connections are always
+      authenticated.
 
 7.2 Specific Operation Rate Limits
 
-    Certain sensitive operations have stricter per-IP limits:
+    Certain sensitive operations have stricter per-IP limits that apply
+    independently of the two-tier global limits above:
 
     Operation         Limit (per hour)  Config key
     Authentication    55                RateLimitNumberPerIP
     Password reset    25                PasswordRateLimitNumberPerIP
     Server creation   2                 CreateRoomRateLimitNumberPerIP
 
-7.3 Invite Abuse Protection
+    These limits are much stricter and target specific attack vectors (credential
+    stuffing, reset spam, server flooding). They apply per-IP regardless of
+    authentication status.
 
-    Separate from general rate limiting. See Section 5.6 for the invite-specific IP ban system
-    that triggers after 10 failed invite attempts in a 120 second window.
+7.3 Invite Hourly Rate Limits
 
-7.4 Configuration Summary
+    Invite operations have their own per-IP hourly caps, separate from the two-tier
+    global limits and the specific operation limits:
+
+    Operation                Limit (per hour)  Config key
+    Invite creation          20                InviteCreateLimitPerHour
+    Invite use attempts      30                InviteUseLimitPerHour
+
+    See Section 5.6 for the two-layer invite protection system (hourly limits +
+    rolling-window abuse detection with IP bans).
+
+7.4 Invite Abuse Protection (Rolling Window + Ban)
+
+    Separate from the hourly invite limits above. See Section 5.6 for the invite-specific
+    IP ban system that triggers after 10 failed invite attempts in a 120 second rolling
+    window, resulting in a 1 hour IP ban.
+
+7.5 Configuration Summary
 
     BackendSettings.ini parameters:
 
-    GlobalRequestsPerHour           Default 5000
-        Maximum total requests (REST + WebSocket) per IP per hour.
+    --- Two-tier global rate limiting ---
+    UnauthenticatedRequestsPerHour  Default 300
+        Maximum requests per IP per hour for unauthenticated REST calls.
+        Protects /login, /register, and other endpoints without a session token.
+
+    AuthenticatedRequestsPerHour    Default 2000
+        Maximum requests per UserID per hour for authenticated REST calls
+        and all WebSocket messages. Each user gets their own independent quota.
 
     RateLimitTimeToClearInMins      Default 60
         How often all rate limit counters reset (in minutes).
 
+    --- Specific operation limits (per IP) ---
     RateLimitNumberPerIP            Default 55
         Max login/register attempts per IP per window.
 
@@ -1223,6 +1320,14 @@ Squirrel Communicator uses a layered rate limiting strategy to protect against a
     CreateRoomRateLimitNumberPerIP  Default 2
         Max server creation requests per IP per window.
 
+    --- Invite hourly rate limits (per IP) ---
+    InviteCreateLimitPerHour        Default 20
+        Max invite codes an IP can create per hour.
+
+    InviteUseLimitPerHour           Default 30
+        Max invite use attempts per IP per hour.
+
+    --- Invite abuse protection (rolling window + ban) ---
     InviteAbuseMaxAttempts          Default 10
         Failed invite attempts before temporary ban.
 

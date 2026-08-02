@@ -17,14 +17,17 @@ public:
     /** Max number of letters per message */
     int32 GetMaxMessageSize() const { return MaxMessageSize; }
 
-    // --- Global rate limiting ---
+    // --- Two-tier global rate limiting ---
 
-    /** Max total requests (REST + WebSocket) per IP per hour (default 5000) */
-    int32 GetGlobalRequestsPerHour() const { return GlobalRequestsPerHour; }
+    /** Tier 1: Max unauthenticated (no token) requests per IP per hour (default 300) */
+    int32 GetUnauthenticatedRequestsPerHour() const { return UnauthenticatedRequestsPerHour; }
+
+    /** Tier 2: Max authenticated (with token) requests per UserID per hour (default 2000) */
+    int32 GetAuthenticatedRequestsPerHour() const { return AuthenticatedRequestsPerHour; }
 
     // --- Invite settings ---
 
-    /** Default max number of uses per invite (0 = unlimited by uses) */
+    /** Default max number of uses per invite */
     int32 GetInviteDefaultMaxUses() const { return InviteDefaultMaxUses; }
 
     /** Default invite expiration time in seconds */
@@ -47,6 +50,14 @@ public:
     /** Ban duration in seconds for invite abuse (default 3600 = 1 hour) */
     int32 GetInviteAbuseBanDurationSeconds() const { return InviteAbuseBanDurationSeconds; }
 
+    // --- Invite hourly rate limits (simple per-IP counter, separate from rolling-window ban) ---
+
+    /** Max invite creation requests per IP per hour (default 20) */
+    int32 GetInviteCreateLimitPerHour() const { return InviteCreateLimitPerHour; }
+
+    /** Max invite use attempts per IP per hour (default 30) */
+    int32 GetInviteUseLimitPerHour() const { return InviteUseLimitPerHour; }
+
 protected:
     /** Settings ini object */
     std::shared_ptr<FIniObject> BackendSettingsIniObject;
@@ -54,8 +65,9 @@ protected:
     /** Max number of letters per message */
     int32 MaxMessageSize;
 
-    // --- Global rate limiting ---
-    int32 GlobalRequestsPerHour;
+    // --- Two-tier global rate limiting ---
+    int32 UnauthenticatedRequestsPerHour;
+    int32 AuthenticatedRequestsPerHour;
 
     // --- Invite settings ---
     int32 InviteDefaultMaxUses;
@@ -67,4 +79,8 @@ protected:
     int32 InviteAbuseMaxAttempts;
     int32 InviteAbuseWindowSeconds;
     int32 InviteAbuseBanDurationSeconds;
+
+    // --- Invite hourly rate limits ---
+    int32 InviteCreateLimitPerHour;
+    int32 InviteUseLimitPerHour;
 };
