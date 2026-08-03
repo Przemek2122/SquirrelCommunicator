@@ -477,7 +477,7 @@ These messages handle the community server system with channels and voice chat. 
 
         Server broadcasts type: room_user_left to remaining server members.
 
-    type: room_message
+    type: server_message
         Send a text message in a server channel.
 
         data:
@@ -485,7 +485,7 @@ These messages handle the community server system with channels and voice chat. 
             channel_id  string  Channel ID
             content     string  Message text
 
-        Server broadcasts type: room_message to all server members with:
+        Server broadcasts type: server_message to all server members with:
             room_id, channel_id, message_id, sender_id, sender_name, content, timestamp.
 
     type: create_channel
