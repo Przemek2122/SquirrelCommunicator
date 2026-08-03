@@ -182,10 +182,10 @@ protected:
     bool DownloadChannelsFromDB(Uint64 ServerId, const std::shared_ptr<FServer>& Server);
 
     /** Download members for a server from DB (joins users table to get usernames and permissions) */
-    bool DownloadMembersFromDB(Uint64 ServerId, std::shared_ptr<FServer> Server);
+    bool DownloadMembersFromDB(Uint64 ServerId, const std::shared_ptr<FServer>& Server);
 
     /** Download messages for a channel from DB (timestamp-paginated) */
-    bool DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<FServer> Server, Uint64 BeforeTimestamp = 0, Uint32 Limit = 50);
+    bool DownloadMessagesFromDB(Uint64 ChannelId, const std::shared_ptr<FServer>& Server, Uint64 BeforeTimestamp = 0, Uint32 Limit = 50);
 
     /** Generate a unique token for a server */
     static std::string GenerateServerToken();

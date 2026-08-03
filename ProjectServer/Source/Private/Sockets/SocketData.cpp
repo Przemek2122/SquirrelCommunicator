@@ -109,7 +109,7 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("create_room"):             return ESocketMessageServersType::CreateRoom;
         case HashString("join_room"):               return ESocketMessageServersType::JoinRoom;
         case HashString("leave_room"):              return ESocketMessageServersType::LeaveRoom;
-        case HashString("room_message"):            return ESocketMessageServersType::RoomMessage;
+        case HashString("server_message"):          return ESocketMessageServersType::RoomMessage;
         case HashString("create_channel"):          return ESocketMessageServersType::CreateChannel;
         case HashString("move_channel"):            return ESocketMessageServersType::MoveChannel;
         case HashString("reorder_channels"):        return ESocketMessageServersType::ReorderChannels;
@@ -160,7 +160,7 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::CreateRoom:           return "create_room";
         case ESocketMessageServersType::JoinRoom:             return "join_room";
         case ESocketMessageServersType::LeaveRoom:            return "leave_room";
-        case ESocketMessageServersType::RoomMessage:          return "room_message";
+        case ESocketMessageServersType::RoomMessage:          return "server_message";
         case ESocketMessageServersType::CreateChannel:        return "create_channel";
         case ESocketMessageServersType::MoveChannel:          return "move_channel";
         case ESocketMessageServersType::ReorderChannels:      return "reorder_channels";

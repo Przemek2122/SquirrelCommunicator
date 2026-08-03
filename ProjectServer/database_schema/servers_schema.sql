@@ -63,10 +63,12 @@ CREATE TABLE IF NOT EXISTS server_members (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4. Server messages table
+-- sender_id is NULLable with ON DELETE SET NULL so messages survive user deletion.
+-- The application-layer SELECT uses COALESCE(u.username, 'Unknown') as fallback.
 CREATE TABLE IF NOT EXISTS server_messages (
     id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     channel_id  BIGINT UNSIGNED NOT NULL,
-    sender_id   BIGINT UNSIGNED NOT NULL,
+    sender_id   BIGINT UNSIGNED NULL DEFAULT NULL,
     content     TEXT            NOT NULL,
     created_at  VARCHAR(32)     NOT NULL DEFAULT '',
 
@@ -79,8 +81,10 @@ CREATE TABLE IF NOT EXISTS server_messages (
         ON DELETE CASCADE,
     CONSTRAINT fk_messages_sender
         FOREIGN KEY (sender_id) REFERENCES users(id)
-        ON DELETE CASCADE
+        ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_server_messages_channel_id_id ON server_messages(channel_id, id DESC);
 
 -- 5. Server invites table
 -- max_uses: maximum number of times this invite can be consumed (default 1000)

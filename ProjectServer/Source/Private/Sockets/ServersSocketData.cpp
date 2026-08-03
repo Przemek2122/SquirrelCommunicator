@@ -100,7 +100,7 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             }
             else
             {
-                FSocket::EarlyExit(wsVariant, "missing room_message fields", opCode);
+                FSocket::EarlyExit(wsVariant, "missing server_message fields", opCode);
             }
             break;
         }

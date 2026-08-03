@@ -1703,7 +1703,7 @@ bool FServersManager::DownloadChannelsFromDB(Uint64 ServerId, const std::shared_
     }
 }
 
-bool FServersManager::DownloadMembersFromDB(Uint64 ServerId, std::shared_ptr<FServer> Server)
+bool FServersManager::DownloadMembersFromDB(Uint64 ServerId, const std::shared_ptr<FServer>& Server)
 {
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
@@ -1750,7 +1750,7 @@ bool FServersManager::DownloadMembersFromDB(Uint64 ServerId, std::shared_ptr<FSe
     }
 }
 
-bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<FServer> Server, Uint64 BeforeTimestamp, Uint32 Limit)
+bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::shared_ptr<FServer>& Server, Uint64 BeforeTimestamp, Uint32 Limit)
 {
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
@@ -1770,9 +1770,9 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<F
         if (BeforeTimestamp > 0)
         {
             soci::statement St = (Session.prepare <<
-                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at "
+                "SELECT sm.id, sm.sender_id, COALESCE(u.username, 'Unknown'), sm.content, sm.created_at "
                 "FROM server_messages sm "
-                "JOIN users u ON sm.sender_id = u.id "
+                "LEFT JOIN users u ON sm.sender_id = u.id "
                 "WHERE sm.channel_id = :cid AND sm.created_at < :before "
                 "ORDER BY sm.id DESC LIMIT :lim",
                 soci::into(MessageId, IndMsgId),
@@ -1791,7 +1791,7 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<F
                 Message.MessageId = static_cast<Uint64>(MessageId);
                 Message.ChannelId = ChannelId;
                 Message.SenderId = static_cast<Uint64>(SenderId);
-                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "";
+                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
                 Message.Content = Content;
                 Message.CreatedAt = CreatedAt;
                 Server->AddMessage(Message);
@@ -1801,9 +1801,9 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<F
         {
             // No timestamp filter: get the most recent messages
             soci::statement St = (Session.prepare <<
-                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at "
+                "SELECT sm.id, sm.sender_id, COALESCE(u.username, 'Unknown'), sm.content, sm.created_at "
                 "FROM server_messages sm "
-                "JOIN users u ON sm.sender_id = u.id "
+                "LEFT JOIN users u ON sm.sender_id = u.id "
                 "WHERE sm.channel_id = :cid "
                 "ORDER BY sm.id DESC LIMIT :lim",
                 soci::into(MessageId, IndMsgId),
@@ -1821,7 +1821,7 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, std::shared_ptr<F
                 Message.MessageId = static_cast<Uint64>(MessageId);
                 Message.ChannelId = ChannelId;
                 Message.SenderId = static_cast<Uint64>(SenderId);
-                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "";
+                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
                 Message.Content = Content;
                 Message.CreatedAt = CreatedAt;
                 Server->AddMessage(Message);
