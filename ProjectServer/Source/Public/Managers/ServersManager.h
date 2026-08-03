@@ -83,7 +83,7 @@ public:
      */
     Uint64 AddChannel(Uint64 ServerId, const std::string& ChannelName, EServerChannelType ChannelType, Uint64 RequestedByUserId);
     bool RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 RequestedByUserId);
-    bool MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPosition, Uint64 RequestedByUserId);
+    bool MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewPosition, Uint64 RequestedByUserId);
     bool ReorderChannels(Uint64 ServerId, const std::vector<Uint64>& ChannelIds, Uint64 RequestedByUserId);
     bool RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName, Uint64 RequestedByUserId);
 
@@ -167,7 +167,7 @@ protected:
      * Get the next available position for a new channel.
      * Returns max(position) + 1 for channels in this server, or 0 if no channels exist.
      */
-    int32 GetNextChannelPosition(Uint64 ServerId);
+    uint32 GetNextChannelPosition(Uint64 ServerId);
 
     /**
      * Renumber all channel positions for a server sequentially (0, 1, 2, ...)

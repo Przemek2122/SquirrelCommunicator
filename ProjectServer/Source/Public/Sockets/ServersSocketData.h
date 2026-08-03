@@ -71,7 +71,7 @@ public:
      * All channels are renumbered after the move to eliminate gaps.
      */
     void HandleMoveChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                           Uint64 RoomId, Uint64 ChannelId, int32 NewPosition);
+                           Uint64 RoomId, Uint64 ChannelId, uint32 NewPosition);
 
     /**
      * Reorder all channels at once using a complete ordered array of channel IDs.

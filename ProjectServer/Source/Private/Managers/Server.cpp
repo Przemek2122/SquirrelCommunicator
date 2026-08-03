@@ -2,7 +2,6 @@
 
 #include "Managers/Server.h"
 #include <algorithm>
-#include <charconv>
 
 FServer::FServer()
     : ServerId(0)
@@ -195,24 +194,9 @@ std::vector<FServerMessage> FServer::GetChannelMessages(const Uint64 ChannelId, 
             // No timestamp filter: return most recent
             Result.push_back(Msg);
         }
-        else
+        else if (Msg.CreatedAt < BeforeTimestamp)
         {
-            // Compare timestamps: CreatedAt is stored as string epoch nanoseconds
-            Uint64 MsgTimestamp = 0;
-            const std::from_chars_result Fcr = std::from_chars(
-                Msg.CreatedAt.data(),
-                Msg.CreatedAt.data() + Msg.CreatedAt.size(),
-                MsgTimestamp);
-
-            if (Fcr.ec == std::errc{} && MsgTimestamp < BeforeTimestamp)
-            {
-                Result.push_back(Msg);
-            }
-            else if (Fcr.ec != std::errc{})
-            {
-                // If parsing fails (shouldn't happen with valid data), include the message
-                Result.push_back(Msg);
-            }
+            Result.push_back(Msg);
         }
     }
 

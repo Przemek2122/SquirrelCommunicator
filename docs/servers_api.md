@@ -1461,6 +1461,6 @@ Lower position values appear first in the channel list.
 
 8.6 Database Schema
 
-    The server_channels table has a position column (INT NOT NULL DEFAULT 0)
+    The server_channels table has a position column (INT UNSIGNED NOT NULL DEFAULT 0)
     used for ordering. For existing databases, run migration_channel_position.sql
     to add this column and backfill positions for existing channels.

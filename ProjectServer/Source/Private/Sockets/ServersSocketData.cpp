@@ -127,7 +127,7 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             {
                 const Uint64 RoomId = std::stoull(DataJSON["room_id"].get<std::string>());
                 const Uint64 ChannelId = std::stoull(DataJSON["channel_id"].get<std::string>());
-                const int32 NewPosition = DataJSON["new_position"].get<int32>();
+                const uint32 NewPosition = DataJSON["new_position"].get<uint32>();
                 HandleMoveChannel(wsVariant, opCode, RoomId, ChannelId, NewPosition);
             }
             else
@@ -861,7 +861,7 @@ void FServersSocketData::HandleGetServerMessages(AnyWebSocket wsVariant, uWS::Op
         MsgJson["sender_id"] = std::to_string(Msg.SenderId);
         MsgJson["sender_name"] = Msg.SenderName;
         MsgJson["content"] = Msg.Content;
-        MsgJson["timestamp"] = Msg.CreatedAt;
+        MsgJson["timestamp"] = std::to_string(Msg.CreatedAt);
         MessagesArray.push_back(MsgJson);
     }
 
@@ -1187,7 +1187,7 @@ void FServersSocketData::HandleServerListInvites(AnyWebSocket wsVariant, uWS::Op
 // ========== Channel Management (Move, Delete & Rename) ==========
 
 void FServersSocketData::HandleMoveChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                           const Uint64 RoomId, const Uint64 ChannelId, const int32 NewPosition)
+                                           const Uint64 RoomId, const Uint64 ChannelId, const uint32 NewPosition)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)
@@ -1532,7 +1532,7 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(const Uint64 ServerId)
     RoomJson["room_name"] = Server->GetServerName();
     RoomJson["owner_id"] = std::to_string(Server->GetOwnerId());
     RoomJson["token"] = Server->GetToken();
-    RoomJson["created_at"] = Server->GetCreatedAt();
+    RoomJson["created_at"] = std::to_string(Server->GetCreatedAt());
 
     // Channels — reserve array capacity to avoid reallocations during push_back
     const auto AllChannels = Server->GetAllChannels();

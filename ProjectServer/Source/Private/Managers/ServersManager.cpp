@@ -125,7 +125,7 @@ Uint64 FServersManager::AddServer(const std::string& InServerName, Uint64 OwnerI
     NewServer->SetToken(GenerateServerToken());
 
     // Get current time as ISO string (simplified: use Unix timestamp as string for now)
-    NewServer->SetCreatedAt(std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+    NewServer->SetCreatedAt(static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count()));
 
     // Upload to DB (this also sets the server ID via auto-increment)
     if (!UploadNewServerToDB(NewServer))
@@ -367,7 +367,7 @@ bool FServersManager::RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 Re
              << " by user " << RequestedByUserId);
     return true;
 }
-bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPosition, Uint64 RequestedByUserId)
+bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewPosition, Uint64 RequestedByUserId)
 {
     std::shared_ptr<FServer> Server = GetServerById(ServerId);
     if (!Server)
@@ -392,25 +392,25 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
     }
 
     // Clamp NewPosition to valid range [0, Channels.size() - 1]
-    if (NewPosition < 0)
-        NewPosition = 0;
-    if (NewPosition >= static_cast<int32>(Channels.size()))
-        NewPosition = static_cast<int32>(Channels.size()) - 1;
+    if (NewPosition >= static_cast<uint32>(Channels.size()))
+        NewPosition = static_cast<uint32>(Channels.size()) - 1;
 
     // Find the channel to move by ID
     std::shared_ptr<FServerChannel> MovedChannel = nullptr;
-    int32 OldPosition = -1;
-    for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+    uint32 OldPosition = 0;
+    bool bFoundChannel = false;
+    for (uint32 i = 0; i < static_cast<uint32>(Channels.size()); ++i)
     {
         if (Channels[i]->ChannelId == ChannelId)
         {
             MovedChannel = Channels[i];
             OldPosition = i;
+            bFoundChannel = true;
             break;
         }
     }
 
-    if (!MovedChannel || OldPosition < 0)
+    if (!bFoundChannel)
     {
         LOG_ERROR("MoveChannel: Channel " << ChannelId << " not found in server " << ServerId);
         return false;
@@ -446,7 +446,7 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
         // sees a partial renumbering.
         Session << "START TRANSACTION";
 
-        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+        for (uint32 i = 0; i < static_cast<uint32>(Channels.size()); ++i)
         {
             Channels[i]->Position = i;
 
@@ -549,7 +549,7 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
         // Transaction ensures atomic visibility: all channels are reordered together.
         Session << "START TRANSACTION";
 
-        for (int32 i = 0; i < static_cast<int32>(ChannelIds.size()); ++i)
+        for (uint32 i = 0; i < static_cast<uint32>(ChannelIds.size()); ++i)
         {
             const Uint64 ChannelId = ChannelIds[i];
             auto It = ChannelMap.find(ChannelId);
@@ -641,7 +641,7 @@ Uint64 FServersManager::AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 Sen
     Message.SenderId = SenderId;
     Message.SenderName = SenderName;
     Message.Content = Content;
-    Message.CreatedAt = std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+    Message.CreatedAt = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
 
     Uint64 OutMessageId = 0;
     if (!UploadMessageToDB(Message, OutMessageId))
@@ -1414,7 +1414,7 @@ int32 FServersManager::GetActiveInviteCountForServer(const Uint64 ServerId)
     }
 }
 
-int32 FServersManager::GetNextChannelPosition(const Uint64 ServerId)
+uint32 FServersManager::GetNextChannelPosition(const Uint64 ServerId)
 {
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
@@ -1426,14 +1426,14 @@ int32 FServersManager::GetNextChannelPosition(const Uint64 ServerId)
     {
         soci::session& Session = Connect.GetSession();
 
-        int MaxPos = -1;
+        long long MaxPos = 0;
         soci::indicator Ind;
         Session << "SELECT MAX(position) FROM server_channels WHERE server_id = :sid",
             soci::into(MaxPos, Ind),
             soci::use(ServerId);
 
         // If no channels exist (Ind is null), start at 0. Otherwise max + 1.
-        return (Ind == soci::i_ok && MaxPos >= 0) ? (MaxPos + 1) : 0;
+        return (Ind == soci::i_ok) ? static_cast<uint32>(MaxPos + 1) : 0;
     }
     catch (const std::exception& e)
     {
@@ -1471,7 +1471,7 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
         // Transaction ensures all position updates are atomic.
         Session << "START TRANSACTION";
 
-        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+        for (uint32 i = 0; i < static_cast<uint32>(Channels.size()); ++i)
         {
             Channels[i]->Position = i;
 
@@ -1614,8 +1614,8 @@ bool FServersManager::DownloadServerFromDB(Uint64 ServerId)
     {
         soci::session& Session = Connect.GetSession();
 
-        std::string Name, Token, CreatedAt;
-        long long OwnerId = 0;
+        std::string Name, Token;
+        long long OwnerId = 0, CreatedAt = 0;
         soci::indicator IndName, IndToken, IndCreated;
 
         Session << "SELECT name, owner_id, token, created_at FROM servers WHERE id = :sid",
@@ -1635,7 +1635,7 @@ bool FServersManager::DownloadServerFromDB(Uint64 ServerId)
         Server->SetServerName(Name);
         Server->SetOwnerId(static_cast<Uint64>(OwnerId));
         Server->SetToken(Token);
-        Server->SetCreatedAt(CreatedAt);
+        Server->SetCreatedAt(static_cast<Uint64>(CreatedAt));
 
         // Download channels
         DownloadChannelsFromDB(ServerId, Server);
@@ -1671,7 +1671,7 @@ bool FServersManager::DownloadChannelsFromDB(Uint64 ServerId, const std::shared_
 
         long long ChannelId = 0;
         std::string ChannelName, ChannelType;
-        int32 Position = 0;
+        uint32 Position = 0;
         soci::indicator IndId, IndName, IndType, IndPos;
 
         soci::statement St = (Session.prepare <<
@@ -1763,7 +1763,8 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
         soci::session& Session = Connect.GetSession();
 
         long long MessageId = 0, SenderId = 0;
-        std::string Content, CreatedAt, SenderName;
+        std::string Content, SenderName;
+        long long CreatedAt = 0;
         soci::indicator IndMsgId, IndSenderId, IndContent, IndCreated, IndSenderName;
 
         // Pagination: fetch messages before a timestamp, newest first
@@ -1781,7 +1782,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 soci::into(Content, IndContent),
                 soci::into(CreatedAt, IndCreated),
                 soci::use(ChannelId),
-                soci::use(std::to_string(BeforeTimestamp)),
+                soci::use(BeforeTimestamp),
                 soci::use(Limit));
 
             St.execute();
@@ -1793,7 +1794,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.SenderId = static_cast<Uint64>(SenderId);
                 Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
                 Message.Content = Content;
-                Message.CreatedAt = CreatedAt;
+                Message.CreatedAt = static_cast<Uint64>(CreatedAt);
                 Server->AddMessage(Message);
             }
         }
@@ -1823,7 +1824,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.SenderId = static_cast<Uint64>(SenderId);
                 Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
                 Message.Content = Content;
-                Message.CreatedAt = CreatedAt;
+                Message.CreatedAt = static_cast<Uint64>(CreatedAt);
                 Server->AddMessage(Message);
             }
         }

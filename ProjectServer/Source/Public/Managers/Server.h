@@ -64,7 +64,7 @@ struct FServerChannel
     Uint64 ServerId = 0;
     std::string ChannelName;
     EServerChannelType ChannelType = EServerChannelType::Text;
-    int32 Position = 0;  // Display ordering (0-based). Lower = shown first.
+    uint32 Position = 0;  // Display ordering (0-based). Lower = shown first.
 
     /** For voice channels: set of user IDs currently connected */
     std::vector<Uint64> ConnectedUsers;
@@ -80,7 +80,7 @@ struct FServerMessage
     Uint64 SenderId = 0;
     std::string SenderName;
     std::string Content;
-    std::string CreatedAt; // Unix timestamp as string (epoch nanoseconds)
+    Uint64 CreatedAt = 0; // Unix timestamp as epoch nanoseconds (BIGINT UNSIGNED in DB)
 
     FServerMessage() = default;
 };
@@ -149,8 +149,8 @@ public:
     const std::string& GetToken() const { return Token; }
     void SetToken(const std::string& InToken) { Token = InToken; }
 
-    const std::string& GetCreatedAt() const { return CreatedAt; }
-    void SetCreatedAt(const std::string& InTime) { CreatedAt = InTime; }
+    Uint64 GetCreatedAt() const { return CreatedAt; }
+    void SetCreatedAt(const Uint64 InTime) { CreatedAt = InTime; }
 
     /** Channel management */
     void AddChannel(const FServerChannel& Channel);
@@ -204,8 +204,8 @@ private:
     /** Token for voice service / invites */
     std::string Token;
 
-    /** ISO timestamp of creation */
-    std::string CreatedAt;
+    /** Unix epoch nanoseconds timestamp of creation */
+    Uint64 CreatedAt = 0;
 
     /** Channels: channel_id to channel */
     std::unordered_map<Uint64, std::shared_ptr<FServerChannel>> Channels;
