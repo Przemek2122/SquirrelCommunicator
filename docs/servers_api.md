@@ -443,62 +443,62 @@ These messages handle the community server system with channels and voice chat. 
 
 2.2.1 Client to Server Messages
 
-    type: create_room
-        Create a new server. Rate limited per IP address (default 2 per hour, configurable via CreateRoomRateLimitNumberPerIP).
+    type: create_server
+        Create a new server. Rate limited per IP address (default 2 per hour, configurable via CreateServerRateLimitNumberPerIP).
 
         data:
-            room_name  string  Name of the new server
+            server_name  string  Name of the new server
 
-        Server response type: room_created
+        Server response type: server_created
             data: Full server object with members, channels, id, name, token, owner_id, created_at.
 
-    type: join_room
+    type: join_server
         Rejoin a server by ID. Only works if the user is already a member.
         New members must use server_join_invite with a valid invite code.
 
         data:
-            room_id  string  Server ID to rejoin
+            server_id  string  Server ID to rejoin
 
-        Server response type: room_created
+        Server response type: server_created
             data: Full server object.
 
-        Server broadcasts type: room_user_joined to all server members with user_id and user_name.
+        Server broadcasts type: server_user_joined to all server members with user_id and user_name.
 
-    type: leave_room
+    type: leave_server
         Leave a server.
 
         data:
-            room_id  string  Server ID to leave
+            server_id  string  Server ID to leave
 
-        Server response type: leave_room
+        Server response type: leave_server
             data:
-                room_id  Server ID
+                server_id  Server ID
                 status   left
 
-        Server broadcasts type: room_user_left to remaining server members.
+        Server broadcasts type: server_user_left to remaining server members.
 
     type: server_message
         Send a text message in a server channel.
 
         data:
-            room_id     string  Server ID
+            server_id     string  Server ID
             channel_id  string  Channel ID
             content     string  Message text
 
         Server broadcasts type: server_message to all server members with:
-            room_id, channel_id, message_id, sender_id, sender_name, content, timestamp.
+            server_id, channel_id, message_id, sender_id, sender_name, content, timestamp.
 
     type: create_channel
         Create a new channel in a server. The channel is auto-assigned the next
         available position (appears at the bottom of the channel list).
 
         data:
-            room_id       string  Server ID
+            server_id       string  Server ID
             channel_name  string  Channel name
             channel_type  string  text or voice
 
-        Server broadcasts type: room_channel_created to all server members with:
-            room_id, channel_id, channel_name, channel_type.
+        Server broadcasts type: server_channel_created to all server members with:
+            server_id, channel_id, channel_name, channel_type.
 
         New in channel data response: position field indicating the display order.
 
@@ -508,7 +508,7 @@ These messages handle the community server system with channels and voice chat. 
         Requires CAN_MANAGE_CHANNELS permission or server owner.
 
         data:
-            room_id      string  REQUIRED. Server ID.
+            server_id      string  REQUIRED. Server ID.
             channel_id   string  REQUIRED. Channel ID to move.
             new_position number  REQUIRED. Target position (0-based). Clamped to valid range.
 
@@ -516,19 +516,19 @@ These messages handle the community server system with channels and voice chat. 
             {
                 "type": "move_channel",
                 "data": {
-                    "room_id": "123456789",
+                    "server_id": "123456789",
                     "channel_id": "42",
                     "new_position": 0
                 }
             }
 
-        Server response type: room_channel_moved
+        Server response type: server_channel_moved
             data:
-                room_id      Server ID (number)
+                server_id      Server ID (number)
                 channel_id   Moved channel ID (number)
                 new_position New position (number)
 
-        Server broadcasts type: room_channel_moved to all server members (same data).
+        Server broadcasts type: server_channel_moved to all server members (same data).
 
         Error if user lacks permission:
             type: error
@@ -546,24 +546,24 @@ These messages handle the community server system with channels and voice chat. 
         Requires CAN_MANAGE_CHANNELS permission or server owner.
 
         data:
-            room_id     string  REQUIRED. Server ID.
+            server_id     string  REQUIRED. Server ID.
             channel_ids array   REQUIRED. Array of channel ID strings (or numbers) in the desired order.
 
         Example request:
             {
                 "type": "reorder_channels",
                 "data": {
-                    "room_id": "123456789",
+                    "server_id": "123456789",
                     "channel_ids": ["42", "17", "5", "99"]
                 }
             }
 
-        Server response type: room_channels_reordered
+        Server response type: server_channels_reordered
             data:
-                room_id     Server ID (number)
+                server_id     Server ID (number)
                 channel_ids Array of channel IDs in the new order (array of numbers)
 
-        Server broadcasts type: room_channels_reordered to all server members (same data).
+        Server broadcasts type: server_channels_reordered to all server members (same data).
 
         Error if user lacks permission:
             type: error
@@ -578,24 +578,24 @@ These messages handle the community server system with channels and voice chat. 
         Requires CAN_MANAGE_CHANNELS permission or server owner.
 
         data:
-            room_id     string  REQUIRED. Server ID.
+            server_id     string  REQUIRED. Server ID.
             channel_id  string  REQUIRED. Channel ID to delete.
 
         Example request:
             {
                 "type": "delete_channel",
                 "data": {
-                    "room_id": "123456789",
+                    "server_id": "123456789",
                     "channel_id": "42"
                 }
             }
 
-        Server response type: room_channel_deleted
+        Server response type: server_channel_deleted
             data:
-                room_id     Server ID (number)
+                server_id     Server ID (number)
                 channel_id  Deleted channel ID (number)
 
-        Server broadcasts type: room_channel_deleted to all server members (same data).
+        Server broadcasts type: server_channel_deleted to all server members (same data).
 
         Error if user lacks permission:
             type: error
@@ -610,7 +610,7 @@ These messages handle the community server system with channels and voice chat. 
         Requires CAN_MANAGE_CHANNELS permission or server owner.
 
         data:
-            room_id     string  REQUIRED. Server ID.
+            server_id     string  REQUIRED. Server ID.
             channel_id  string  REQUIRED. Channel ID to rename.
             new_name    string  REQUIRED. New name for the channel. Must not be empty.
 
@@ -618,19 +618,19 @@ These messages handle the community server system with channels and voice chat. 
             {
                 "type": "rename_channel",
                 "data": {
-                    "room_id": "123456789",
+                    "server_id": "123456789",
                     "channel_id": "42",
                     "new_name": "general-chat"
                 }
             }
 
-        Server response type: room_channel_renamed
+        Server response type: server_channel_renamed
             data:
-                room_id     Server ID (number)
+                server_id     Server ID (number)
                 channel_id  Renamed channel ID (number)
                 new_name    New channel name (string)
 
-        Server broadcasts type: room_channel_renamed to all server members (same data).
+        Server broadcasts type: server_channel_renamed to all server members (same data).
 
         Error if user lacks permission:
             type: error
@@ -644,23 +644,23 @@ These messages handle the community server system with channels and voice chat. 
         Directly invite a user to a server by user ID. Sends a push notification to the target user.
 
         data:
-            room_id  string  Server ID
+            server_id  string  Server ID
             user_id  string  Target user ID to invite
 
         Server response type: server_invite
             data:
                 status   sent
-                room_id  Server ID
+                server_id  Server ID
                 user_id  Invited user ID
 
         Server pushes type: server_invite to the invited user with:
-            room_id, room_name, inviter_id, inviter_name.
+            server_id, server_name, inviter_id, inviter_name.
 
     type: server_join_voice
         Join a voice channel in a server. Creates Go voice service room if needed.
 
         data:
-            room_id     string  Server ID
+            server_id     string  Server ID
             channel_id  string  Voice channel ID
 
         Server response type: server_join_voice
@@ -670,13 +670,13 @@ These messages handle the community server system with channels and voice chat. 
                 user_name  Current user name
 
         Server broadcasts type: server_voice_joined to server members with:
-            room_id, channel_id, user_id, user_name.
+            server_id, channel_id, user_id, user_name.
 
     type: server_leave_voice
         Leave a voice channel.
 
         data:
-            room_id     string  Server ID
+            server_id     string  Server ID
             channel_id  string  Voice channel ID
 
         Server response type: server_leave_voice
@@ -684,7 +684,7 @@ These messages handle the community server system with channels and voice chat. 
                 status  disconnected
 
         Server broadcasts type: server_voice_left to server members with:
-            room_id, channel_id, user_id, user_name.
+            server_id, channel_id, user_id, user_name.
 
     type: get_server_list
         Get list of all servers the current user belongs to. Supports pagination.
@@ -695,7 +695,7 @@ These messages handle the community server system with channels and voice chat. 
 
         Server response type: server_list
             data:
-                rooms    Array of server objects, each with full server data.
+                servers    Array of server objects, each with full server data.
                 total    Total number of servers the user belongs to.
                 has_more Boolean. True if more servers exist beyond the returned page.
 
@@ -703,7 +703,7 @@ These messages handle the community server system with channels and voice chat. 
         Get channel message history with timestamp based pagination.
 
         data:
-            room_id     string  Server ID
+            server_id     string  Server ID
             channel_id  string  Channel ID
             before      string  Optional. Timestamp to fetch messages before.
             limit       string  Optional. Max 100, default 50.
@@ -720,7 +720,7 @@ These messages handle the community server system with channels and voice chat. 
         Subject to hourly invite creation rate limit per IP (default 20/hour, configurable via InviteCreateLimitPerHour).
 
         data:
-            room_id             string  REQUIRED. Server ID to create invite for.
+            server_id             string  REQUIRED. Server ID to create invite for.
             max_uses            number  Optional. Max times invite can be used. Default 1000 from config. Set 0 to use default.
             expires_in_seconds  number  Optional. Lifetime in seconds. Max 31536000 (12 months). Default 2592000 (30 days). Set 0 to use default.
 
@@ -728,7 +728,7 @@ These messages handle the community server system with channels and voice chat. 
             {
                 "type": "server_create_invite",
                 "data": {
-                    "room_id": "123456789",
+                    "server_id": "123456789",
                     "max_uses": 50,
                     "expires_in_seconds": 86400
                 }
@@ -766,7 +766,7 @@ These messages handle the community server system with channels and voice chat. 
         Server response type: server_joined
             data: Full server object.
 
-        Server broadcasts type: room_user_joined to server members.
+        Server broadcasts type: server_user_joined to server members.
 
         Error if IP exceeds hourly invite use limit:
             type: error
@@ -785,21 +785,21 @@ These messages handle the community server system with channels and voice chat. 
         Requires CAN_CREATE_INVITES permission or server owner.
 
         data:
-            room_id     string  REQUIRED. Server ID the invite belongs to.
+            server_id     string  REQUIRED. Server ID the invite belongs to.
             invite_code string  REQUIRED. The invite code to delete.
 
         Example request:
             {
                 "type": "server_delete_invite",
                 "data": {
-                    "room_id": "123456789",
+                    "server_id": "123456789",
                     "invite_code": "aB3xK7mQ2p"
                 }
             }
 
         Server response type: server_invite_deleted
             data:
-                room_id     Server ID (number)
+                server_id     Server ID (number)
                 invite_code The deleted invite code (string)
 
         Error if invite not found:
@@ -815,7 +815,7 @@ These messages handle the community server system with channels and voice chat. 
         (newest first). Requires CAN_CREATE_INVITES permission or server owner.
 
         data:
-            room_id  string  REQUIRED. Server ID to list invites for.
+            server_id  string  REQUIRED. Server ID to list invites for.
             start    number  Optional. Zero based offset into the result set. Default 0.
             count    number  Optional. Max invites to return. Default 50, capped at 200.
 
@@ -823,7 +823,7 @@ These messages handle the community server system with channels and voice chat. 
             {
                 "type": "server_list_invites",
                 "data": {
-                    "room_id": "123456789",
+                    "server_id": "123456789",
                     "start": 0,
                     "count": 20
                 }
@@ -831,7 +831,7 @@ These messages handle the community server system with channels and voice chat. 
 
         Server response type: server_invites_list
             data:
-                room_id  Server ID (number)
+                server_id  Server ID (number)
                 start    Offset used (number)
                 count    Number of invites in this page (number)
                 total    Total number of invites for this server (number)
@@ -848,7 +848,7 @@ These messages handle the community server system with channels and voice chat. 
             {
                 "type": "server_invites_list",
                 "data": {
-                    "room_id": 123456789,
+                    "server_id": 123456789,
                     "start": 0,
                     "count": 2,
                     "total": 5,
@@ -883,13 +883,13 @@ These messages handle the community server system with channels and voice chat. 
         Update a members permissions. Only the server owner can use this.
 
         data:
-            room_id         string  Server ID
+            server_id         string  Server ID
             target_user_id  string  User ID whose permissions to update
             permissions     string  New permission bitfield as decimal string
 
         Server response type: server_member_permissions_updated
             data:
-                room_id     Server ID
+                server_id     Server ID
                 user_id     Updated user ID
                 permissions New permission bitfield
 
@@ -905,46 +905,46 @@ These messages handle the community server system with channels and voice chat. 
 
 2.2.2 Server to Client Push Messages
 
-    type: room_member_status
+    type: server_member_status
         Broadcast when a member status changes (online, offline, idle, do_not_disturb).
 
         data:
-            room_id    Server ID
+            server_id    Server ID
             user_id    User ID whose status changed
             user_name  User name
             status     New status string
 
-    type: room_channel_moved
+    type: server_channel_moved
         Broadcast when a channel is reordered. All members receive this so
         their channel lists stay in sync.
 
         data:
-            room_id      Server ID (number)
+            server_id      Server ID (number)
             channel_id   Moved channel ID (number)
             new_position New position (number)
 
-    type: room_channels_reordered
+    type: server_channels_reordered
         Broadcast when all channels are reordered at once via drag-and-drop.
         All members receive the complete new order so their channel lists stay in sync.
 
         data:
-            room_id     Server ID (number)
+            server_id     Server ID (number)
             channel_ids Array of channel IDs in the new order (array of numbers)
 
-    type: room_channel_deleted
+    type: server_channel_deleted
         Broadcast when a channel is deleted. All members receive this so
         their channel lists stay in sync.
 
         data:
-            room_id     Server ID (number)
+            server_id     Server ID (number)
             channel_id  Deleted channel ID (number)
 
-    type: room_channel_renamed
+    type: server_channel_renamed
         Broadcast when a channel is renamed. All members receive this so
         their channel names stay in sync.
 
         data:
-            room_id     Server ID (number)
+            server_id     Server ID (number)
             channel_id  Renamed channel ID (number)
             new_name    New channel name (string)
 
@@ -952,7 +952,7 @@ These messages handle the community server system with channels and voice chat. 
         Broadcast when a members permissions have been updated.
 
         data:
-            room_id     Server ID
+            server_id     Server ID
             user_id     User ID
             permissions New permissions bitfield
 
@@ -969,9 +969,9 @@ SECTION 3: DATA STRUCTURES
 3.1 Server Object
 
     {
-        room_id    string  Server ID
-        room_name  string  Display name
-        room_token string  Internal access token
+        server_id    string  Server ID
+        server_name  string  Display name
+        server_token string  Internal access token
         owner_id   string  Owner user ID
         created_at number  Creation timestamp
         members    array   Array of member objects
@@ -1124,7 +1124,7 @@ Invites are never permanent. Every invite has a mandatory expiration time with a
         {
             "type": "server_create_invite",
             "data": {
-                "room_id": "123456789",
+                "server_id": "123456789",
                 "max_uses": 50,
                 "expires_in_seconds": 604800
             }
@@ -1149,7 +1149,7 @@ Invites are never permanent. Every invite has a mandatory expiration time with a
         {
             "type": "server_list_invites",
             "data": {
-                "room_id": "123456789",
+                "server_id": "123456789",
                 "start": 0,
                 "count": 20
             }
@@ -1159,7 +1159,7 @@ Invites are never permanent. Every invite has a mandatory expiration time with a
         {
             "type": "server_invites_list",
             "data": {
-                "room_id": 123456789,
+                "server_id": 123456789,
                 "start": 0,
                 "count": 20,
                 "total": 47,
@@ -1176,7 +1176,7 @@ Invites are never permanent. Every invite has a mandatory expiration time with a
         {
             "type": "server_delete_invite",
             "data": {
-                "room_id": "123456789",
+                "server_id": "123456789",
                 "invite_code": "aB3xK7mQ2p"
             }
         }
@@ -1249,7 +1249,7 @@ Common WebSocket error messages:
     missing type              Message has no type field
     missing data              Message has no data field
     not authenticated         Session token invalid or missing
-    not a member of this room User is not in the specified server
+    not a member of this server User is not in the specified server
     message too large         Content exceeds maximum message size
     invalid or expired invite code  Invite code is not valid
     abuse ban: too many failed invite attempts. Try again later.  IP banned for too many wrong invite codes
@@ -1257,9 +1257,9 @@ Common WebSocket error messages:
     invite use rate limit exceeded     IP has exceeded the hourly invite use limit (default 30/hour)
     service abuse             Specific operation rate limit exceeded (login, register, server creation)
     Global rate limit exceeded    Two-tier: unauthenticated IP has exceeded 300 req/hr (Tier 1) OR authenticated UserID has exceeded 2000 req/hr (Tier 2)
-    failed to create room     Server creation failed
-    failed to join room       Server join operation failed
-    failed to leave room      Server leave operation failed
+    failed to create server     Server creation failed
+    failed to join server       Server join operation failed
+    failed to leave server      Server leave operation failed
     failed to move channel    Channel reorder operation failed (channel not found or DB error)
     failed to reorder channels  Batch channel reorder failed (invalid channel_ids array, wrong count, or DB error)
     failed to delete channel or channel not found  Channel deletion failed
@@ -1318,7 +1318,7 @@ Squirrel Communicator uses a layered rate limiting strategy to protect against a
     Operation         Limit (per hour)  Config key
     Authentication    55                RateLimitNumberPerIP
     Password reset    25                PasswordRateLimitNumberPerIP
-    Server creation   2                 CreateRoomRateLimitNumberPerIP
+    Server creation   2                 CreateServerRateLimitNumberPerIP
     Registration      10                RegisterAccountLimitPerHour
 
     These limits are much stricter and target specific attack vectors (credential
@@ -1366,7 +1366,7 @@ Squirrel Communicator uses a layered rate limiting strategy to protect against a
     PasswordRateLimitNumberPerIP    Default 25
         Max password reset requests per IP per window.
 
-    CreateRoomRateLimitNumberPerIP  Default 2
+    CreateServerRateLimitNumberPerIP  Default 2
         Max server creation requests per IP per window.
 
     RegisterAccountLimitPerHour      Default 10
@@ -1398,7 +1398,7 @@ Lower position values appear first in the channel list.
 
 8.1 Channel Position
 
-    When channels are returned in any server object (via room_created, server_list,
+    When channels are returned in any server object (via server_created, server_list,
     server_joined, etc.), they are always sorted by position ascending. Each channel
     object includes its position:
 
@@ -1425,7 +1425,7 @@ Lower position values appear first in the channel list.
 
     Requires CAN_MANAGE_CHANNELS permission (or server owner).
 
-    The move is broadcast to all server members via room_channel_moved so every
+    The move is broadcast to all server members via server_channel_moved so every
     connected client can update their channel list in real time.
 
 8.4 Renaming Channels
@@ -1436,14 +1436,14 @@ Lower position values appear first in the channel list.
 
     Requires CAN_MANAGE_CHANNELS permission (or server owner).
 
-    The rename is broadcast to all server members via room_channel_renamed so every
+    The rename is broadcast to all server members via server_channel_renamed so every
     connected client can update their channel list in real time.
 
     Example:
         {
             "type": "rename_channel",
             "data": {
-                "room_id": "123456789",
+                "server_id": "123456789",
                 "channel_id": "42",
                 "new_name": "general-chat"
             }
@@ -1456,11 +1456,11 @@ Lower position values appear first in the channel list.
 
     Requires CAN_MANAGE_CHANNELS permission (or server owner).
 
-    The deletion is broadcast to all server members via room_channel_deleted so every
+    The deletion is broadcast to all server members via server_channel_deleted so every
     connected client can remove the channel from their UI.
 
 8.6 Database Schema
 
-    The server_channels table has a position column (INT UNSIGNED NOT NULL DEFAULT 0)
+    The server_channels table has a position column (INT NOT NULL DEFAULT 0)
     used for ordering. For existing databases, run migration_channel_position.sql
     to add this column and backfill positions for existing channels.

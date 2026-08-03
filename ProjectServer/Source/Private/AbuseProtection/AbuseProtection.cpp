@@ -13,7 +13,7 @@ FAbuseProtection::FAbuseProtection(const FBackendSettings* InBackendSettings)
 		const FIniField RateLimitTimeToClearInMinsField = BackendSettingsIni->FindFieldByName("RateLimitTimeToClearInMins");
 		const FIniField RateLimitNumberPerIPField = BackendSettingsIni->FindFieldByName("RateLimitNumberPerIP");
 		const FIniField RateLimitPasswordField = BackendSettingsIni->FindFieldByName("PasswordRateLimitNumberPerIP");
-		const FIniField RateLimitCreateServerField = BackendSettingsIni->FindFieldByName("CreateRoomRateLimitNumberPerIP");
+		const FIniField RateLimitCreateServerField = BackendSettingsIni->FindFieldByName("CreateServerRateLimitNumberPerIP");
 
 		// Read two-tier global rate limits from BackendSettings (already parsed)
 		const int32 UnauthenticatedRequestsPerHour = InBackendSettings->GetUnauthenticatedRequestsPerHour();

@@ -1149,7 +1149,7 @@ void FPrivateSocketData::OnMessageReceived_DataStreamChannel(AnyWebSocket wsVari
 			const ERoomExistenceStatus CheckRoomResult = ProjectEngine->GetRoomsManager()->CheckRoom(RoomName);
 			if (CheckRoomResult == ERoomExistenceStatus::NotExists)
 			{
-				// Create room if missing
+				// Create voice room if missing
 				const bool bIsRoomCreated = ProjectEngine->GetRoomsManager()->CreateRoom(RoomName);
 				if (!bIsRoomCreated)
 				{

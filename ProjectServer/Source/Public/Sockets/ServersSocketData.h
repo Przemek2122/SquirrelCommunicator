@@ -18,18 +18,18 @@ public:
     void PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& JsonMessage, uWS::OpCode opCode);
 
     // Client -> Server handlers
-    void CreateRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& RoomName);
-    void JoinRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId);
-    void LeaveRoom(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId);
-    void RoomMessage(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 ChannelId, const std::string& Content);
-    void CreateChannel(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, const std::string& ChannelName, const std::string& ChannelType);
-    void ServerInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 TargetUserId);
-    void RoomJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 ChannelId);
-    void RoomLeaveVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 ChannelId);
+    void CreateServer(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& ServerName);
+    void JoinServer(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId);
+    void LeaveServer(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId);
+    void ServerMessage(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId, const std::string& Content);
+    void CreateChannel(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, const std::string& ChannelName, const std::string& ChannelType);
+    void ServerInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 TargetUserId);
+    void ServerJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId);
+    void ServerLeaveVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId);
 
     // New WebSocket-based handlers (replacing REST endpoints)
     void HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint32 Offset = 0, Uint32 Limit = 50);
-    void HandleGetServerMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 RoomId, Uint64 ChannelId, Uint64 Before, Uint32 Limit);
+    void HandleGetServerMessages(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId, Uint64 Before, Uint32 Limit);
 
     /**
      * Create an invite code for a server.
@@ -38,7 +38,7 @@ public:
      *  - Requires CAN_CREATE_INVITES permission (or server owner).
      */
     void HandleServerCreateInvite(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                  Uint64 RoomId, Uint32 MaxUses, Uint32 ExpiresInSeconds);
+                                  Uint64 ServerId, Uint32 MaxUses, Uint32 ExpiresInSeconds);
 
     void HandleServerJoinInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, const std::string& InviteCode);
 
@@ -47,14 +47,14 @@ public:
      * Only the server owner (or members with CAN_MANAGE_PERMISSIONS in future) can do this.
      */
     void HandleUpdateMemberPermissions(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                       Uint64 RoomId, Uint64 TargetUserId, Uint64 NewPermissions);
+                                       Uint64 ServerId, Uint64 TargetUserId, Uint64 NewPermissions);
 
     /**
      * Delete an invite by its code.
      * Requires CAN_CREATE_INVITES permission (or server owner).
      */
     void HandleServerDeleteInvite(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                  Uint64 RoomId, const std::string& InviteCode);
+                                  Uint64 ServerId, const std::string& InviteCode);
 
     /**
      * List invites for a server with pagination.
@@ -63,7 +63,7 @@ public:
      * current_uses, remaining_uses, created_at, and expires_at.
      */
     void HandleServerListInvites(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                 Uint64 RoomId, Uint32 Start, Uint32 Count);
+                                 Uint64 ServerId, Uint32 Start, Uint32 Count);
 
     /**
      * Move a single channel to a new position in the channel list.
@@ -71,7 +71,7 @@ public:
      * All channels are renumbered after the move to eliminate gaps.
      */
     void HandleMoveChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                           Uint64 RoomId, Uint64 ChannelId, uint32 NewPosition);
+                           Uint64 ServerId, Uint64 ChannelId, int32 NewPosition);
 
     /**
      * Reorder all channels at once using a complete ordered array of channel IDs.
@@ -83,7 +83,7 @@ public:
      * Missing channels, duplicate IDs, or extra IDs are rejected.
      */
     void HandleReorderChannels(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                               Uint64 RoomId, const std::vector<Uint64>& ChannelIds);
+                               Uint64 ServerId, const std::vector<Uint64>& ChannelIds);
 
     /**
      * Delete a channel from a server.
@@ -91,15 +91,15 @@ public:
      * Deletes the channel and all its messages permanently.
      */
     void HandleDeleteChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                             Uint64 RoomId, Uint64 ChannelId);
+                             Uint64 ServerId, Uint64 ChannelId);
 
     /**
      * Rename a channel in a server.
      * Requires CAN_MANAGE_CHANNELS permission (or server owner).
-     * Updates the channel name in DB and in-memory cache, then broadcasts room_channel_renamed.
+     * Updates the channel name in DB and in-memory cache, then broadcasts server_channel_renamed.
      */
     void HandleRenameChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                             Uint64 RoomId, Uint64 ChannelId, const std::string& NewName);
+                             Uint64 ServerId, Uint64 ChannelId, const std::string& NewName);
 
     /** Broadcast a member's status change to all servers they belong to */
     void BroadcastMemberStatus(Uint64 UserId, const std::string& UserName, EUserStatus NewStatus);
@@ -123,8 +123,8 @@ private:
     /** Helper: get the UserName from engine by UserId */
     std::string GetUserName(Uint64 UserId);
 
-    /** Helper: build a room data JSON for frontend consumption */
-    nlohmann::json BuildRoomDataJson(Uint64 ServerId);
+    /** Helper: build a server data JSON for frontend consumption */
+    nlohmann::json BuildServerDataJson(Uint64 ServerId);
 
     /** Helper: get remote IP for rate limiting */
     std::string GetRemoteIP(AnyWebSocket wsVariant) const;

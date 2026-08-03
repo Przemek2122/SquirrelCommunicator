@@ -24,7 +24,7 @@ enum class ESocketMessageSection : uint8
     /** Private message section */
     Priv,
 
-    /** Servers section (handles room/server creation, channel ops, invites, voice, etc.) */
+    /** Servers section (handles server creation, channel ops, invites, voice, etc.) */
     Servers,
 
     Error = 255
@@ -69,18 +69,18 @@ enum class ESocketMessageServersType : uint8
     Unknown = 0,
 
     // Client -> Server (requests/actions)
-    CreateRoom,
-    JoinRoom,
-    LeaveRoom,
-    RoomMessage,
+    CreateServer,
+    JoinServer,
+    LeaveServer,
+    ServerMessage,
     CreateChannel,
     MoveChannel,            // Request to reorder a channel (change position)
     ReorderChannels,        // Request to reorder all channels at once (drag-and-drop batch)
     DeleteChannel,          // Request to delete a channel
     RenameChannel,          // Request to rename a channel
     ServerInvite,
-    RoomJoinVoice,
-    RoomLeaveVoice,
+    ServerJoinVoice,
+    ServerLeaveVoice,
     GetServerList,          // Request list of servers user belongs to (supports offset/limit pagination)
     GetServerMessages,      // Request message history for a channel
     ServerCreateInvite,     // Request to generate an invite code
@@ -90,21 +90,21 @@ enum class ESocketMessageServersType : uint8
     ServerListInvites,      // Request to list invites with pagination
 
     // Server -> Client (responses/events)
-    RoomCreated,
-    RoomUserJoined,
-    RoomUserLeft,
-    RoomChannelCreated,
-    RoomChannelMoved,       // Channel was reordered (broadcast + response)
-    RoomChannelsReordered,  // All channels were reordered at once (broadcast + response, drag-and-drop)
-    RoomChannelDeleted,     // Channel was deleted (broadcast + response)
-    RoomChannelRenamed,     // Channel was renamed (broadcast + response)
-    RoomUserVoiceJoin,
-    RoomUserVoiceLeave,
-    RoomMemberStatus,
+    ServerCreated,
+    ServerUserJoined,
+    ServerUserLeft,
+    ServerChannelCreated,
+    ServerChannelMoved,       // Channel was reordered (broadcast + response)
+    ServerChannelsReordered,  // All channels were reordered at once (broadcast + response, drag-and-drop)
+    ServerChannelDeleted,     // Channel was deleted (broadcast + response)
+    ServerChannelRenamed,     // Channel was renamed (broadcast + response)
+    ServerUserVoiceJoin,
+    ServerUserVoiceLeave,
+    ServerMemberStatus,
     ServerList,             // Response with servers data
     ServerMessages,         // Response with message history
     ServerInviteCreated,    // Response with generated invite code
-    ServerJoined,           // Response after joining via invite (full room data)
+    ServerJoined,           // Response after joining via invite (full server data)
     ServerMemberPermissionsUpdated, // Response after permissions update
     ServerInviteDeleted,    // Response after deleting an invite
     ServerInvitesList,      // Response with paginated invite list
