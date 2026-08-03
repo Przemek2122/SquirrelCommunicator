@@ -6,8 +6,39 @@
 #include <atomic>
 #include <vector>
 #include <ctime>
+#include <string>
 
 #include "EngineCompat.h"
+
+/*
+ * Transparent hasher & equality for std::unordered_map<std::string, ...>
+ * Enables heterogeneous lookup with std::string_view without constructing
+ * a temporary std::string on every find() / contains() call.
+ */
+struct FTransparentStringHash
+{
+	using is_transparent = void; // enables heterogeneous lookup (C++20)
+
+	size_t operator()(std::string_view sv) const noexcept
+	{
+		return std::hash<std::string_view>{}(sv);
+	}
+
+	size_t operator()(const std::string& s) const noexcept
+	{
+		return std::hash<std::string>{}(s);
+	}
+};
+
+struct FTransparentStringEqual
+{
+	using is_transparent = void;
+
+	bool operator()(std::string_view a, std::string_view b) const noexcept
+	{
+		return a == b;
+	}
+};
 
 /** Assume reset is done by removing from map */
 struct FRateLimit
@@ -32,10 +63,8 @@ public:
 
 	void Reset();
 
-	std::unordered_map<std::string_view, FRateLimit> RateLimitMap;
+	std::unordered_map<std::string, FRateLimit, FTransparentStringHash, FTransparentStringEqual> RateLimitMap;
 	std::shared_mutex RateLimitMutex;
-	std::mutex ClearMutex;
-	bool bIsClearing = false;
 };
 
 /**
@@ -232,7 +261,11 @@ protected:
 	const int32 InviteAbuseWindowSeconds;
 	const int32 InviteAbuseBanDurationSeconds;
 
-	/** Remove timestamps older than the rolling window from a vector of attempts */
+	/**
+	 * Purge timestamps older than the rolling window from a vector of attempts.
+	 * Uses jfalcou/eve SIMD library for portable auto-vectorization
+	 * (AVX-512, AVX2, NEON, SVE — best ISA selected at compile time).
+	 */
 	void PurgeOldInviteAttempts(std::vector<time_t>& Attempts, time_t Now) const;
 
 private:

@@ -367,7 +367,6 @@ bool FServersManager::RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 Re
              << " by user " << RequestedByUserId);
     return true;
 }
-
 bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPosition, Uint64 RequestedByUserId)
 {
     std::shared_ptr<FServer> Server = GetServerById(ServerId);
@@ -385,7 +384,7 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
         return false;
     }
 
-    // Get channels sorted by current position
+    // Get channels sorted by current position (cached after first GetAllChannels call)
     std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
     if (Channels.empty())
     {
@@ -429,7 +428,9 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
     // Insert at the new position
     Channels.insert(Channels.begin() + NewPosition, MovedChannel);
 
-    // Renumber all positions sequentially (0, 1, 2, ...)
+    // Renumber all positions sequentially (0, 1, 2, ...) in a single DB transaction.
+    // Unwinding the channel cache: move invalidates the sorted cache, so GetAllChannels
+    // must not be called from within this DB loop. We update positions directly.
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
     {
@@ -441,6 +442,10 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
     {
         soci::session& Session = Connect.GetSession();
 
+        // Transaction ensures all position updates are atomic — no other connection
+        // sees a partial renumbering.
+        Session << "START TRANSACTION";
+
         for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
         {
             Channels[i]->Position = i;
@@ -450,6 +455,8 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
                 soci::use(Channels[i]->ChannelId),
                 soci::use(ServerId);
         }
+
+        Session << "COMMIT";
     }
     catch (const std::exception& e)
     {
@@ -460,6 +467,7 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, int32 NewPo
     LOG_INFO("Channel " << ChannelId << " moved from position " << OldPosition
              << " to " << NewPosition << " in server " << ServerId
              << " by user " << RequestedByUserId);
+    Server->InvalidateChannelCache();
     return true;
 }
 
@@ -480,7 +488,7 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
         return false;
     }
 
-    // Get existing channels sorted by current position
+    // Get existing channels sorted by current position (cached after first call)
     std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
     if (Channels.empty())
     {
@@ -538,6 +546,9 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
     {
         soci::session& Session = Connect.GetSession();
 
+        // Transaction ensures atomic visibility: all channels are reordered together.
+        Session << "START TRANSACTION";
+
         for (int32 i = 0; i < static_cast<int32>(ChannelIds.size()); ++i)
         {
             const Uint64 ChannelId = ChannelIds[i];
@@ -555,6 +566,8 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
                 soci::use(ChannelId),
                 soci::use(ServerId);
         }
+
+        Session << "COMMIT";
     }
     catch (const std::exception& e)
     {
@@ -564,9 +577,9 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
 
     LOG_INFO("Channels reordered in server " << ServerId
              << " (" << ChannelIds.size() << " channels) by user " << RequestedByUserId);
+    Server->InvalidateChannelCache();
     return true;
 }
-
 bool FServersManager::RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName, Uint64 RequestedByUserId)
 {
     std::shared_ptr<FServer> Server = GetServerById(ServerId);
@@ -1437,7 +1450,7 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
         return;
     }
 
-    // Get channels sorted by current position
+    // Get channels sorted by current position (cached after first call)
     std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
     if (Channels.empty())
     {
@@ -1455,6 +1468,9 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
     {
         soci::session& Session = Connect.GetSession();
 
+        // Transaction ensures all position updates are atomic.
+        Session << "START TRANSACTION";
+
         for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
         {
             Channels[i]->Position = i;
@@ -1464,11 +1480,14 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
                 soci::use(Channels[i]->ChannelId),
                 soci::use(ServerId);
         }
+
+        Session << "COMMIT";
     }
     catch (const std::exception& e)
     {
         LOG_ERROR("RenumberChannelPositions error: " << e.what());
     }
+    Server->InvalidateChannelCache();
 }
 
 bool FServersManager::DeleteInviteFromDB(const std::string& InviteCode, const Uint64 ServerId)

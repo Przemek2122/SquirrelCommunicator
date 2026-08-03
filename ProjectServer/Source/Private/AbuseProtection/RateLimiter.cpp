@@ -4,6 +4,8 @@
 #include "ThreadCompat.h"
 #include <atomic>
 #include <algorithm>
+#include <cstring>
+#include <eve/module/algo.hpp>
 
 FRateLimit::FRateLimit()
 	: AttemptCount(1)
@@ -25,7 +27,7 @@ void FRateLimitObject::AddAttempt(const std::string_view& InKey)
 		auto It = RateLimitMap.find(InKey);
 		if (It != RateLimitMap.end())
 		{
-			// AddAttempt now uses atomic fetch_add — safe under shared_lock
+			// AddAttempt uses atomic fetch_add — safe under shared_lock
 			It->second.AddAttempt();
 			return;
 		}
@@ -43,28 +45,25 @@ void FRateLimitObject::AddAttempt(const std::string_view& InKey)
 		}
 		else
 		{
-			// try_emplace constructs FRateLimit in-place (avoids copying std::atomic)
-			RateLimitMap.try_emplace(InKey);
+			// Construct std::string from string_view for safe storage.
+			// try_emplace constructs the key+value in-place (avoids copying std::atomic).
+			RateLimitMap.try_emplace(std::string(InKey));
 		}
 	}
 }
 
 bool FRateLimitObject::IsBlockedKey(const std::string_view& InKey, const int32 NumberOfAttemptsToBlock)
 {
-	// Acquire shared_lock for thread-safe read access to RateLimitMap and bIsClearing.
+	// Acquire shared_lock for thread-safe read access to RateLimitMap.
 	// This method is called concurrently from REST middleware and WebSocket handlers.
 	std::shared_lock<std::shared_mutex> Lock(RateLimitMutex);
 
-	if (bIsClearing)
-	{
-		return false;
-	}
-
+	// Transparent lookup: find(string_view) on map<string,...> with
+	// FTransparentStringHash/FTransparentStringEqual = ZERO allocation.
 	const auto It = RateLimitMap.find(InKey);
 	if (It != RateLimitMap.end())
 	{
 		const FRateLimit& Data = It->second;
-		// GetAttemptCount returns atomic<int32>, load() is safe
 		if (Data.GetAttemptCount() > NumberOfAttemptsToBlock)
 		{
 			return true;
@@ -76,14 +75,10 @@ bool FRateLimitObject::IsBlockedKey(const std::string_view& InKey, const int32 N
 
 void FRateLimitObject::Reset()
 {
-	std::lock_guard<std::mutex> ClearMutexLock(ClearMutex);
-	std::lock_guard<std::shared_mutex> RateLimitMutexLock(RateLimitMutex);
-
-	bIsClearing = true;
-
+	// Exclusive lock on RateLimitMutex is sufficient — no other thread
+	// can access the map concurrently during reset. No separate ClearMutex needed.
+	std::unique_lock<std::shared_mutex> Lock(RateLimitMutex);
 	RateLimitMap.clear();
-
-	bIsClearing = false;
 }
 
 FRateLimiter::FRateLimiter(const int32 InClearingTimeInMins, const int32 InNumberOfAttemptsToBlock, const int32 InNumberOfPasswordResetAttemptsToBlock,
@@ -296,8 +291,9 @@ void FRateLimiter::PeriodicInviteAbuseCleanup()
 
 	std::unique_lock Lock(InviteAbuseMutex);
 
-	// Collect keys to remove
+	// Collect keys to remove. Pre-allocate for typical cleanup ratio.
 	std::vector<std::string> KeysToRemove;
+	KeysToRemove.reserve(InviteAbuseRecords.size() / 4 + 1);
 
 	for (auto& Pair : InviteAbuseRecords)
 	{
@@ -331,9 +327,16 @@ void FRateLimiter::PurgeOldInviteAttempts(std::vector<time_t>& Attempts, time_t 
 {
 	const time_t Cutoff = Now - InviteAbuseWindowSeconds;
 
-	// Remove all attempts older than the cutoff
+	// EVE SIMD remove_if — same C++ code, portable across all architectures.
+	// The erase-remove idiom matches std::remove_if semantics exactly:
+	//   - Elements where predicate returns true are "removed" (moved to end)
+	//   - Returns iterator to new logical end
+	//   - vector::erase shrinks to the kept elements
 	Attempts.erase(
-		std::remove_if(Attempts.begin(), Attempts.end(),
-			[Cutoff](time_t T) { return T < Cutoff; }),
-		Attempts.end());
+		eve::algo::remove_if(
+			Attempts,
+			[Cutoff](auto t) { return t < Cutoff; }
+		),
+		Attempts.end()
+	);
 }

@@ -2,6 +2,7 @@
 
 #include "Managers/Server.h"
 #include <algorithm>
+#include <charconv>
 
 FServer::FServer()
     : ServerId(0)
@@ -9,16 +10,30 @@ FServer::FServer()
 {
 }
 
+void FServer::InvalidateChannelCache()
+{
+    // Called under unique_lock by all channel mutators.
+    // Also exposed publicly so ServersManager can invalidate after
+    // external position modifications (MoveChannel, ReorderChannels, RenumberChannelPositions).
+    bChannelCacheValid = false;
+}
+
 void FServer::AddChannel(const FServerChannel& Channel)
 {
     std::unique_lock Lock(ServerMutex);
     Channels[Channel.ChannelId] = std::make_shared<FServerChannel>(Channel);
+    InvalidateChannelCache();
 }
 
 bool FServer::RemoveChannel(const Uint64 ChannelId)
 {
     std::unique_lock Lock(ServerMutex);
-    return Channels.erase(ChannelId) > 0;
+    const bool bRemoved = Channels.erase(ChannelId) > 0;
+    if (bRemoved)
+    {
+        InvalidateChannelCache();
+    }
+    return bRemoved;
 }
 
 std::shared_ptr<FServerChannel> FServer::GetChannel(const Uint64 ChannelId)
@@ -35,6 +50,14 @@ std::shared_ptr<FServerChannel> FServer::GetChannel(const Uint64 ChannelId)
 std::vector<std::shared_ptr<FServerChannel>> FServer::GetAllChannels() const
 {
     std::shared_lock Lock(ServerMutex);
+
+    // Return cached sorted list if still valid (invalidated on Add/Remove/Move/Reorder).
+    if (bChannelCacheValid)
+    {
+        return CachedSortedChannels;
+    }
+
+    // Build and sort
     std::vector<std::shared_ptr<FServerChannel>> Result;
     Result.reserve(Channels.size());
     for (const auto& Pair : Channels)
@@ -49,6 +72,10 @@ std::vector<std::shared_ptr<FServerChannel>> FServer::GetAllChannels() const
         {
           return A->Position < B->Position;
         });
+
+    // Cache for subsequent calls
+    CachedSortedChannels = Result;
+    bChannelCacheValid = true;
 
     return Result;
 }
@@ -133,14 +160,10 @@ size_t FServer::GetMemberCount() const
 void FServer::AddMessage(const FServerMessage& Message)
 {
     std::unique_lock Lock(ServerMutex);
-    // Newest messages at front (index 0) - sorted by MessageId descending
-    auto& Vec = ChannelMessages[Message.ChannelId];
-    // Insert maintaining descending order by MessageId
-    const auto it = std::ranges::lower_bound(Vec, Message,
-        [](const FServerMessage& a, const FServerMessage& b) {
-         return a.MessageId > b.MessageId;
-        });
-    Vec.insert(it, Message);
+    // Messages arrive in monotonic MessageId order (DB auto-increment).
+    // push_back (append, O(1) amortized) instead of lower_bound + insert (O(n) shift).
+    // GetChannelMessages reads from the back for newest-first ordering.
+    ChannelMessages[Message.ChannelId].push_back(Message);
 }
 
 std::vector<FServerMessage> FServer::GetChannelMessages(const Uint64 ChannelId, const Uint64 BeforeTimestamp, const Uint32 Limit)
@@ -156,9 +179,12 @@ std::vector<FServerMessage> FServer::GetChannelMessages(const Uint64 ChannelId, 
     std::vector<FServerMessage> Result;
     Result.reserve(std::min(static_cast<size_t>(Limit), Messages.size()));
 
-    // Messages are stored newest-first. Iterate and collect messages before the timestamp.
-    for (const FServerMessage& Msg : Messages)
+    // Messages are stored in arrival order (oldest first, newest last).
+    // Iterate in REVERSE for newest-first semantics.
+    for (auto It = Messages.rbegin(); It != Messages.rend(); ++It)
     {
+        const FServerMessage& Msg = *It;
+
         if (Result.size() >= static_cast<size_t>(Limit))
         {
             break;
@@ -172,17 +198,19 @@ std::vector<FServerMessage> FServer::GetChannelMessages(const Uint64 ChannelId, 
         else
         {
             // Compare timestamps: CreatedAt is stored as string epoch nanoseconds
-            try
+            Uint64 MsgTimestamp = 0;
+            const std::from_chars_result Fcr = std::from_chars(
+                Msg.CreatedAt.data(),
+                Msg.CreatedAt.data() + Msg.CreatedAt.size(),
+                MsgTimestamp);
+
+            if (Fcr.ec == std::errc{} && MsgTimestamp < BeforeTimestamp)
             {
-                const Uint64 MsgTimestamp = std::stoull(Msg.CreatedAt);
-                if (MsgTimestamp < BeforeTimestamp)
-                {
-                    Result.push_back(Msg);
-                }
+                Result.push_back(Msg);
             }
-            catch (...)
+            else if (Fcr.ec != std::errc{})
             {
-                // If parsing fails, include the message anyway
+                // If parsing fails (shouldn't happen with valid data), include the message
                 Result.push_back(Msg);
             }
         }

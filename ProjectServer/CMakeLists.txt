@@ -189,6 +189,24 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/cpr/CMakeLists.txt")
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/cpr ${CMAKE_BINARY_DIR}/cpr)
 endif()
 
+# Download EVE — Expressive Vector Engine (C++20 SIMD library, header-only)
+# Replaces raw AVX2 intrinsics with portable auto-vectorized algorithms.
+# Supports AVX-512, AVX2, SSE2, NEON, SVE — same C++ code, best ISA auto-selected.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/eve/include")
+    message(STATUS "Downloading EVE (SIMD library) to ThirdParty/eve...")
+    execute_process(
+        COMMAND git clone --depth 1
+            https://github.com/jfalcou/eve.git ThirdParty/eve
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_RESULT
+    )
+    if(GIT_RESULT EQUAL 0)
+        message(STATUS "EVE downloaded successfully")
+    else()
+        message(FATAL_ERROR "Failed to download EVE")
+    endif()
+endif()
+
 # Local submodules
 add_subdirectory(ThirdParty/IniReader)
 add_subdirectory(ThirdParty/Encryption)
@@ -324,6 +342,8 @@ target_include_directories("${PROJECT_NAME}" SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty
     ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/uWebSockets/src
     ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/uWebSockets/uSockets/src
+    # EVE — Expressive Vector Engine (C++20 SIMD, header-only)
+    ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/eve/include
 )
 
 #==============================================================================

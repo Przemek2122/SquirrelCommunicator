@@ -846,7 +846,7 @@ void FServersSocketData::HandleGetServerMessages(AnyWebSocket wsVariant, uWS::Op
     }
 
     // Use timestamp-based pagination
-    const std::vector<FServerMessage>& Messages = ServersManager->GetChannelMessages(RoomId, ChannelId, Before, Limit);
+    const auto Messages = ServersManager->GetChannelMessages(RoomId, ChannelId, Before, Limit);
 
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerMessages);
@@ -1534,9 +1534,11 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(const Uint64 ServerId)
     RoomJson["token"] = Server->GetToken();
     RoomJson["created_at"] = Server->GetCreatedAt();
 
-    // Channels
+    // Channels — reserve array capacity to avoid reallocations during push_back
+    const auto AllChannels = Server->GetAllChannels();
     nlohmann::json ChannelsArray = nlohmann::json::array();
-    for (const auto& Channel : Server->GetAllChannels())
+    ChannelsArray.get_ref<nlohmann::json::array_t&>().reserve(AllChannels.size());
+    for (const auto& Channel : AllChannels)
     {
         nlohmann::json ChannelJson;
         ChannelJson["channel_id"] = std::to_string(Channel->ChannelId);
@@ -1547,8 +1549,9 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(const Uint64 ServerId)
     }
     RoomJson["channels"] = ChannelsArray;
 
-    // Members
+    // Members — reserve array capacity
     nlohmann::json MembersArray = nlohmann::json::array();
+    MembersArray.get_ref<nlohmann::json::array_t&>().reserve(Server->GetMemberCount());
     for (const auto& Member : Server->GetMembers())
     {
         nlohmann::json MemberJson;
@@ -1562,7 +1565,6 @@ nlohmann::json FServersSocketData::BuildRoomDataJson(const Uint64 ServerId)
 
     return RoomJson;
 }
-
 Uint64 FServersSocketData::GetUserIdFromWS(AnyWebSocket wsVariant)
 {
     return std::visit([](auto* ws) -> Uint64

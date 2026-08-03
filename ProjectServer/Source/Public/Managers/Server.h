@@ -156,8 +156,16 @@ public:
     void AddChannel(const FServerChannel& Channel);
     bool RemoveChannel(Uint64 ChannelId);
     std::shared_ptr<FServerChannel> GetChannel(Uint64 ChannelId);
-    /** Returns channels sorted by Position ascending (lower = first) */
+    /** Returns channels sorted by Position ascending (lower = first). Cached after first sort. */
     std::vector<std::shared_ptr<FServerChannel>> GetAllChannels() const;
+
+    /**
+     * Invalidate the sorted channel cache.
+     * MUST be called after external code modifies channel positions directly
+     * on the shared_ptr objects returned by GetAllChannels(). This ensures
+     * the next GetAllChannels() call re-sorts instead of returning stale order.
+     */
+    void InvalidateChannelCache();
 
     /** Member management */
     void AddMember(const FServerMember& Member);
@@ -170,7 +178,11 @@ public:
     std::vector<FServerMember> GetMembers() const;
     size_t GetMemberCount() const;
 
-    /** Messages (stored per-channel in memory cache, newest-first) */
+    /**
+     * Messages stored per-channel in memory cache.
+     * Messages are appended (push_back, O(1)) in tombstone order (newest last).
+     * GetChannelMessages reads from the end for newest-first ordering.
+     */
     void AddMessage(const FServerMessage& Message);
 
     /** Get messages before a timestamp. BeforeTimestamp=0 means no filter (get most recent). */
@@ -201,8 +213,14 @@ private:
     /** Members: user_id to member info */
     std::unordered_map<Uint64, FServerMember> Members;
 
-    /** Messages cache: channel_id to vector of messages (most recent first by MessageId) */
+    /** Messages cache: channel_id to vector of messages (appended in arrival order, newest last) */
     std::unordered_map<Uint64, std::vector<FServerMessage>> ChannelMessages;
+
+    // --- Sorted channel cache ---
+    // Populated on first GetAllChannels() call, invalidated on Add/Remove/Move/Reorder.
+    // Eliminates O(n log n) sort on every read
+    mutable std::vector<std::shared_ptr<FServerChannel>> CachedSortedChannels;
+    mutable bool bChannelCacheValid = false;
 
     /** Server mutex for thread-safe access */
     mutable std::shared_mutex ServerMutex;
