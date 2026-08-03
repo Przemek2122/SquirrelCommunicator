@@ -165,6 +165,25 @@ void FServer::AddMessage(const FServerMessage& Message)
     ChannelMessages[Message.ChannelId].push_back(Message);
 }
 
+void FServer::PrependMessages(const Uint64 ChannelId, const std::vector<FServerMessage>& Messages)
+{
+    if (Messages.empty())
+    {
+        return;
+    }
+
+    std::unique_lock Lock(ServerMutex);
+    auto& Vec = ChannelMessages[ChannelId];
+
+    // Reserve capacity once to avoid repeated reallocations during insert
+    Vec.reserve(Vec.size() + Messages.size());
+
+    // Insert the entire batch at the front in a single operation.
+    // The batch is in ascending chronological order (oldest first),
+    // and it logically belongs before every message already in the vector.
+    Vec.insert(Vec.begin(), Messages.begin(), Messages.end());
+}
+
 std::vector<FServerMessage> FServer::GetChannelMessages(const Uint64 ChannelId, const Uint64 BeforeTimestamp, const Uint32 Limit)
 {
     std::shared_lock Lock(ServerMutex);

@@ -179,11 +179,19 @@ public:
     size_t GetMemberCount() const;
 
     /**
-     * Messages stored per-channel in memory cache.
-     * Messages are appended (push_back, O(1)) in tombstone order (newest last).
-     * GetChannelMessages reads from the end for newest-first ordering.
+     * Append a single message to the in-memory cache for a channel.
+     * Used for live messages arriving in monotonic MessageId order.
+     * The message is pushed to the back of the vector (oldest-first storage).
      */
     void AddMessage(const FServerMessage& Message);
+
+    /**
+     * Prepend a batch of messages to the front of the in-memory cache.
+     * Used by DownloadMessagesFromDB when loading older message batches
+     * from the database. The batch MUST be in ascending chronological
+     * order (oldest first) before calling this method.
+     */
+    void PrependMessages(Uint64 ChannelId, const std::vector<FServerMessage>& Messages);
 
     /** Get messages before a timestamp. BeforeTimestamp=0 means no filter (get most recent). */
     std::vector<FServerMessage> GetChannelMessages(Uint64 ChannelId, Uint64 BeforeTimestamp, Uint32 Limit);

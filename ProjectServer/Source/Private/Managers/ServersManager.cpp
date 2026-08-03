@@ -7,6 +7,7 @@
 
 #include <soci/session.h>
 #include <soci/statement.h>
+#include <algorithm>
 #include <random>
 #include <iomanip>
 #include <sstream>
@@ -1767,6 +1768,11 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
         long long CreatedAt = 0;
         soci::indicator IndMsgId, IndSenderId, IndContent, IndCreated, IndSenderName;
 
+        // Accumulate messages from DB into a local batch. DB returns DESC order
+        // (newest first) which is wrong for push_back-based storage (oldest-first).
+        // We reverse the batch before inserting into the in-memory cache.
+        std::vector<FServerMessage> Batch;
+
         // Pagination: fetch messages before a timestamp, newest first
         if (BeforeTimestamp > 0)
         {
@@ -1795,7 +1801,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
                 Message.Content = Content;
                 Message.CreatedAt = static_cast<Uint64>(CreatedAt);
-                Server->AddMessage(Message);
+                Batch.push_back(Message);
             }
         }
         else
@@ -1825,8 +1831,18 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
                 Message.Content = Content;
                 Message.CreatedAt = static_cast<Uint64>(CreatedAt);
-                Server->AddMessage(Message);
+                Batch.push_back(Message);
             }
+        }
+
+        // DB returns DESC (newest first). Reverse to ASC (oldest first) so the
+        // in-memory cache maintains its invariant: oldest at front, newest at back.
+        // PrependMessages inserts at the front — correct for the first load and
+        // for subsequent pagination loads of older message batches.
+        if (!Batch.empty())
+        {
+            std::ranges::reverse(Batch);
+            Server->PrependMessages(ChannelId, Batch);
         }
 
         return true;
