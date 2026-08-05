@@ -9,6 +9,10 @@ A high-performance, low-latency real-time chat application built with a powerful
 
 You can explore a live working example of this project at: **[http://comm.sqrll.net/](http://comm.sqrll.net/)**
 
+## 📸 Visual Showcase
+
+<img width="1663" height="966" alt="image" src="https://github.com/user-attachments/assets/74f5da06-b1d9-4883-a5f9-3ffcdc567cf8" />
+
 ---
 
 ## 🛠️ Architecture Diagram
