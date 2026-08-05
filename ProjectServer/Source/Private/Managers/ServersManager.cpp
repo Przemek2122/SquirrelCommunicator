@@ -1616,7 +1616,7 @@ bool FServersManager::DownloadServerFromDB(Uint64 ServerId)
         soci::session& Session = Connect.GetSession();
 
         std::string Name, Token;
-        long long OwnerId = 0, CreatedAt = 0;
+        unsigned long long OwnerId = 0, CreatedAt = 0;
         soci::indicator IndName, IndToken, IndCreated;
 
         Session << "SELECT name, owner_id, token, created_at FROM servers WHERE id = :sid",
@@ -1765,7 +1765,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
 
         long long MessageId = 0, SenderId = 0;
         std::string Content, SenderName;
-        long long CreatedAt = 0;
+        unsigned long long CreatedAt = 0;
         soci::indicator IndMsgId, IndSenderId, IndContent, IndCreated, IndSenderName;
 
         // Accumulate messages from DB into a local batch. DB returns DESC order
@@ -1857,13 +1857,15 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
 std::string FServersManager::GenerateServerToken()
 {
     static constexpr int32 TokenLength = 32;
-    return FEncryptionUtil::GenerateSecureSalt(TokenLength);
+    const std::string RawBytes = FEncryptionUtil::GenerateSecureSalt(TokenLength);
+    return FEncryptionUtil::ToBaseN_Irreversible(RawBytes, FPredefinedCharsets::BASE62).substr(0, TokenLength);
 }
 
 std::string FServersManager::GenerateInviteCode()
 {
     static constexpr int32 CodeLength = 16;
-    return FEncryptionUtil::GenerateSecureSalt(CodeLength);
+    const std::string RawBytes = FEncryptionUtil::GenerateSecureSalt(CodeLength);
+    return FEncryptionUtil::ToBaseN_Irreversible(RawBytes, FPredefinedCharsets::BASE62).substr(0, CodeLength);
 }
 
 std::string FServersManager::FormatTimestamp(const std::chrono::system_clock::time_point& Time)

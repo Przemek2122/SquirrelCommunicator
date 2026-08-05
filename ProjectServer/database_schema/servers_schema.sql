@@ -5,7 +5,7 @@
 -- for the servers/rooms feature.
 --
 -- Tables created:
---   1. servers          - Core server/room definitions
+--   1. servers          - Core server definitions
 --   2. server_channels  - Channels within servers (text + voice) with position ordering
 --   3. server_members   - Server membership (user_id to server_id) with permissions
 --   4. server_messages  - Messages in server text channels

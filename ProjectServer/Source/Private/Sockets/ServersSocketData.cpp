@@ -127,7 +127,7 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             {
                 const Uint64 ServerId = std::stoull(DataJSON["server_id"].get<std::string>());
                 const Uint64 ChannelId = std::stoull(DataJSON["channel_id"].get<std::string>());
-                const int32 NewPosition = DataJSON["new_position"].get<int32>();
+                const uint32 NewPosition = DataJSON["new_position"].get<int32>();
                 HandleMoveChannel(wsVariant, opCode, ServerId, ChannelId, NewPosition);
             }
             else

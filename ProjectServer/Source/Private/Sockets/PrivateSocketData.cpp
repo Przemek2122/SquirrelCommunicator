@@ -1153,7 +1153,7 @@ void FPrivateSocketData::OnMessageReceived_DataStreamChannel(AnyWebSocket wsVari
 				const bool bIsRoomCreated = ProjectEngine->GetRoomsManager()->CreateRoom(RoomName);
 				if (!bIsRoomCreated)
 				{
-					LOG_ERROR("Failed to create room");
+					LOG_ERROR("Failed to create voice room");
 					return;
 				}
 			}
