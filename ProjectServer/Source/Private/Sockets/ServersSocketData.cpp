@@ -389,6 +389,23 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             break;
         }
 
+        // ========== NEW: Kick Member ==========
+
+        case ESocketMessageServersType::KickMember:
+        {
+            if (DataJSON.contains("server_id") && DataJSON.contains("target_user_id"))
+            {
+                const Uint64 ServerId = std::stoull(DataJSON["server_id"].get<std::string>());
+                const Uint64 TargetUserId = std::stoull(DataJSON["target_user_id"].get<std::string>());
+                HandleKickMember(wsVariant, opCode, ServerId, TargetUserId);
+            }
+            else
+            {
+                FSocket::EarlyExit(wsVariant, "missing kick_member fields (server_id, target_user_id)", opCode);
+            }
+            break;
+        }
+
         case ESocketMessageServersType::Unknown:
         case ESocketMessageServersType::Error:
         default:
@@ -1075,6 +1092,104 @@ void FServersSocketData::HandleUpdateMemberPermissions(AnyWebSocket wsVariant, u
 
     LOG_INFO("Permissions updated for user " << TargetUserId << " in server " << ServerId
              << " by owner " << CurrentUserId << " to " << NewPermissions);
+}
+
+// ========== NEW: Kick Member ==========
+
+void FServersSocketData::HandleKickMember(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                                           Uint64 ServerId, Uint64 TargetUserId)
+{
+    const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
+    if (CurrentUserId == 0)
+    {
+        FSocket::EarlyExit(wsVariant, "not authenticated", opCode);
+        return;
+    }
+
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+
+    // Verify the kicker is a member
+    if (!ServersManager->IsUserInServer(ServerId, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "not a member of this server", opCode);
+        return;
+    }
+
+    // Verify target is a member
+    if (!ServersManager->IsUserInServer(ServerId, TargetUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "target user is not a member of this server", opCode);
+        return;
+    }
+
+    // Check permission: must be owner OR have CAN_KICK_MEMBERS
+    if (!IsServerOwner(ServerId, CurrentUserId) &&
+        !ServersManager->UserHasPermission(ServerId, CurrentUserId, EServerPermission::CAN_KICK_MEMBERS))
+    {
+        FSocket::EarlyExit(wsVariant, "permission denied: you lack CAN_KICK_MEMBERS permission", opCode);
+        return;
+    }
+
+    // Cannot kick the owner
+    const std::shared_ptr<FServer> Server = ServersManager->GetServerById(ServerId);
+    if (Server && Server->GetOwnerId() == TargetUserId)
+    {
+        FSocket::EarlyExit(wsVariant, "cannot kick the server owner", opCode);
+        return;
+    }
+
+    // Cannot kick yourself
+    if (CurrentUserId == TargetUserId)
+    {
+        FSocket::EarlyExit(wsVariant, "cannot kick yourself", opCode);
+        return;
+    }
+
+    const std::string KickerName = GetUserName(CurrentUserId);
+    const std::string TargetUserName = GetUserName(TargetUserId);
+
+    // Remove the user from the server
+    if (!ServersManager->RemoveUserFromServer(ServerId, TargetUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "failed to kick user from server", opCode);
+        return;
+    }
+
+    // Send "you have been kicked" message to the kicked user
+    nlohmann::json KickedJson;
+    KickedJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerUserKicked);
+    KickedJson["data"]["server_id"] = ServerId;
+    KickedJson["data"]["server_name"] = Server->GetServerName();
+    KickedJson["data"]["message"] = "You have been kicked from the server";
+
+    SendToUser(TargetUserId, KickedJson);
+
+    // Broadcast to remaining server members
+    nlohmann::json BroadcastJson;
+    BroadcastJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerUserKicked);
+    BroadcastJson["data"]["server_id"] = ServerId;
+    BroadcastJson["data"]["user_id"] = TargetUserId;
+    BroadcastJson["data"]["user_name"] = TargetUserName;
+    BroadcastJson["data"]["kicker_id"] = CurrentUserId;
+    BroadcastJson["data"]["kicker_name"] = KickerName;
+
+    BroadcastToServerMembers(ServerId, BroadcastJson);
+
+    // Send confirmation to the kicker
+    nlohmann::json ConfirmJson;
+    ConfirmJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerUserKicked);
+    ConfirmJson["data"]["server_id"] = ServerId;
+    ConfirmJson["data"]["user_id"] = TargetUserId;
+    ConfirmJson["data"]["user_name"] = TargetUserName;
+    ConfirmJson["data"]["status"] = "kicked";
+
+    std::visit([&](auto* ws)
+    {
+        ws->send(ConfirmJson.dump(), opCode);
+    }, wsVariant);
+
+    LOG_INFO("User " << TargetUserId << " ("" << TargetUserName << "") kicked from server "
+             << ServerId << " by user " << CurrentUserId << " ("" << KickerName << "")");
 }
 
 // ========== NEW: Invite Management ==========

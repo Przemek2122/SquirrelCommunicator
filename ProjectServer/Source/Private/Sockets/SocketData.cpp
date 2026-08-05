@@ -125,6 +125,7 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("server_update_member_permissions"): return ESocketMessageServersType::ServerUpdateMemberPermissions;
         case HashString("server_delete_invite"):    return ESocketMessageServersType::ServerDeleteInvite;
         case HashString("server_list_invites"):     return ESocketMessageServersType::ServerListInvites;
+        case HashString("kick_member"):             return ESocketMessageServersType::KickMember;
 
         // Server -> Client
         case HashString("server_created"):            return ESocketMessageServersType::ServerCreated;
@@ -145,6 +146,7 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("server_member_permissions_updated"): return ESocketMessageServersType::ServerMemberPermissionsUpdated;
         case HashString("server_invite_deleted"):   return ESocketMessageServersType::ServerInviteDeleted;
         case HashString("server_invites_list"):     return ESocketMessageServersType::ServerInvitesList;
+        case HashString("server_user_kicked"):      return ESocketMessageServersType::ServerUserKicked;
 
         case HashString("error"):                   return ESocketMessageServersType::Error;
 
@@ -176,6 +178,7 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::ServerUpdateMemberPermissions: return "server_update_member_permissions";
         case ESocketMessageServersType::ServerDeleteInvite:   return "server_delete_invite";
         case ESocketMessageServersType::ServerListInvites:    return "server_list_invites";
+        case ESocketMessageServersType::KickMember:           return "kick_member";
 
         // Server -> Client
         case ESocketMessageServersType::ServerCreated:          return "server_created";
@@ -196,6 +199,7 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::ServerMemberPermissionsUpdated: return "server_member_permissions_updated";
         case ESocketMessageServersType::ServerInviteDeleted:  return "server_invite_deleted";
         case ESocketMessageServersType::ServerInvitesList:    return "server_invites_list";
+        case ESocketMessageServersType::ServerUserKicked:     return "server_user_kicked";
 
         case ESocketMessageServersType::Error:                return "error";
 

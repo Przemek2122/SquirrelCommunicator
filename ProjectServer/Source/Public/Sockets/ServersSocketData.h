@@ -50,6 +50,14 @@ public:
                                        Uint64 ServerId, Uint64 TargetUserId, Uint64 NewPermissions);
 
     /**
+     * Kick a member from a server.
+     * Requires CAN_KICK_MEMBERS permission (or server owner).
+     * The owner cannot be kicked. Users cannot kick themselves.
+     */
+    void HandleKickMember(AnyWebSocket wsVariant, uWS::OpCode opCode,
+                          Uint64 ServerId, Uint64 TargetUserId);
+
+    /**
      * Delete an invite by its code.
      * Requires CAN_CREATE_INVITES permission (or server owner).
      */

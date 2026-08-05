@@ -903,6 +903,57 @@ These messages handle the community server system with channels and voice chat. 
             type: error
             message: cannot modify the server owners permissions
 
+    type: kick_member
+        Kick a member from a server. The kicked user is permanently removed from the server.
+        Requires CAN_KICK_MEMBERS permission or server owner.
+        The server owner cannot be kicked. Users cannot kick themselves.
+
+        data:
+            server_id        string  REQUIRED. Server ID.
+            target_user_id string  REQUIRED. User ID to kick.
+
+        Example request:
+            {
+                "type": "kick_member",
+                "data": {
+                    "server_id": "123456789",
+                    "target_user_id": "42"
+                }
+            }
+
+        Server response type: server_user_kicked
+            data:
+                server_id     Server ID (number)
+                user_id     Kicked user ID (number)
+                user_name   Kicked user name (string)
+                status    "kicked"
+
+        Server sends type: server_user_kicked to the kicked user with:
+            server_id, server_name, message: "You have been kicked from the server"
+
+        Server broadcasts type: server_user_kicked to remaining server members with:
+            server_id, user_id, user_name, kicker_id, kicker_name
+
+        Error if user lacks permission:
+            type: error
+            message: permission denied: you lack CAN_KICK_MEMBERS permission
+
+        Error if trying to kick owner:
+            type: error
+            message: cannot kick the server owner
+
+        Error if trying to kick self:
+            type: error
+            message: cannot kick yourself
+
+        Error if target user is not a member:
+            type: error
+            message: target user is not a member of this server
+
+        Error if kick fails:
+            type: error
+            message: failed to kick user from server
+
 2.2.2 Server to Client Push Messages
 
     type: server_member_status
@@ -955,6 +1006,25 @@ These messages handle the community server system with channels and voice chat. 
             server_id     Server ID
             user_id     User ID
             permissions New permissions bitfield
+
+    type: server_user_kicked
+        Broadcast when a member is kicked from a server. Sent to the kicked user
+        with a kick notification message, and broadcast to remaining members with
+        kicker and kicked user details.
+
+        To kicked user:
+            data:
+                server_id     Server ID
+                server_name   Server display name
+                message     "You have been kicked from the server"
+
+        To remaining members:
+            data:
+                server_id     Server ID
+                user_id     Kicked user ID
+                user_name   Kicked user name
+                kicker_id   ID of the user who performed the kick
+                kicker_name Name of the user who performed the kick
 
     type: error
         Sent when an error occurs processing a request.
@@ -1040,7 +1110,7 @@ Squirrel Communicator uses a Discord like permission system for server members. 
 4.1 Permission Bits
 
     Bit 0  0x01  CAN_CREATE_INVITES     Allow member to create invite codes
-    Bit 1  0x02  CAN_KICK_MEMBERS       Allow member to kick others (future)
+    Bit 1  0x02  CAN_KICK_MEMBERS       Allow member to kick other members
     Bit 2  0x04  CAN_BAN_MEMBERS        Allow member to ban others (future)
     Bit 3  0x08  CAN_MANAGE_CHANNELS    Allow member to create, delete, rename, and reorder channels
     Bit 4  0x10  CAN_MANAGE_PERMISSIONS Allow member to manage other members permissions (future)
@@ -1266,8 +1336,13 @@ Common WebSocket error messages:
     failed to rename channel or channel not found  Channel rename failed (channel not found, empty name, or DB error)
     permission denied: you lack CAN_CREATE_INVITES permission            User needs invite creation permission
     permission denied: you lack CAN_MANAGE_CHANNELS permission           User needs channel management permission
+    permission denied: you lack CAN_KICK_MEMBERS permission              User needs kick permission
     permission denied: only the server owner can manage member permissions  Not the server owner
     cannot modify the server owners permissions  Owner permissions are immutable
+    cannot kick the server owner               Owner cannot be kicked
+    cannot kick yourself                       Self-kick not allowed
+    target user is not a member of this server  Target user not found in server
+    failed to kick user from server            Kick operation failed
     invite not found or already deleted  Invite code does not exist or was already deleted
 
 ============================================

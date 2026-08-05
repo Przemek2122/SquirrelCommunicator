@@ -88,6 +88,7 @@ enum class ESocketMessageServersType : uint8
     ServerUpdateMemberPermissions, // Request to update a member's permissions
     ServerDeleteInvite,     // Request to delete an invite by code
     ServerListInvites,      // Request to list invites with pagination
+    KickMember,             // Request to kick a member from the server
 
     // Server -> Client (responses/events)
     ServerCreated,
@@ -108,6 +109,7 @@ enum class ESocketMessageServersType : uint8
     ServerMemberPermissionsUpdated, // Response after permissions update
     ServerInviteDeleted,    // Response after deleting an invite
     ServerInvitesList,      // Response with paginated invite list
+    ServerUserKicked,       // Broadcast when a member is kicked from the server
 
     Error = 255
 };
