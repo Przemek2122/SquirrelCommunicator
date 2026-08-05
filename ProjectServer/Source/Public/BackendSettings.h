@@ -63,6 +63,11 @@ public:
     /** Max new account registrations per IP per hour (default 10) */
     int32 GetRegisterAccountLimitPerHour() const { return RegisterAccountLimitPerHour; }
 
+    // --- Message encryption ---
+
+    /** Server-side message encryption key (32-char BASE62). Empty = at-rest encryption disabled. */
+    const std::string& GetMessageEncryptionKey() const { return MessageEncryptionKey; }
+
 protected:
     /** Settings ini object */
     std::shared_ptr<FIniObject> BackendSettingsIniObject;
@@ -91,4 +96,7 @@ protected:
 
     // --- Registration rate limiting ---
     int32 RegisterAccountLimitPerHour;
+
+    // --- Message encryption ---
+    std::string MessageEncryptionKey;
 };

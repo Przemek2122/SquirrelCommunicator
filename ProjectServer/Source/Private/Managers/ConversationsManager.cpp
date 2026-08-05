@@ -108,6 +108,7 @@ Uint64 FConversationsManager::AddMessage(const Uint64 InConversationId, const Ui
 		ConversationMessageData.MessageId = OutId;
 		ConversationMessageData.SenderId = InSenderId;
 		ConversationMessageData.Message = InMessage;
+		ConversationMessageData.CreatedAt = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
 
 		// Lock conversation for adding message
 		std::unique_lock Lock(ConversationPtr->Lock);
@@ -429,14 +430,14 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 			Uint64 MessageId;
 			Uint64 SenderId;
 			std::string MessageText;
-			std::string CreatedAt;
+			long long CreatedAtDb = 0;
 
 			soci::statement Stmt = (DataBaseSession.prepare <<
 				"SELECT id, sender_id, text, created_at FROM messages WHERE conversation_id = :conv_id ORDER BY id DESC LIMIT :limit OFFSET :offset",
 				soci::into(MessageId),
 				soci::into(SenderId),
 				soci::into(MessageText),
-				soci::into(CreatedAt),
+				soci::into(CreatedAtDb),
 				soci::use(InConversationId),
 				soci::use(InLimit),
 				soci::use(InOffset));
@@ -451,7 +452,7 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 				MessageData.MessageId = MessageId;
 				MessageData.SenderId = SenderId;
 				MessageData.Message = MessageText;
-				MessageData.CreatedAt = CreatedAt;
+				MessageData.CreatedAt = static_cast<Uint64>(CreatedAtDb);
 
 				ConversationData.push_back(MessageData);
 			}
@@ -521,21 +522,15 @@ EDatabaseOperationResult FConversationsManager::UpdateMessageDeleteInDB(const Ui
 
 			int32 StatusInt = static_cast<int32>(EConversationMessageStatus::Deleted);
 
-			soci::indicator NullIndicator = soci::i_null;
 			std::string EmptyText = "";
-			int32 EmptyEncryptType = 0; // Ignored, using indicator
 
 			soci::statement St = (DataBaseSession.prepare <<
 				"UPDATE messages SET "
 				"text = :text, "
-				"text_status = :status, "
-				"text_encrypt_type = :encType, "
-				"text_encryption_value = :encVal "
+				"text_status = :status "
 				"WHERE id = :msgId AND conversation_id = :convId AND sender_id = :senderId",
 				soci::use(EmptyText, "text"),
 				soci::use(StatusInt, "status"),
-				soci::use(EmptyEncryptType, NullIndicator, "encType"), // Set NULL
-				soci::use(EmptyText, NullIndicator, "encVal"),       // Set NULL
 				soci::use(InMessageId, "msgId"),
 				soci::use(InConversationId, "convId"),
 				soci::use(RequesterUserId, "senderId")
@@ -742,10 +737,12 @@ EDatabaseOperationResult FConversationsManager::UploadMessage(const Uint64 InCon
 			soci::session& DataBaseSession = Connect.GetSession();
 			soci::indicator Ind;
 
-			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text) VALUES (:conv_id, :sender_id, :text)",
+			const Uint64 NowNanos = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
+			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text, created_at) VALUES (:conv_id, :sender_id, :text, :created)",
 				soci::use(InConversationId),
 				soci::use(SenderId),
-				soci::use(InMessage, Ind);
+				soci::use(InMessage, Ind),
+				soci::use(NowNanos);
 
 			// Get last inserted ID
 			long long LastInsertId;

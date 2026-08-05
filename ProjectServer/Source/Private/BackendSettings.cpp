@@ -2,6 +2,8 @@
 
 #include "ProjectEngine.h"
 #include "BackendSettings.h"
+
+#include "SQRLLEncryption.h"
 #include "SQRLLIniObject.h"
 #include "Logger/Logger.h"
 
@@ -109,6 +111,13 @@ void FBackendSettings::LoadBackendSettings()
         if (RegisterAccountLimitPerHourField.IsValid())
         {
             RegisterAccountLimitPerHour = RegisterAccountLimitPerHourField.GetValueAsInt();
+        }
+
+        // --- Message encryption key ---
+        const FIniField MessageEncryptionKeyField = BackendSettingsIniObject->FindFieldByName("MessageEncryptionKey");
+        if (MessageEncryptionKeyField.IsValid())
+        {
+            MessageEncryptionKey = MessageEncryptionKeyField.GetValueAsString();
         }
     }
     else

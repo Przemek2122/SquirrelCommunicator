@@ -26,15 +26,14 @@ SET time_zone = "+00:00";
 --
 -- Table structure for table `messages`
 --
+-- created_at changed from datetime to BIGINT UNSIGNED for consistency with servers/server_messages
 
 CREATE TABLE `messages` (
   `id` bigint(20) UNSIGNED NOT NULL,
   `conversation_id` bigint(20) UNSIGNED NOT NULL,
   `sender_id` bigint(20) UNSIGNED NOT NULL,
   `text` varchar(4096) NOT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `text_encrypt_type` int(8) UNSIGNED DEFAULT NULL,
-  `text_encryption_value` text DEFAULT NULL,
+  `created_at` bigint(20) UNSIGNED NOT NULL DEFAULT 0,
   `text_status` int(8) UNSIGNED DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

@@ -1187,7 +1187,7 @@ void FServersSocketData::HandleServerListInvites(AnyWebSocket wsVariant, uWS::Op
 // ========== Channel Management (Move, Delete & Rename) ==========
 
 void FServersSocketData::HandleMoveChannel(AnyWebSocket wsVariant, uWS::OpCode opCode,
-                                           const Uint64 ServerId, const Uint64 ChannelId, const int32 NewPosition)
+                                           const Uint64 ServerId, const Uint64 ChannelId, const uint32 NewPosition)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)

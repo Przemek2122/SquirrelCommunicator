@@ -1,3 +1,5 @@
+// Created by https://www.linkedin.com/in/przemek2122/ 2026
+
 #include "Sockets/Socket.h"
 
 #include "ProjectEngine.h"

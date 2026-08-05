@@ -11,3 +11,7 @@
 	path = ProjectServer/ThirdParty/Encryption
 	url = https://github.com/Przemek2122/SQRLL_Encryption
 	branch = main
+[submodule "ProjectServer/ThirdParty/eve"]
+	path = ProjectServer/ThirdParty/eve
+	url = https://github.com/jfalcou/eve
+	branch = main

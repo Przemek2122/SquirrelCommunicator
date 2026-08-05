@@ -10,16 +10,6 @@ namespace soci
 	class session;
 }
 
-/** How is certain message encrypted */
-enum class EConversationEncryptionType : Uint8
-{
-	/** This means exactly NO ENCRYPTION */
-	Null = 0,
-
-	/** Default - SQRLL fast algorithm */
-	Default,
-};
-
 /** What is the status of certain message */
 enum class EConversationMessageStatus : Uint8
 {
@@ -34,8 +24,8 @@ struct FConversationMessageData
 	FConversationMessageData()
 		: MessageId(0)
 		, SenderId(0)
+		, CreatedAt(0)
 		, Status(EConversationMessageStatus::Sent)
-		, EncryptionType(EConversationEncryptionType::Null)
 	{
 	}
 
@@ -47,17 +37,11 @@ struct FConversationMessageData
 	/** Actual message */
 	std::string Message;
 
-	/** Creation time */
-	std::string CreatedAt;
+	/** Creation time as epoch nanoseconds (BIGINT UNSIGNED in DB) */
+	Uint64 CreatedAt;
 
 	/** Was edited */
 	EConversationMessageStatus Status;
-
-	/** Encryption type */
-	EConversationEncryptionType EncryptionType;
-
-	/** Encryption text value */
-	std::string EncryptionValue;
 
 };
 
