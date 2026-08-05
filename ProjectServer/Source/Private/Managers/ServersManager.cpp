@@ -1616,7 +1616,7 @@ bool FServersManager::DownloadServerFromDB(Uint64 ServerId)
         soci::session& Session = Connect.GetSession();
 
         std::string Name, Token;
-        unsigned long long OwnerId = 0, CreatedAt = 0;
+        Uint64 OwnerId = 0, CreatedAt = 0;
         soci::indicator IndName, IndToken, IndCreated;
 
         Session << "SELECT name, owner_id, token, created_at FROM servers WHERE id = :sid",
@@ -1765,7 +1765,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
 
         long long MessageId = 0, SenderId = 0;
         std::string Content, SenderName;
-        unsigned long long CreatedAt = 0;
+        Uint64 CreatedAt = 0;
         soci::indicator IndMsgId, IndSenderId, IndContent, IndCreated, IndSenderName;
 
         // Accumulate messages from DB into a local batch. DB returns DESC order

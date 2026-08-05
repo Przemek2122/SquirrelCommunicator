@@ -430,7 +430,7 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 			Uint64 MessageId;
 			Uint64 SenderId;
 			std::string MessageText;
-			unsigned long long CreatedAtDb = 0;
+			Uint64 CreatedAtDb = 0;
 
 			soci::statement Stmt = (DataBaseSession.prepare <<
 				"SELECT id, sender_id, text, created_at FROM messages WHERE conversation_id = :conv_id ORDER BY id DESC LIMIT :limit OFFSET :offset",
@@ -452,7 +452,7 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 				MessageData.MessageId = MessageId;
 				MessageData.SenderId = SenderId;
 				MessageData.Message = MessageText;
-				MessageData.CreatedAt = static_cast<Uint64>(CreatedAtDb);
+				MessageData.CreatedAt = CreatedAtDb;
 
 				ConversationData.push_back(MessageData);
 			}

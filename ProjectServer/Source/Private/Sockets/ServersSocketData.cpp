@@ -503,7 +503,7 @@ void FServersSocketData::JoinServer(AnyWebSocket wsVariant, uWS::OpCode opCode, 
 
     const std::string UserName = GetUserName(CurrentUserId);
 
-    // Send full server data to the re-joining user
+    // Send full server data (including voice channel connected_users) to the re-joining user
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerCreated);
     ResponseJson["data"] = BuildServerDataJson(ServerId);
@@ -1658,6 +1658,21 @@ nlohmann::json FServersSocketData::BuildServerDataJson(const Uint64 ServerId)
         ChannelJson["channel_name"] = Channel->ChannelName;
         ChannelJson["channel_type"] = (Channel->ChannelType == EServerChannelType::Text) ? "text" : "voice";
         ChannelJson["position"] = Channel->Position;
+
+        // For voice channels: include currently connected users so
+        // reconnecting clients see who is already in voice.
+        if (Channel->ChannelType == EServerChannelType::Voice && !Channel->ConnectedUsers.empty())
+        {
+            nlohmann::json ConnectedArray = nlohmann::json::array();
+            for (const Uint64 ConnectedUserId : Channel->ConnectedUsers)
+            {
+                nlohmann::json UserEntry;
+                UserEntry["user_id"] = std::to_string(ConnectedUserId);
+                UserEntry["user_name"] = GetUserName(ConnectedUserId);
+                ConnectedArray.push_back(UserEntry);
+            }
+            ChannelJson["connected_users"] = ConnectedArray;
+        }
         ChannelsArray.push_back(ChannelJson);
     }
     Json["channels"] = ChannelsArray;
