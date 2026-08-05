@@ -22,7 +22,7 @@ This document explains how to properly configure the environment variables requi
 
 ```
 # Version of the backend release to deploy
-BACKEND_VERSION=1.0.0
+BACKEND_VERSION=1.0.2
 
 # Database connections env vars
 SQRLL_COMM_DB_HOST=127.0.0.1
