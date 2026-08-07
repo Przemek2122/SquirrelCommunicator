@@ -762,7 +762,7 @@ void FServersSocketData::ServerJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opC
 
     BroadcastToServerMembers(ServerId, BroadcastJson, CurrentUserId);
 
-    LOG_INFO("User " << CurrentUserId << " joined voice channel " << ChannelId << " in server " << ServerId);
+    LOG_DEBUG("User " << CurrentUserId << " joined voice channel " << ChannelId << " in server " << ServerId);
 }
 
 void FServersSocketData::ServerLeaveVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId)
@@ -1532,7 +1532,7 @@ void FServersSocketData::BroadcastMemberStatus(const Uint64 UserId, const std::s
         BroadcastToServerMembers(ServerId, BroadcastJson, UserId);
     }
 
-    LOG_INFO("Broadcasted status change for user " << UserId << " to " << StatusStr
+    LOG_DEBUG("Broadcasted status change for user " << UserId << " to " << StatusStr
              << " across " << ServerIds.size() << " servers");
 }
 

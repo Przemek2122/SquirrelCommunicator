@@ -228,7 +228,7 @@ void FSocket::Async()
 		{
 			AppListenSocket = listenSocket;
 
-			LOG_INFO("Server, id: '" << SocketIndex << "', listening host: '" << Host << "', on port: '" << Port << "'.");
+			LOG_DEBUG("Server, id: '" << SocketIndex << "', listening host: '" << Host << "', on port: '" << Port << "'.");
 		}
 		else
 		{
