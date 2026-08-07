@@ -49,3 +49,10 @@ SQRLL_VOICE_PORT=8082
 # The main password for communicating with the backend (Change this!)
 SQRLL_VOICE_API_KEY=
 ```
+
+### `.env.encryptionpass` (Encryption password file)
+
+```
+# Message encryption key (used instead of MessageEncryptionKeyFile from ini config).
+SQRLL_MESSAGE_ENCRYPTION_KEY=
+```

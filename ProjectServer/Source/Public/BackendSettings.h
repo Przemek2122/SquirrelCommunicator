@@ -65,10 +65,16 @@ public:
 
     // --- Message encryption ---
 
+    /** Path to the encryption key file (from INI). Relative to Assets/Config or absolute. */
+    const std::string& GetMessageEncryptionKeyFilePath() const { return MessageEncryptionKeyFilePath; }
+
     /** Server-side message encryption key (32-char BASE62). Empty = at-rest encryption disabled. */
     const std::string& GetMessageEncryptionKey() const { return MessageEncryptionKey; }
 
 protected:
+    /** Load or generate the message encryption key from disk */
+    void LoadMessageEncryptionKey();
+
     /** Settings ini object */
     std::shared_ptr<FIniObject> BackendSettingsIniObject;
 
@@ -98,5 +104,6 @@ protected:
     int32 RegisterAccountLimitPerHour;
 
     // --- Message encryption ---
+    std::string MessageEncryptionKeyFilePath;
     std::string MessageEncryptionKey;
 };
