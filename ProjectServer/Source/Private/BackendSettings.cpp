@@ -225,7 +225,7 @@ std::string FBackendSettings::EncryptMessage(const std::string& Plaintext) const
 
     try
     {
-        return SQRLLEncryption::Encrypt(Plaintext, MessageEncryptionKey, MessageEncryptionSettings);
+        return SQRLLEncryption::ToBaseN(SQRLLEncryption::Encrypt(Plaintext, MessageEncryptionKey, MessageEncryptionSettings), SQRLLPredefinedCharsets::BASE64);
     }
     catch (const std::exception& e)
     {
@@ -242,17 +242,9 @@ std::string FBackendSettings::DecryptMessage(const std::string& Ciphertext) cons
         return Ciphertext;
     }
 
-    // Quick heuristic: encrypted messages always start with the magic word "SQRLLCMSG"
-    // If this doesn't match, the message was stored before encryption was enabled (plaintext).
-    if (Ciphertext.size() < 8 || Ciphertext.compare(0, 8, MessageEncryptionSettings.EncryptionWord) != 0)
-    {
-        // Legacy plaintext message — return as-is
-        return Ciphertext;
-    }
-
     try
     {
-        std::string Decrypted = SQRLLEncryption::Decrypt(Ciphertext, MessageEncryptionKey, MessageEncryptionSettings);
+        std::string Decrypted = SQRLLEncryption::Decrypt(SQRLLEncryption::FromBaseN(Ciphertext, SQRLLPredefinedCharsets::BASE64), MessageEncryptionKey, MessageEncryptionSettings);
         if (Decrypted.empty() && !Ciphertext.empty())
         {
             // Decryption failed (wrong key or tampered data) — return as-is to avoid data loss

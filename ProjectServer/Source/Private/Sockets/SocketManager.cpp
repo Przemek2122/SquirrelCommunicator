@@ -58,7 +58,7 @@ void FSocketManager::CreateSockets(std::string Host, int32 SocketPort, bool bUse
 
 		// Capture index and params by value for the thread
 		const int32 SocketIndex = i;
-		SocketThread->Thread = std::jthread([this, SocketThread = SocketThread.get(), SocketIndex, Host, SocketPort, bUseSSL, InKeyPath, InCertPath](std::stop_token)
+		SocketThread->Thread = std::jthread([SocketThread = SocketThread.get(), SocketIndex, Host, SocketPort, bUseSSL, InKeyPath, InCertPath](const std::stop_token&)
 		{
 			SocketThread->SocketPtr = std::make_unique<FSocket>(SocketIndex, Host, SocketPort, bUseSSL, InKeyPath, InCertPath);
 			if (SocketThread->SocketPtr != nullptr)
