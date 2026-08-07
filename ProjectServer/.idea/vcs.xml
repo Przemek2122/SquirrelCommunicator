@@ -6,6 +6,8 @@
     <mapping directory="$PROJECT_DIR$/ThirdParty/Encryption" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/IniReader" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/asio" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/cpr" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/eve" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/json" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/soci" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/uWebSockets" vcs="Git" />
@@ -18,5 +20,7 @@
     <mapping directory="$PROJECT_DIR$/ThirdParty/uWebSockets/uSockets/lsquic" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/uWebSockets/uSockets/lsquic/src/liblsquic/ls-qpack" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/uWebSockets/uSockets/lsquic/src/lshpack" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cmake-build-debug/_deps/zlib-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../services/SquirrelCommunicatorVoice" vcs="Git" />
   </component>
 </project>
