@@ -50,6 +50,8 @@ void FSocketManager::CreateSockets(std::string Host, int32 SocketPort, bool bUse
 
 	SocketThreads.reserve(NumberOfSocketsToCreate);
 
+	LOG_INFO("Creating threads for Sockets (" << NumberOfSocketsToCreate << ") listening host... '" << Host << ".");
+
 	for (int32 i = 0; i < NumberOfSocketsToCreate; ++i)
 	{
 		auto SocketThread = std::make_unique<FSocketThread>();
@@ -68,6 +70,8 @@ void FSocketManager::CreateSockets(std::string Host, int32 SocketPort, bool bUse
 
 		SocketThreads.push_back(std::move(SocketThread));
 	}
+
+	LOG_INFO("Socket threads queued: " << SocketThreads.size() << "/" << NumberOfSocketsToCreate << ".");
 }
 
 void FSocketManager::EnqueueTaskForUserAtSocket(const int32 InSocketId, const Uint64 UserId, FFunctorLambda<void, void*>& FunctionToCallOnSocket)

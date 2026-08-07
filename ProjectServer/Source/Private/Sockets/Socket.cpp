@@ -239,8 +239,6 @@ void FSocket::Async()
 	BeforeRunAsync();
 
 	SocketAppWrapper.Run();
-
-	LOG_INFO("Socket(s) listening host: '" << Host << "', on port: '" << Port);
 }
 
 void FSocket::OnClientConnected(auto* ws)

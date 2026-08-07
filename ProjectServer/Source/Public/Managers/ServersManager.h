@@ -104,8 +104,8 @@ public:
      *  - ClientIp: optional IP for abuse tracking. When set, failed attempts are counted
      *    and IPs are banned after MaxAttempts failures. Set to "" to bypass abuse protection.
      *  - OutError: if provided and the join fails, set to "invalid", "expired", "maxed_out",
-     *    "abuse_ban", or "server_not_found". On abuse_ban, the IP is banned for the
-     *    configured duration.
+     *    "abuse_ban", "already_member", or "server_not_found". On abuse_ban, the IP is
+     *    banned for the configured duration.
      *
      * DeleteInvite: deletes an invite by its code.
      *  - Requires CAN_CREATE_INVITES permission (or owner).
@@ -153,6 +153,16 @@ protected:
     bool UploadInviteToDB(const std::string& InviteCode, Uint64 ServerId, Uint64 CreatedByUserId,
                           Uint32 MaxUses, Uint32 ExpiresInSeconds);
     bool ConsumeInviteFromDB(const std::string& InviteCode, Uint64& OutServerId);
+
+    /**
+     * Non-consuming lookup: resolves an invite code to its server_id in the DB
+     * without validating expiry/usage limits and without incrementing current_uses.
+     * Used by JoinViaInvite to check membership BEFORE consuming the invite.
+     * Returns true if the invite code exists in the DB (regardless of validity),
+     * false if not found or DB error.
+     */
+    bool LookupInviteServerId(const std::string& InviteCode, Uint64& OutServerId);
+
     bool DeleteInviteFromDB(const std::string& InviteCode, Uint64 ServerId);
     bool ListInvitesFromDB(Uint64 ServerId, Uint32 Start, Uint32 Count,
                            std::vector<FInviteInfo>& OutInvites, Uint32& OutTotal);

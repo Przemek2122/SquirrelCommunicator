@@ -1,6 +1,9 @@
 #include "Logger/Logger.h"
 #include "Managers/ConversationsManager.h"
 #include "DataBase/DataBaseConnect.h"
+#include "ProjectEngine.h"
+#include "BackendSettings.h"
+#include "SQRLLEncryption.h"
 #include "soci/rowset.h"
 
 Uint64 FConversationsManager::GetOrCreateConversation(const CArray<Uint64>& InUserIds, bool& bIsNewConversation)
@@ -446,12 +449,16 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 
 			std::unique_lock Lock(ConversationIdToConversationDataMutex);
 
+			// Get encryption settings once for the whole batch
+			const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
+
 			while (Stmt.fetch())
 			{
 				FConversationMessageData MessageData;
 				MessageData.MessageId = MessageId;
 				MessageData.SenderId = SenderId;
-				MessageData.Message = MessageText;
+				// Decrypt after loading from DB
+				MessageData.Message = Settings->DecryptMessage(MessageText);
 				MessageData.CreatedAt = CreatedAtDb;
 
 				ConversationData.push_back(MessageData);
@@ -478,10 +485,14 @@ EDatabaseOperationResult FConversationsManager::UpdateMessageEditInDB(const Uint
 			// cast to int for safety
 			int32 StatusInt = static_cast<int32>(EConversationMessageStatus::Edited);
 
+			// Encrypt the edited message before storing
+			const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
+			const std::string EncryptedText = Settings->EncryptMessage(InNewMessage);
+
 			soci::statement St = (DataBaseSession.prepare <<
 				"UPDATE messages SET text = :text, text_status = :status "
 				"WHERE id = :msgId AND conversation_id = :convId AND sender_id = :senderId",
-				soci::use(InNewMessage, "text"),
+				soci::use(EncryptedText, "text"),
 				soci::use(StatusInt, "status"),
 				soci::use(InMessageId, "msgId"),
 				soci::use(InConversationId, "convId"),
@@ -737,11 +748,15 @@ EDatabaseOperationResult FConversationsManager::UploadMessage(const Uint64 InCon
 			soci::session& DataBaseSession = Connect.GetSession();
 			soci::indicator Ind;
 
+			// Encrypt the message for at-rest storage before writing to DB
+			const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
+			const std::string EncryptedText = Settings->EncryptMessage(InMessage);
+
 			const Uint64 NowNanos = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
 			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text, created_at) VALUES (:conv_id, :sender_id, :text, :created)",
 				soci::use(InConversationId),
 				soci::use(SenderId),
-				soci::use(InMessage, Ind),
+				soci::use(EncryptedText, Ind),
 				soci::use(NowNanos);
 
 			// Get last inserted ID

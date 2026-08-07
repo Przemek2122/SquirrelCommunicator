@@ -999,6 +999,11 @@ void FServersSocketData::HandleServerJoinInvite(AnyWebSocket wsVariant, uWS::OpC
             // Send a specific error so frontend can show "try again in X minutes".
             FSocket::EarlyExit(wsVariant, "abuse ban: too many failed invite attempts. Try again later.", opCode);
         }
+        else if (ErrorCode == "already_member")
+        {
+            // User is already a member of this server — no need to consume the invite.
+            FSocket::EarlyExit(wsVariant, "you are already a member of this server", opCode);
+        }
         else
         {
             FSocket::EarlyExit(wsVariant, "invalid or expired invite code", opCode);

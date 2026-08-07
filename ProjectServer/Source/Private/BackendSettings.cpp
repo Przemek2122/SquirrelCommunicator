@@ -25,6 +25,7 @@ FBackendSettings::FBackendSettings()
     , InviteCreateLimitPerHour(20)
     , InviteUseLimitPerHour(30)
     , RegisterAccountLimitPerHour(10)
+    , MessageEncryptionSettings("SQRLLCMSG", 32, 1, true)
 {
 }
 
@@ -124,7 +125,7 @@ void FBackendSettings::LoadBackendSettings()
             MessageEncryptionKeyFilePath = MessageEncryptionKeyFileField.GetValueAsString();
         }
 
-        // Load (or generate) the actual key
+        // Load the encryption key from file or environment
         LoadMessageEncryptionKey();
     }
     else
@@ -136,18 +137,20 @@ void FBackendSettings::LoadBackendSettings()
 void FBackendSettings::LoadMessageEncryptionKey()
 {
     // Environment variable takes priority over file-based config
-    const char* EnvKey = std::getenv("MESSAGE_ENCRYPTION_KEY");
+    const char* EnvKey = std::getenv("SQRLL_MESSAGE_ENCRYPTION_KEY");
     if (EnvKey != nullptr && EnvKey[0] != '\0')
     {
         MessageEncryptionKey = std::string(EnvKey);
-        LOG_INFO("Message encryption key loaded from environment variable MESSAGE_ENCRYPTION_KEY.");
+        LOG_INFO("✅ Message encryption key loaded from environment variable MESSAGE_ENCRYPTION_KEY. "
+                 "At-rest message encryption is ENABLED.");
         return;
     }
 
     // If no file path is configured, encryption is disabled
     if (MessageEncryptionKeyFilePath.empty())
     {
-        LOG_INFO("MessageEncryptionKeyFile is empty — at-rest message encryption disabled.");
+        LOG_ERROR("❌ MessageEncryptionKeyFile is empty — at-rest message encryption is DISABLED. "
+                  "All messages will be stored as plaintext in the database!");
         return;
     }
 
@@ -171,7 +174,7 @@ void FBackendSettings::LoadMessageEncryptionKey()
         NormalizedPath = ResolvedPath;
     }
 
-    // Check if the key file already exists
+    // Check if the key file exists
     if (std::filesystem::exists(NormalizedPath))
     {
         std::ifstream KeyFile(NormalizedPath);
@@ -189,54 +192,78 @@ void FBackendSettings::LoadMessageEncryptionKey()
                 if (!Line.empty())
                 {
                     MessageEncryptionKey = Line;
-                    LOG_INFO("Message encryption key loaded from: " << NormalizedPath);
+                    LOG_INFO("✅ Message encryption key loaded from file: " << NormalizedPath << ". "
+                             "At-rest message encryption is ENABLED.");
                     return;
                 }
             }
-            // File exists but is empty or whitespace-only — generate new key
-            LOG_WARN("Message encryption key file exists but is empty — generating new key.");
+            // File exists but is empty or whitespace-only
+            LOG_ERROR("❌ Message encryption key file exists but is empty: " << NormalizedPath << ". "
+                      "At-rest message encryption is DISABLED. All messages will be stored as plaintext!");
+            return;
         }
         else
         {
-            LOG_ERROR("Cannot open message encryption key file: " << NormalizedPath);
+            LOG_ERROR("❌ Cannot open message encryption key file: " << NormalizedPath << ". "
+                      "At-rest message encryption is DISABLED. All messages will be stored as plaintext!");
             return;
         }
     }
 
-    // Key file does not exist (or is empty) — generate a new key
-    LOG_INFO("Generating new message encryption key...");
+    // Key file does not exist — encryption is disabled
+    LOG_ERROR("❌ Message encryption key file not found: " << NormalizedPath << ". "
+              "At-rest message encryption is DISABLED. All messages will be stored as plaintext!");
+}
 
-    // Generate 20 random bytes → ~27 chars in BASE62
-    const std::string RandomBytes = FEncryptionUtil::GenerateSecureSalt(20);
-    const std::string NewKey = FEncryptionUtil::ToBaseN(RandomBytes, FPredefinedCharsets::BASE62);
-
-    // Ensure the parent directory exists
-    std::error_code MkdirEc;
-    std::filesystem::create_directories(
-        std::filesystem::path(NormalizedPath).parent_path(), MkdirEc);
-
-    // Write the key with 0600 permissions set atomically at creation (owner read/write only)
-    int Fd = ::open(NormalizedPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (Fd >= 0)
+std::string FBackendSettings::EncryptMessage(const std::string& Plaintext) const
+{
+    if (MessageEncryptionKey.empty())
     {
-        const ssize_t Written = ::write(Fd, NewKey.data(), NewKey.size());
-        ::close(Fd);
-
-        MessageEncryptionKey = NewKey;
-
-        if (Written == static_cast<ssize_t>(NewKey.size()))
-        {
-            LOG_INFO("Message encryption key generated and saved to: " << NormalizedPath);
-        }
-        else
-        {
-            LOG_WARN("Message encryption key write may be incomplete for: " << NormalizedPath);
-        }
+        // Encryption disabled — store as plaintext (backward compatible)
+        return Plaintext;
     }
-    else
+
+    try
     {
-        LOG_ERROR("Failed to write message encryption key to: " << NormalizedPath);
-        MessageEncryptionKey = NewKey;
-        LOG_WARN("Message encryption key is in-memory only (could not persist to disk).");
+        return SQRLLEncryption::Encrypt(Plaintext, MessageEncryptionKey, MessageEncryptionSettings);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("Message encryption failed: " << e.what() << " — falling back to plaintext");
+        return Plaintext;
+    }
+}
+
+std::string FBackendSettings::DecryptMessage(const std::string& Ciphertext) const
+{
+    if (MessageEncryptionKey.empty())
+    {
+        // Encryption disabled — ciphertext is actually plaintext
+        return Ciphertext;
+    }
+
+    // Quick heuristic: encrypted messages always start with the magic word "SQRLLCMSG"
+    // If this doesn't match, the message was stored before encryption was enabled (plaintext).
+    if (Ciphertext.size() < 8 || Ciphertext.compare(0, 8, MessageEncryptionSettings.EncryptionWord) != 0)
+    {
+        // Legacy plaintext message — return as-is
+        return Ciphertext;
+    }
+
+    try
+    {
+        std::string Decrypted = SQRLLEncryption::Decrypt(Ciphertext, MessageEncryptionKey, MessageEncryptionSettings);
+        if (Decrypted.empty() && !Ciphertext.empty())
+        {
+            // Decryption failed (wrong key or tampered data) — return as-is to avoid data loss
+            LOG_ERROR("Message decryption failed (key mismatch or corruption) — returning raw data");
+            return Ciphertext;
+        }
+        return Decrypted;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("Message decryption error: " << e.what() << " — returning raw data");
+        return Ciphertext;
     }
 }

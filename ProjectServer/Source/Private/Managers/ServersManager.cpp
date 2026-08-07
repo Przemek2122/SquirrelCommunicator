@@ -764,8 +764,9 @@ std::shared_ptr<FServer> FServersManager::JoinViaInvite(const std::string& Invit
         }
     }
 
-    Uint64 ServerId = 0;
-    bool bInviteValid = false;
+    // --- Resolve invite to server_id WITHOUT consuming it yet ---
+    // This lets us check if the user is already a member before wasting an invite use.
+    Uint64 LookupServerId = 0;
 
     // Check in-memory cache first
     {
@@ -773,46 +774,80 @@ std::shared_ptr<FServer> FServersManager::JoinViaInvite(const std::string& Invit
         auto Iter = InviteCodeToServerId.find(InviteCode);
         if (Iter != InviteCodeToServerId.end())
         {
-            ServerId = Iter->second;
+            LookupServerId = Iter->second;
         }
     }
 
-    // If not in cache, query DB (ConsumeInviteFromDB also validates expiry & usage limits)
-    if (ServerId == 0)
+    // If not in cache, do a non-consuming DB lookup
+    if (LookupServerId == 0)
     {
-        if (ConsumeInviteFromDB(InviteCode, ServerId))
+        if (!LookupInviteServerId(InviteCode, LookupServerId))
         {
-            bInviteValid = true;
+            // Invite code doesn't exist in DB at all
+            LOG_ERROR("JoinViaInvite: Invite code not found in DB: " << InviteCode);
+
+            // --- Abuse protection: record failed attempt ---
+            if (!ClientIp.empty())
+            {
+                const bool bTriggeredBan = AbuseProtection->AddInviteAbuseAttempt(ClientIp);
+                if (bTriggeredBan)
+                {
+                    LOG_WARN("JoinViaInvite: IP " << ClientIp << " banned after too many failed invite attempts");
+                    if (OutError) *OutError = "abuse_ban";
+                }
+                else
+                {
+                    if (OutError) *OutError = "invalid";
+                }
+            }
+            else
+            {
+                if (OutError) *OutError = "invalid";
+            }
+            return nullptr;
+        }
+    }
+
+    // --- Check if user is already a member of this server ---
+    // This prevents users from consuming (wasting) invites to servers they already belong to.
+    {
+        std::shared_ptr<FServer> Server = GetServerById(LookupServerId);
+        if (Server && Server->HasMember(UserId))
+        {
+            LOG_WARN("JoinViaInvite: User " << UserId << " is already a member of server " << LookupServerId);
+            if (OutError) *OutError = "already_member";
+            return nullptr;
+        }
+    }
+
+    // --- Now consume the invite (validates expiry/usage and increments current_uses) ---
+    Uint64 ServerId = 0;
+    bool bInviteValid = false;
+
+    // ConsumeInviteFromDB validates expiry & usage limits and increments current_uses atomically
+    Uint64 DbServerId = 0;
+    if (ConsumeInviteFromDB(InviteCode, DbServerId))
+    {
+        bInviteValid = true;
+        ServerId = DbServerId;
+
+        // If cache was stale, update it
+        if (DbServerId != LookupServerId)
+        {
+            LOG_WARN("JoinViaInvite: Cached/LookedUp ServerId (" << LookupServerId
+                     << ") differs from DB (" << DbServerId << "), using DB value");
+            {
+                std::unique_lock Lock(InviteMapMutex);
+                InviteCodeToServerId[InviteCode] = DbServerId;
+            }
         }
     }
     else
     {
-        // Found in cache, but still need to consume in DB to validate limits.
-        // Use DbServerId from DB as the authoritative server ID (cache could be stale).
-        Uint64 DbServerId = 0;
-        if (ConsumeInviteFromDB(InviteCode, DbServerId))
+        // DB rejected (expired or max uses), remove from cache if present
         {
-            bInviteValid = true;
-
-            // Use the DB-authoritative server ID. If cache was stale, update it.
-            if (DbServerId != ServerId)
-            {
-                LOG_WARN("JoinViaInvite: Cached ServerId (" << ServerId
-                         << ") differs from DB (" << DbServerId << "), using DB value");
-                ServerId = DbServerId;
-                {
-                    std::unique_lock Lock(InviteMapMutex);
-                    InviteCodeToServerId[InviteCode] = DbServerId;
-                }
-            }
-        }
-        else
-        {
-            // DB rejected (expired or max uses), remove from cache
-            {
-                std::unique_lock Lock(InviteMapMutex);
-                InviteCodeToServerId.erase(InviteCode);
-            }
+            std::unique_lock Lock(InviteMapMutex);
+            InviteCodeToServerId.erase(InviteCode);
         }
     }
 
@@ -1190,10 +1225,14 @@ bool FServersManager::UploadMessageToDB(const FServerMessage& Message, Uint64& O
     {
         soci::session& Session = Connect.GetSession();
 
+        // Encrypt the message content for at-rest DB storage
+        const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
+        const std::string EncryptedContent = Settings->EncryptMessage(Message.Content);
+
         Session << "INSERT INTO server_messages (channel_id, sender_id, content, created_at) VALUES (:cid, :sid, :content, :created)",
             soci::use(Message.ChannelId),
             soci::use(Message.SenderId),
-            soci::use(Message.Content),
+            soci::use(EncryptedContent),
             soci::use(Message.CreatedAt);
 
         long long LastId = 0;
@@ -1383,6 +1422,39 @@ bool FServersManager::ConsumeInviteFromDB(const std::string& InviteCode, Uint64&
                 // Connection may be broken - nothing more we can do.
             }
         }
+    }
+
+    return false;
+}
+
+bool FServersManager::LookupInviteServerId(const std::string& InviteCode, Uint64& OutServerId)
+{
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        return false;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        long long ServerId = 0;
+        soci::indicator Ind;
+
+        Session << "SELECT server_id FROM server_invites WHERE invite_code = :code",
+            soci::into(ServerId, Ind),
+            soci::use(InviteCode);
+
+        if (Session.got_data() && Ind == soci::i_ok)
+        {
+            OutServerId = static_cast<Uint64>(ServerId);
+            return true;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("LookupInviteServerId error: " << e.what());
     }
 
     return false;
@@ -1768,6 +1840,9 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
         Uint64 CreatedAt = 0;
         soci::indicator IndMsgId, IndSenderId, IndContent, IndCreated, IndSenderName;
 
+        // Get encryption settings once for the whole batch
+        const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
+
         // Accumulate messages from DB into a local batch. DB returns DESC order
         // (newest first) which is wrong for push_back-based storage (oldest-first).
         // We reverse the batch before inserting into the in-memory cache.
@@ -1799,7 +1874,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.ChannelId = ChannelId;
                 Message.SenderId = static_cast<Uint64>(SenderId);
                 Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
-                Message.Content = Content;
+                Message.Content = Settings->DecryptMessage(Content);
                 Message.CreatedAt = static_cast<Uint64>(CreatedAt);
                 Batch.push_back(Message);
             }
@@ -1829,7 +1904,7 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.ChannelId = ChannelId;
                 Message.SenderId = static_cast<Uint64>(SenderId);
                 Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
-                Message.Content = Content;
+                Message.Content = Settings->DecryptMessage(Content);
                 Message.CreatedAt = static_cast<Uint64>(CreatedAt);
                 Batch.push_back(Message);
             }

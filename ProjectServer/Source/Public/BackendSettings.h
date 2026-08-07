@@ -3,6 +3,7 @@
 #pragma once
 
 #include "EngineCompat.h"
+#include "SQRLLEncryption.h"
 
 /** Class for global backend settings */
 class FBackendSettings
@@ -68,11 +69,23 @@ public:
     /** Path to the encryption key file (from INI). Relative to Assets/Config or absolute. */
     const std::string& GetMessageEncryptionKeyFilePath() const { return MessageEncryptionKeyFilePath; }
 
-    /** Server-side message encryption key (32-char BASE62). Empty = at-rest encryption disabled. */
+    /** Server-side message encryption key (BASE62). Empty = at-rest encryption disabled. */
     const std::string& GetMessageEncryptionKey() const { return MessageEncryptionKey; }
 
+    /** Whether server-side at-rest message encryption is active */
+    bool IsEncryptionEnabled() const { return !MessageEncryptionKey.empty(); }
+
+    /** Get the SQRLL encryption settings for message at-rest encryption */
+    const SQRLLSettings& GetEncryptionSettings() const { return MessageEncryptionSettings; }
+
+    /** Encrypt a plaintext message for at-rest DB storage. Returns plaintext if encryption disabled. */
+    [[nodiscard]] std::string EncryptMessage(const std::string& Plaintext) const;
+
+    /** Decrypt a ciphertext message from DB storage. Returns ciphertext unchanged if encryption disabled. */
+    [[nodiscard]] std::string DecryptMessage(const std::string& Ciphertext) const;
+
 protected:
-    /** Load or generate the message encryption key from disk */
+    /** Load the message encryption key from disk or environment variable */
     void LoadMessageEncryptionKey();
 
     /** Settings ini object */
@@ -106,4 +119,7 @@ protected:
     // --- Message encryption ---
     std::string MessageEncryptionKeyFilePath;
     std::string MessageEncryptionKey;
+
+    /** SQRLL encryption settings for at-rest message storage */
+    SQRLLSettings MessageEncryptionSettings;
 };
