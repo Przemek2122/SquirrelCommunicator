@@ -51,6 +51,7 @@ ProjectServer/Assets/Config/cert.pem
 /ProjectServer/ThirdParty/uWebSockets
 /ProjectServer/ThirdParty/uwebsockets
 /ProjectServer/ThirdParty/cpr
+/ProjectServer/ThirdParty/eve
 
 # Ignore IntelliJ configurations
 ProjectServer/.idea/*
