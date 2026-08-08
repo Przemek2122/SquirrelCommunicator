@@ -5,6 +5,14 @@
 #include "EngineCompat.h"
 #include "SQRLLEncryption.h"
 
+/** Database-level indicator of whether a stored message is encrypted at rest */
+enum class EMessageEncryptionStatus : uint8
+{
+	Unencrypted = 0,
+	Encrypted  = 1,
+	MAX        = 2
+};
+
 /** Class for global backend settings */
 class FBackendSettings
 {
@@ -78,11 +86,19 @@ public:
     /** Get the SQRLL encryption settings for message at-rest encryption */
     const SQRLLSettings& GetEncryptionSettings() const { return MessageEncryptionSettings; }
 
-    /** Encrypt a plaintext message for at-rest DB storage. Returns plaintext if encryption disabled. */
+    /**
+     * Encrypt a plaintext message for at-rest DB storage.
+     * Returns plaintext unchanged if encryption is disabled.
+     */
     [[nodiscard]] std::string EncryptMessage(const std::string& Plaintext) const;
 
-    /** Decrypt a ciphertext message from DB storage. Returns ciphertext unchanged if encryption disabled. */
-    [[nodiscard]] std::string DecryptMessage(const std::string& Ciphertext) const;
+    /**
+     * Decrypt a ciphertext message from DB storage.
+     * @param Ciphertext  The raw ciphertext (base64-encoded if encrypted, or plaintext).
+     * @param Status      Whether this message was encrypted at rest.
+     *                    When Unencrypted, Ciphertext is returned as-is without decryption.
+     */
+    [[nodiscard]] std::string DecryptMessage(const std::string& Ciphertext, EMessageEncryptionStatus Status) const;
 
 protected:
     /** Load the message encryption key from disk or environment variable */

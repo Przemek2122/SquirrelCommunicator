@@ -25,7 +25,7 @@ FBackendSettings::FBackendSettings()
     , InviteCreateLimitPerHour(20)
     , InviteUseLimitPerHour(30)
     , RegisterAccountLimitPerHour(10)
-    , MessageEncryptionSettings("SQRLLCMSG", 32, 1, true)
+    , MessageEncryptionSettings("", 32, 1, true)
 {
 }
 
@@ -234,11 +234,19 @@ std::string FBackendSettings::EncryptMessage(const std::string& Plaintext) const
     }
 }
 
-std::string FBackendSettings::DecryptMessage(const std::string& Ciphertext) const
+std::string FBackendSettings::DecryptMessage(const std::string& Ciphertext, const EMessageEncryptionStatus Status) const
 {
+    // If the DB says this message was NOT encrypted, return the raw text as-is.
+    // This is the new canonical check — no magic-word heuristic needed.
+    if (Status == EMessageEncryptionStatus::Unencrypted)
+    {
+        return Ciphertext;
+    }
+
+    // DB says encrypted, but no key loaded → should never happen, return as-is defensively
     if (MessageEncryptionKey.empty())
     {
-        // Encryption disabled — ciphertext is actually plaintext
+        LOG_ERROR("Message is marked as encrypted in DB but no encryption key is loaded — returning raw data");
         return Ciphertext;
     }
 

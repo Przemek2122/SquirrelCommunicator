@@ -70,6 +70,10 @@ CREATE TABLE IF NOT EXISTS server_members (
 -- sender_id is NULLable with ON DELETE SET NULL so messages survive user deletion.
 -- The application-layer SELECT uses COALESCE(u.username, 'Unknown') as fallback.
 --
+-- text_status: INT(8) UNSIGNED — reserved for future edit/delete status (0=Sent).
+-- is_encrypted: TINYINT(1) UNSIGNED — whether content is encrypted at rest
+--   (0=plaintext, 1=encrypted). See EMessageEncryptionStatus in BackendSettings.h.
+--
 -- Index strategy:
 --   idx_messages_channel_id (channel_id, id DESC) is the single compound index
 --   covering all channel-scoped queries. It:
@@ -78,11 +82,13 @@ CREATE TABLE IF NOT EXISTS server_members (
 --     - Makes a separate (channel_id) index redundant
 --   idx_messages_sender (sender_id) supports sender-based lookups.
 CREATE TABLE IF NOT EXISTS server_messages (
-    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    channel_id  BIGINT UNSIGNED NOT NULL,
-    sender_id   BIGINT UNSIGNED NULL DEFAULT NULL,
-    content     TEXT            NOT NULL,
-    created_at  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    channel_id    BIGINT UNSIGNED NOT NULL,
+    sender_id     BIGINT UNSIGNED NULL DEFAULT NULL,
+    content       TEXT            NOT NULL,
+    created_at    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    text_status   INT(8) UNSIGNED DEFAULT NULL,
+    is_encrypted  TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
 
     INDEX idx_messages_channel_id (channel_id, id DESC),
     INDEX idx_messages_sender (sender_id),

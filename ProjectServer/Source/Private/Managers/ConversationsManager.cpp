@@ -107,11 +107,13 @@ Uint64 FConversationsManager::AddMessage(const Uint64 InConversationId, const Ui
 	const EDatabaseOperationResult Result = UploadMessage(InConversationId, InSenderId, InMessage, OutId);
 	if (Result == EDatabaseOperationResult::Success)
 	{
+		const Uint64 NowNanos = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
+
 		FConversationMessageData ConversationMessageData;
 		ConversationMessageData.MessageId = OutId;
 		ConversationMessageData.SenderId = InSenderId;
 		ConversationMessageData.Message = InMessage;
-		ConversationMessageData.CreatedAt = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
+		ConversationMessageData.CreatedAt = NowNanos;
 
 		// Lock conversation for adding message
 		std::unique_lock Lock(ConversationPtr->Lock);
@@ -433,14 +435,18 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 			Uint64 MessageId;
 			Uint64 SenderId;
 			std::string MessageText;
-			Uint64 CreatedAtDb = 0;
+			unsigned long long CreatedAt = 0;
+			int TextStatus = 0;
+			int IsEncrypted = 0;
 
 			soci::statement Stmt = (DataBaseSession.prepare <<
-				"SELECT id, sender_id, text, created_at FROM messages WHERE conversation_id = :conv_id ORDER BY id DESC LIMIT :limit OFFSET :offset",
+				"SELECT id, sender_id, text, created_at, text_status, is_encrypted FROM messages WHERE conversation_id = :conv_id ORDER BY id DESC LIMIT :limit OFFSET :offset",
 				soci::into(MessageId),
 				soci::into(SenderId),
 				soci::into(MessageText),
-				soci::into(CreatedAtDb),
+				soci::into(CreatedAt),
+				soci::into(TextStatus),
+				soci::into(IsEncrypted),
 				soci::use(InConversationId),
 				soci::use(InLimit),
 				soci::use(InOffset));
@@ -457,9 +463,18 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 				FConversationMessageData MessageData;
 				MessageData.MessageId = MessageId;
 				MessageData.SenderId = SenderId;
-				// Decrypt after loading from DB
-				MessageData.Message = Settings->DecryptMessage(MessageText);
-				MessageData.CreatedAt = CreatedAtDb;
+				// Decrypt only if the is_encrypted column is set
+				if (IsEncrypted != 0)
+				{
+					MessageData.Message = Settings->DecryptMessage(MessageText, EMessageEncryptionStatus::Encrypted);
+				}
+				else
+				{
+					MessageData.Message = MessageText;
+				}
+				MessageData.CreatedAt = static_cast<Uint64>(CreatedAt);
+				// Restore edit/delete status from the text_status column
+				MessageData.Status = static_cast<EConversationMessageStatus>(TextStatus);
 
 				ConversationData.push_back(MessageData);
 			}
@@ -482,18 +497,22 @@ EDatabaseOperationResult FConversationsManager::UpdateMessageEditInDB(const Uint
 		{
 			soci::session& DataBaseSession = Connect.GetSession();
 
-			// cast to int for safety
-			int32 StatusInt = static_cast<int32>(EConversationMessageStatus::Edited);
-
-			// Encrypt the edited message before storing
+			// Encrypt the edited message before storing; write encryption flag separately
 			const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
-			const std::string EncryptedText = Settings->EncryptMessage(InNewMessage);
+			const bool bEncrypted = Settings->IsEncryptionEnabled();
+			const std::string StoredText = bEncrypted
+				? Settings->EncryptMessage(InNewMessage)
+				: InNewMessage;
+
+			// Message status: Edited=1
+			const int MsgStatus = static_cast<int>(EConversationMessageStatus::Edited);
 
 			soci::statement St = (DataBaseSession.prepare <<
-				"UPDATE messages SET text = :text, text_status = :status "
+				"UPDATE messages SET text = :text, text_status = :status, is_encrypted = :encrypted "
 				"WHERE id = :msgId AND conversation_id = :convId AND sender_id = :senderId",
-				soci::use(EncryptedText, "text"),
-				soci::use(StatusInt, "status"),
+				soci::use(StoredText, "text"),
+				soci::use(MsgStatus, "status"),
+				soci::use(static_cast<int>(bEncrypted ? 1 : 0), "encrypted"),
 				soci::use(InMessageId, "msgId"),
 				soci::use(InConversationId, "convId"),
 				soci::use(RequesterUserId, "senderId")
@@ -531,17 +550,19 @@ EDatabaseOperationResult FConversationsManager::UpdateMessageDeleteInDB(const Ui
 		{
 			soci::session& DataBaseSession = Connect.GetSession();
 
-			int32 StatusInt = static_cast<int32>(EConversationMessageStatus::Deleted);
+			// Message status: Deleted=2; is_encrypted=0 since text is cleared
+			const int MsgStatus = static_cast<int>(EConversationMessageStatus::Deleted);
 
 			std::string EmptyText = "";
 
 			soci::statement St = (DataBaseSession.prepare <<
 				"UPDATE messages SET "
 				"text = :text, "
-				"text_status = :status "
+				"text_status = :status, is_encrypted = :encrypted "
 				"WHERE id = :msgId AND conversation_id = :convId AND sender_id = :senderId",
 				soci::use(EmptyText, "text"),
-				soci::use(StatusInt, "status"),
+				soci::use(MsgStatus, "status"),
+				soci::use(static_cast<int>(0), "encrypted"),
 				soci::use(InMessageId, "msgId"),
 				soci::use(InConversationId, "convId"),
 				soci::use(RequesterUserId, "senderId")
@@ -748,16 +769,24 @@ EDatabaseOperationResult FConversationsManager::UploadMessage(const Uint64 InCon
 			soci::session& DataBaseSession = Connect.GetSession();
 			soci::indicator Ind;
 
-			// Encrypt the message for at-rest storage before writing to DB
+			// Encrypt the message for at-rest storage; write encryption flag separately
 			const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
-			const std::string EncryptedText = Settings->EncryptMessage(InMessage);
+			const bool bEncrypted = Settings->IsEncryptionEnabled();
+			const std::string StoredText = bEncrypted
+				? Settings->EncryptMessage(InMessage)
+				: InMessage;
+
+			// Message status: Sent=0
+			const int MsgStatus = static_cast<int>(EConversationMessageStatus::Sent);
 
 			const Uint64 NowNanos = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
-			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text, created_at) VALUES (:conv_id, :sender_id, :text, :created)",
+			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text, created_at, text_status, is_encrypted) VALUES (:conv_id, :sender_id, :text, :created, :status, :encrypted)",
 				soci::use(InConversationId),
 				soci::use(SenderId),
-				soci::use(EncryptedText, Ind),
-				soci::use(NowNanos);
+				soci::use(StoredText, Ind),
+				soci::use(NowNanos),
+				soci::use(MsgStatus),
+				soci::use(static_cast<int>(bEncrypted ? 1 : 0));
 
 			// Get last inserted ID
 			long long LastInsertId;

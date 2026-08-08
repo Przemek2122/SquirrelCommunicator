@@ -7,7 +7,6 @@
 
 #include <soci/session.h>
 #include <soci/statement.h>
-#include <algorithm>
 #include <random>
 #include <iomanip>
 #include <sstream>
@@ -368,6 +367,7 @@ bool FServersManager::RemoveChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 Re
              << " by user " << RequestedByUserId);
     return true;
 }
+
 bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewPosition, Uint64 RequestedByUserId)
 {
     std::shared_ptr<FServer> Server = GetServerById(ServerId);
@@ -385,7 +385,7 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewP
         return false;
     }
 
-    // Get channels sorted by current position (cached after first GetAllChannels call)
+    // Get channels sorted by current position
     std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
     if (Channels.empty())
     {
@@ -398,20 +398,18 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewP
 
     // Find the channel to move by ID
     std::shared_ptr<FServerChannel> MovedChannel = nullptr;
-    uint32 OldPosition = 0;
-    bool bFoundChannel = false;
-    for (uint32 i = 0; i < static_cast<uint32>(Channels.size()); ++i)
+    int32 OldPosition = -1;
+    for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
     {
         if (Channels[i]->ChannelId == ChannelId)
         {
             MovedChannel = Channels[i];
             OldPosition = i;
-            bFoundChannel = true;
             break;
         }
     }
 
-    if (!bFoundChannel)
+    if (!MovedChannel || OldPosition < 0)
     {
         LOG_ERROR("MoveChannel: Channel " << ChannelId << " not found in server " << ServerId);
         return false;
@@ -429,9 +427,7 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewP
     // Insert at the new position
     Channels.insert(Channels.begin() + NewPosition, MovedChannel);
 
-    // Renumber all positions sequentially (0, 1, 2, ...) in a single DB transaction.
-    // Unwinding the channel cache: move invalidates the sorted cache, so GetAllChannels
-    // must not be called from within this DB loop. We update positions directly.
+    // Renumber all positions sequentially (0, 1, 2, ...)
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
     {
@@ -443,11 +439,7 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewP
     {
         soci::session& Session = Connect.GetSession();
 
-        // Transaction ensures all position updates are atomic — no other connection
-        // sees a partial renumbering.
-        Session << "START TRANSACTION";
-
-        for (uint32 i = 0; i < static_cast<uint32>(Channels.size()); ++i)
+        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
         {
             Channels[i]->Position = i;
 
@@ -456,8 +448,6 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewP
                 soci::use(Channels[i]->ChannelId),
                 soci::use(ServerId);
         }
-
-        Session << "COMMIT";
     }
     catch (const std::exception& e)
     {
@@ -468,7 +458,6 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewP
     LOG_INFO("Channel " << ChannelId << " moved from position " << OldPosition
              << " to " << NewPosition << " in server " << ServerId
              << " by user " << RequestedByUserId);
-    Server->InvalidateChannelCache();
     return true;
 }
 
@@ -489,7 +478,7 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
         return false;
     }
 
-    // Get existing channels sorted by current position (cached after first call)
+    // Get existing channels sorted by current position
     std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
     if (Channels.empty())
     {
@@ -547,10 +536,7 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
     {
         soci::session& Session = Connect.GetSession();
 
-        // Transaction ensures atomic visibility: all channels are reordered together.
-        Session << "START TRANSACTION";
-
-        for (uint32 i = 0; i < static_cast<uint32>(ChannelIds.size()); ++i)
+        for (int32 i = 0; i < static_cast<int32>(ChannelIds.size()); ++i)
         {
             const Uint64 ChannelId = ChannelIds[i];
             auto It = ChannelMap.find(ChannelId);
@@ -567,8 +553,6 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
                 soci::use(ChannelId),
                 soci::use(ServerId);
         }
-
-        Session << "COMMIT";
     }
     catch (const std::exception& e)
     {
@@ -578,9 +562,9 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
 
     LOG_INFO("Channels reordered in server " << ServerId
              << " (" << ChannelIds.size() << " channels) by user " << RequestedByUserId);
-    Server->InvalidateChannelCache();
     return true;
 }
+
 bool FServersManager::RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName, Uint64 RequestedByUserId)
 {
     std::shared_ptr<FServer> Server = GetServerById(ServerId);
@@ -764,9 +748,8 @@ std::shared_ptr<FServer> FServersManager::JoinViaInvite(const std::string& Invit
         }
     }
 
-    // --- Resolve invite to server_id WITHOUT consuming it yet ---
-    // This lets us check if the user is already a member before wasting an invite use.
-    Uint64 LookupServerId = 0;
+    Uint64 ServerId = 0;
+    bool bInviteValid = false;
 
     // Check in-memory cache first
     {
@@ -774,80 +757,46 @@ std::shared_ptr<FServer> FServersManager::JoinViaInvite(const std::string& Invit
         auto Iter = InviteCodeToServerId.find(InviteCode);
         if (Iter != InviteCodeToServerId.end())
         {
-            LookupServerId = Iter->second;
+            ServerId = Iter->second;
         }
     }
 
-    // If not in cache, do a non-consuming DB lookup
-    if (LookupServerId == 0)
+    // If not in cache, query DB (ConsumeInviteFromDB also validates expiry & usage limits)
+    if (ServerId == 0)
     {
-        if (!LookupInviteServerId(InviteCode, LookupServerId))
+        if (ConsumeInviteFromDB(InviteCode, ServerId))
         {
-            // Invite code doesn't exist in DB at all
-            LOG_ERROR("JoinViaInvite: Invite code not found in DB: " << InviteCode);
-
-            // --- Abuse protection: record failed attempt ---
-            if (!ClientIp.empty())
-            {
-                const bool bTriggeredBan = AbuseProtection->AddInviteAbuseAttempt(ClientIp);
-                if (bTriggeredBan)
-                {
-                    LOG_WARN("JoinViaInvite: IP " << ClientIp << " banned after too many failed invite attempts");
-                    if (OutError) *OutError = "abuse_ban";
-                }
-                else
-                {
-                    if (OutError) *OutError = "invalid";
-                }
-            }
-            else
-            {
-                if (OutError) *OutError = "invalid";
-            }
-            return nullptr;
-        }
-    }
-
-    // --- Check if user is already a member of this server ---
-    // This prevents users from consuming (wasting) invites to servers they already belong to.
-    {
-        std::shared_ptr<FServer> Server = GetServerById(LookupServerId);
-        if (Server && Server->HasMember(UserId))
-        {
-            LOG_WARN("JoinViaInvite: User " << UserId << " is already a member of server " << LookupServerId);
-            if (OutError) *OutError = "already_member";
-            return nullptr;
-        }
-    }
-
-    // --- Now consume the invite (validates expiry/usage and increments current_uses) ---
-    Uint64 ServerId = 0;
-    bool bInviteValid = false;
-
-    // ConsumeInviteFromDB validates expiry & usage limits and increments current_uses atomically
-    Uint64 DbServerId = 0;
-    if (ConsumeInviteFromDB(InviteCode, DbServerId))
-    {
-        bInviteValid = true;
-        ServerId = DbServerId;
-
-        // If cache was stale, update it
-        if (DbServerId != LookupServerId)
-        {
-            LOG_WARN("JoinViaInvite: Cached/LookedUp ServerId (" << LookupServerId
-                     << ") differs from DB (" << DbServerId << "), using DB value");
-            {
-                std::unique_lock Lock(InviteMapMutex);
-                InviteCodeToServerId[InviteCode] = DbServerId;
-            }
+            bInviteValid = true;
         }
     }
     else
     {
-        // DB rejected (expired or max uses), remove from cache if present
+        // Found in cache, but still need to consume in DB to validate limits.
+        // Use DbServerId from DB as the authoritative server ID (cache could be stale).
+        Uint64 DbServerId = 0;
+        if (ConsumeInviteFromDB(InviteCode, DbServerId))
         {
-            std::unique_lock Lock(InviteMapMutex);
-            InviteCodeToServerId.erase(InviteCode);
+            bInviteValid = true;
+
+            // Use the DB-authoritative server ID. If cache was stale, update it.
+            if (DbServerId != ServerId)
+            {
+                LOG_WARN("JoinViaInvite: Cached ServerId (" << ServerId
+                         << ") differs from DB (" << DbServerId << "), using DB value");
+                ServerId = DbServerId;
+                {
+                    std::unique_lock Lock(InviteMapMutex);
+                    InviteCodeToServerId[InviteCode] = DbServerId;
+                }
+            }
+        }
+        else
+        {
+            // DB rejected (expired or max uses), remove from cache
+            {
+                std::unique_lock Lock(InviteMapMutex);
+                InviteCodeToServerId.erase(InviteCode);
+            }
         }
     }
 
@@ -1225,15 +1174,23 @@ bool FServersManager::UploadMessageToDB(const FServerMessage& Message, Uint64& O
     {
         soci::session& Session = Connect.GetSession();
 
-        // Encrypt the message content for at-rest DB storage
+        // Encrypt the message content for at-rest DB storage; write encryption flag separately
         const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
-        const std::string EncryptedContent = Settings->EncryptMessage(Message.Content);
+        const bool bEncrypted = Settings->IsEncryptionEnabled();
+        const std::string StoredContent = bEncrypted
+            ? Settings->EncryptMessage(Message.Content)
+            : Message.Content;
 
-        Session << "INSERT INTO server_messages (channel_id, sender_id, content, created_at) VALUES (:cid, :sid, :content, :created)",
+        // Message status: Sent=0
+        const int MsgStatus = 0;
+
+        Session << "INSERT INTO server_messages (channel_id, sender_id, content, created_at, text_status, is_encrypted) VALUES (:cid, :sid, :content, :created, :status, :encrypted)",
             soci::use(Message.ChannelId),
             soci::use(Message.SenderId),
-            soci::use(EncryptedContent),
-            soci::use(Message.CreatedAt);
+            soci::use(StoredContent),
+            soci::use(Message.CreatedAt),
+            soci::use(MsgStatus),
+            soci::use(static_cast<int>(bEncrypted ? 1 : 0));
 
         long long LastId = 0;
         Session.get_last_insert_id("server_messages", LastId);
@@ -1427,39 +1384,6 @@ bool FServersManager::ConsumeInviteFromDB(const std::string& InviteCode, Uint64&
     return false;
 }
 
-bool FServersManager::LookupInviteServerId(const std::string& InviteCode, Uint64& OutServerId)
-{
-    FDataBaseConnect Connect;
-    if (!Connect.IsConnected())
-    {
-        return false;
-    }
-
-    try
-    {
-        soci::session& Session = Connect.GetSession();
-
-        long long ServerId = 0;
-        soci::indicator Ind;
-
-        Session << "SELECT server_id FROM server_invites WHERE invite_code = :code",
-            soci::into(ServerId, Ind),
-            soci::use(InviteCode);
-
-        if (Session.got_data() && Ind == soci::i_ok)
-        {
-            OutServerId = static_cast<Uint64>(ServerId);
-            return true;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        LOG_ERROR("LookupInviteServerId error: " << e.what());
-    }
-
-    return false;
-}
-
 int32 FServersManager::GetActiveInviteCountForServer(const Uint64 ServerId)
 {
     FDataBaseConnect Connect;
@@ -1499,14 +1423,14 @@ uint32 FServersManager::GetNextChannelPosition(const Uint64 ServerId)
     {
         soci::session& Session = Connect.GetSession();
 
-        long long MaxPos = 0;
+        int MaxPos = -1;
         soci::indicator Ind;
         Session << "SELECT MAX(position) FROM server_channels WHERE server_id = :sid",
             soci::into(MaxPos, Ind),
             soci::use(ServerId);
 
         // If no channels exist (Ind is null), start at 0. Otherwise max + 1.
-        return (Ind == soci::i_ok) ? static_cast<uint32>(MaxPos + 1) : 0;
+        return (Ind == soci::i_ok && MaxPos >= 0) ? (MaxPos + 1) : 0;
     }
     catch (const std::exception& e)
     {
@@ -1523,7 +1447,7 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
         return;
     }
 
-    // Get channels sorted by current position (cached after first call)
+    // Get channels sorted by current position
     std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
     if (Channels.empty())
     {
@@ -1541,10 +1465,7 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
     {
         soci::session& Session = Connect.GetSession();
 
-        // Transaction ensures all position updates are atomic.
-        Session << "START TRANSACTION";
-
-        for (uint32 i = 0; i < static_cast<uint32>(Channels.size()); ++i)
+        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
         {
             Channels[i]->Position = i;
 
@@ -1553,14 +1474,11 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
                 soci::use(Channels[i]->ChannelId),
                 soci::use(ServerId);
         }
-
-        Session << "COMMIT";
     }
     catch (const std::exception& e)
     {
         LOG_ERROR("RenumberChannelPositions error: " << e.what());
     }
-    Server->InvalidateChannelCache();
 }
 
 bool FServersManager::DeleteInviteFromDB(const std::string& InviteCode, const Uint64 ServerId)
@@ -1688,14 +1606,15 @@ bool FServersManager::DownloadServerFromDB(Uint64 ServerId)
         soci::session& Session = Connect.GetSession();
 
         std::string Name, Token;
-        Uint64 OwnerId = 0, CreatedAt = 0;
-        soci::indicator IndName, IndToken, IndCreated;
+        unsigned long long CreatedAt = 0;
+        long long OwnerId = 0;
+        soci::indicator IndName, IndToken;
 
         Session << "SELECT name, owner_id, token, created_at FROM servers WHERE id = :sid",
             soci::into(Name, IndName),
             soci::into(OwnerId),
             soci::into(Token, IndToken),
-            soci::into(CreatedAt, IndCreated),
+            soci::into(CreatedAt),
             soci::use(ServerId);
 
         if (!Session.got_data())
@@ -1708,7 +1627,7 @@ bool FServersManager::DownloadServerFromDB(Uint64 ServerId)
         Server->SetServerName(Name);
         Server->SetOwnerId(static_cast<Uint64>(OwnerId));
         Server->SetToken(Token);
-        Server->SetCreatedAt(static_cast<Uint64>(CreatedAt));
+        Server->SetCreatedAt(CreatedAt);
 
         // Download channels
         DownloadChannelsFromDB(ServerId, Server);
@@ -1744,7 +1663,7 @@ bool FServersManager::DownloadChannelsFromDB(Uint64 ServerId, const std::shared_
 
         long long ChannelId = 0;
         std::string ChannelName, ChannelType;
-        uint32 Position = 0;
+        int32 Position = 0;
         soci::indicator IndId, IndName, IndType, IndPos;
 
         soci::statement St = (Session.prepare <<
@@ -1823,7 +1742,7 @@ bool FServersManager::DownloadMembersFromDB(Uint64 ServerId, const std::shared_p
     }
 }
 
-bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::shared_ptr<FServer>& Server, Uint64 BeforeTimestamp, Uint32 Limit)
+bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, const std::shared_ptr<FServer>& Server, Uint64 BeforeTimestamp, Uint32 Limit)
 {
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
@@ -1837,31 +1756,30 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
 
         long long MessageId = 0, SenderId = 0;
         std::string Content, SenderName;
-        Uint64 CreatedAt = 0;
-        soci::indicator IndMsgId, IndSenderId, IndContent, IndCreated, IndSenderName;
+        unsigned long long CreatedAt = 0;
+        soci::indicator IndMsgId, IndSenderId, IndContent, IndSenderName;
 
         // Get encryption settings once for the whole batch
         const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
-
-        // Accumulate messages from DB into a local batch. DB returns DESC order
-        // (newest first) which is wrong for push_back-based storage (oldest-first).
-        // We reverse the batch before inserting into the in-memory cache.
-        std::vector<FServerMessage> Batch;
+        int TextStatus = 0;
+        int IsEncrypted = 0;
 
         // Pagination: fetch messages before a timestamp, newest first
         if (BeforeTimestamp > 0)
         {
             soci::statement St = (Session.prepare <<
-                "SELECT sm.id, sm.sender_id, COALESCE(u.username, 'Unknown'), sm.content, sm.created_at "
+                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at, sm.text_status, sm.is_encrypted "
                 "FROM server_messages sm "
-                "LEFT JOIN users u ON sm.sender_id = u.id "
+                "JOIN users u ON sm.sender_id = u.id "
                 "WHERE sm.channel_id = :cid AND sm.created_at < :before "
                 "ORDER BY sm.id DESC LIMIT :lim",
                 soci::into(MessageId, IndMsgId),
                 soci::into(SenderId, IndSenderId),
                 soci::into(SenderName, IndSenderName),
                 soci::into(Content, IndContent),
-                soci::into(CreatedAt, IndCreated),
+                soci::into(CreatedAt),
+                soci::into(TextStatus),
+                soci::into(IsEncrypted),
                 soci::use(ChannelId),
                 soci::use(BeforeTimestamp),
                 soci::use(Limit));
@@ -1873,26 +1791,36 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.MessageId = static_cast<Uint64>(MessageId);
                 Message.ChannelId = ChannelId;
                 Message.SenderId = static_cast<Uint64>(SenderId);
-                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
-                Message.Content = Settings->DecryptMessage(Content);
-                Message.CreatedAt = static_cast<Uint64>(CreatedAt);
-                Batch.push_back(Message);
+                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "";
+                // Conditionally decrypt based on the is_encrypted column
+                if (IsEncrypted != 0)
+                {
+                    Message.Content = Settings->DecryptMessage(Content, EMessageEncryptionStatus::Encrypted);
+                }
+                else
+                {
+                    Message.Content = Content;
+                }
+                Message.CreatedAt = CreatedAt;
+                Server->AddMessage(Message);
             }
         }
         else
         {
             // No timestamp filter: get the most recent messages
             soci::statement St = (Session.prepare <<
-                "SELECT sm.id, sm.sender_id, COALESCE(u.username, 'Unknown'), sm.content, sm.created_at "
+                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at, sm.text_status, sm.is_encrypted "
                 "FROM server_messages sm "
-                "LEFT JOIN users u ON sm.sender_id = u.id "
+                "JOIN users u ON sm.sender_id = u.id "
                 "WHERE sm.channel_id = :cid "
                 "ORDER BY sm.id DESC LIMIT :lim",
                 soci::into(MessageId, IndMsgId),
                 soci::into(SenderId, IndSenderId),
                 soci::into(SenderName, IndSenderName),
                 soci::into(Content, IndContent),
-                soci::into(CreatedAt, IndCreated),
+                soci::into(CreatedAt),
+                soci::into(TextStatus),
+                soci::into(IsEncrypted),
                 soci::use(ChannelId),
                 soci::use(Limit));
 
@@ -1903,21 +1831,19 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
                 Message.MessageId = static_cast<Uint64>(MessageId);
                 Message.ChannelId = ChannelId;
                 Message.SenderId = static_cast<Uint64>(SenderId);
-                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "Unknown";
-                Message.Content = Settings->DecryptMessage(Content);
-                Message.CreatedAt = static_cast<Uint64>(CreatedAt);
-                Batch.push_back(Message);
+                Message.SenderName = IndSenderName == soci::i_ok ? SenderName : "";
+                // Conditionally decrypt based on the is_encrypted column
+                if (IsEncrypted != 0)
+                {
+                    Message.Content = Settings->DecryptMessage(Content, EMessageEncryptionStatus::Encrypted);
+                }
+                else
+                {
+                    Message.Content = Content;
+                }
+                Message.CreatedAt = CreatedAt;
+                Server->AddMessage(Message);
             }
-        }
-
-        // DB returns DESC (newest first). Reverse to ASC (oldest first) so the
-        // in-memory cache maintains its invariant: oldest at front, newest at back.
-        // PrependMessages inserts at the front — correct for the first load and
-        // for subsequent pagination loads of older message batches.
-        if (!Batch.empty())
-        {
-            std::ranges::reverse(Batch);
-            Server->PrependMessages(ChannelId, Batch);
         }
 
         return true;
@@ -1932,15 +1858,13 @@ bool FServersManager::DownloadMessagesFromDB(const Uint64 ChannelId, const std::
 std::string FServersManager::GenerateServerToken()
 {
     static constexpr int32 TokenLength = 32;
-    const std::string RawBytes = FEncryptionUtil::GenerateSecureSalt(TokenLength);
-    return FEncryptionUtil::ToBaseN_Irreversible(RawBytes, FPredefinedCharsets::BASE62).substr(0, TokenLength);
+    return FEncryptionUtil::GenerateSecureSalt(TokenLength);
 }
 
 std::string FServersManager::GenerateInviteCode()
 {
     static constexpr int32 CodeLength = 16;
-    const std::string RawBytes = FEncryptionUtil::GenerateSecureSalt(CodeLength);
-    return FEncryptionUtil::ToBaseN_Irreversible(RawBytes, FPredefinedCharsets::BASE62).substr(0, CodeLength);
+    return FEncryptionUtil::GenerateSecureSalt(CodeLength);
 }
 
 std::string FServersManager::FormatTimestamp(const std::chrono::system_clock::time_point& Time)
