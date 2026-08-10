@@ -41,8 +41,21 @@ public:
 
     // --- Logging settings ---
 
-    /** Whether verbose logging is enabled (logs all raw WebSocket messages, etc.) */
-    bool IsVerboseLoggingEnabled() const { return bEnableVerboseLogging; }
+    /**
+     * Verbose logging level:
+     *   0 = ERROR only
+     *   1 = ERROR + WARN  (default, recommended for production)
+     *   2 = ERROR + WARN + INFO
+     *   3 = ERROR + WARN + INFO + VERBOSE
+     *
+     * NOTE: In DEBUG builds, ALL levels fire unconditionally regardless of this value —
+     *       this ensures no log is missed during development.
+     *
+     * WARNING: Levels >= 2 (INFO and VERBOSE) involve JSON parsing and string formatting
+     * on every WebSocket message, causing SIGNIFICANT CPU overhead under heavy traffic.
+     * Never use level 2+ in production unless diagnosing a specific issue.
+     */
+    int32 GetVerboseLoggingLevel() const { return VerboseLoggingLevel; }
 
     // --- Invite settings ---
 
@@ -128,7 +141,7 @@ protected:
     int32 WebSocketIdleTimeoutSeconds;
 
     // --- Logging settings ---
-    bool bEnableVerboseLogging;
+    int32 VerboseLoggingLevel;
 
     // --- Invite settings ---
     int32 InviteDefaultMaxUses;

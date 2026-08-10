@@ -16,7 +16,7 @@ FBackendSettings::FBackendSettings()
     , UnauthenticatedRequestsPerHour(300)
     , AuthenticatedRequestsPerHour(2000)
     , WebSocketIdleTimeoutSeconds(300)          // 5 minutes
-    , bEnableVerboseLogging(false)
+    , VerboseLoggingLevel(1)                     // 1 = ERROR + WARN (default for production)
     , InviteDefaultMaxUses(1000)
     , InviteDefaultExpiresInSeconds(2592000)   // 30 days
     , InviteMaxExpiresInSeconds(31536000)       // 365 days (12 months)
@@ -65,16 +65,12 @@ void FBackendSettings::LoadBackendSettings()
         }
 
         // --- Logging settings ---
-        const FIniField EnableVerboseLoggingField = BackendSettingsIniObject->FindFieldByName("EnableVerboseLogging");
-        if (EnableVerboseLoggingField.IsValid())
+        const FIniField VerboseLoggingLevelField = BackendSettingsIniObject->FindFieldByName("VerboseLoggingLevel");
+        if (VerboseLoggingLevelField.IsValid())
         {
-#if DEBUG
-            bEnableVerboseLogging = true;
-#else
-            bEnableVerboseLogging = EnableVerboseLoggingField.GetValueAsBool();
-#endif
+            VerboseLoggingLevel = VerboseLoggingLevelField.GetValueAsInt();
         }
-        Logger::Instance().SetVerbose(bEnableVerboseLogging);
+        Logger::SetVerboseLevel(VerboseLoggingLevel);
 
         const FIniField InviteDefaultMaxUsesField = BackendSettingsIniObject->FindFieldByName("InviteDefaultMaxUses");
         if (InviteDefaultMaxUsesField.IsValid())
