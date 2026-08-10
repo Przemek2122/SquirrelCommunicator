@@ -34,6 +34,11 @@ public:
     /** Tier 2: Max authenticated (with token) requests per UserID per hour (default 2000) */
     int32 GetAuthenticatedRequestsPerHour() const { return AuthenticatedRequestsPerHour; }
 
+    // --- WebSocket settings ---
+
+    /** WebSocket idle timeout in seconds before uWS disconnects an inactive client (default 300 = 5 min) */
+    int32 GetWebSocketIdleTimeoutSeconds() const { return WebSocketIdleTimeoutSeconds; }
+
     // --- Invite settings ---
 
     /** Default max number of uses per invite */
@@ -113,6 +118,9 @@ protected:
     // --- Two-tier global rate limiting ---
     int32 UnauthenticatedRequestsPerHour;
     int32 AuthenticatedRequestsPerHour;
+
+    // --- WebSocket settings ---
+    int32 WebSocketIdleTimeoutSeconds;
 
     // --- Invite settings ---
     int32 InviteDefaultMaxUses;

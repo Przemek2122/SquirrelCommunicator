@@ -60,6 +60,10 @@ enum class ESocketMessagePrivateType : uint8
     DataStreamChannel,
     UserCalling,
 
+    /** Application-level ping/pong for latency measurement and keep-alive verification */
+    Ping,
+    Pong,
+
     Error = 255
 };
 
@@ -89,6 +93,10 @@ enum class ESocketMessageServersType : uint8
     ServerDeleteInvite,     // Request to delete an invite by code
     ServerListInvites,      // Request to list invites with pagination
     KickMember,             // Request to kick a member from the server
+
+    /** Application-level ping/pong for latency measurement and keep-alive verification */
+    Ping,
+    Pong,
 
     // Server -> Client (responses/events)
     ServerCreated,

@@ -64,6 +64,9 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
         case HashString("data_stream_channel"):     return ESocketMessagePrivateType::DataStreamChannel;
         case HashString("user_calling"):            return ESocketMessagePrivateType::UserCalling;
 
+        case HashString("ping"):                    return ESocketMessagePrivateType::Ping;
+        case HashString("pong"):                    return ESocketMessagePrivateType::Pong;
+
         case HashString("error"):                   return ESocketMessagePrivateType::Error;
         default:                                    return ESocketMessagePrivateType::Unknown;
     }
@@ -94,6 +97,9 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
         case ESocketMessagePrivateType::RemoveFriend:           return "remove_friend";
         case ESocketMessagePrivateType::DataStreamChannel:      return "data_stream_channel";
         case ESocketMessagePrivateType::UserCalling:            return "user_calling";
+
+        case ESocketMessagePrivateType::Ping:                   return "ping";
+        case ESocketMessagePrivateType::Pong:                   return "pong";
 
         case ESocketMessagePrivateType::Error:                  return "error";
         case ESocketMessagePrivateType::Unknown:
@@ -126,6 +132,9 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("server_delete_invite"):    return ESocketMessageServersType::ServerDeleteInvite;
         case HashString("server_list_invites"):     return ESocketMessageServersType::ServerListInvites;
         case HashString("kick_member"):             return ESocketMessageServersType::KickMember;
+
+        case HashString("ping"):                    return ESocketMessageServersType::Ping;
+        case HashString("pong"):                    return ESocketMessageServersType::Pong;
 
         // Server -> Client
         case HashString("server_created"):            return ESocketMessageServersType::ServerCreated;
@@ -179,6 +188,9 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::ServerDeleteInvite:   return "server_delete_invite";
         case ESocketMessageServersType::ServerListInvites:    return "server_list_invites";
         case ESocketMessageServersType::KickMember:           return "kick_member";
+
+        case ESocketMessageServersType::Ping:                 return "ping";
+        case ESocketMessageServersType::Pong:                 return "pong";
 
         // Server -> Client
         case ESocketMessageServersType::ServerCreated:          return "server_created";

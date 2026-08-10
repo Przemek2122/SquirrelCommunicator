@@ -69,7 +69,7 @@ bool FRoomsServiceManager::CreateRoom(const std::string& RoomName)
 
             if (JsonResponse["created"].get<bool>())
             {
-                LOG_INFO("Created room in Go Voice Service.");
+                LOG_DEBUG("Created room in Go Voice Service.");
 
                 return true;
             }

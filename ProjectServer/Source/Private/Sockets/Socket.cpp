@@ -100,7 +100,7 @@ auto CreateSocketBehavior(FSocket* Socket) {
 		/* Settings */
 		.compression = uWS::DISABLED,
 		.maxPayloadLength = 16 * 1024,
-		.idleTimeout = 60 * 5, // Time in seconds
+		.idleTimeout = Socket->GetProjectEngine()->GetBackendSettings()->GetWebSocketIdleTimeoutSeconds(),
 		.maxBackpressure = 512 * 1024,
 		.sendPingsAutomatically = true,
 		/* Handlers */
@@ -549,13 +549,7 @@ void FSocket::OnMessageReceived_Ping(auto* ws, std::string_view message, uWS::Op
 
 void FSocket::OnMessageReceived_Pong(auto* ws, std::string_view message, uWS::OpCode opCode)
 {
-	// @TODO We should note that connections is not dead
-
-	// Currently there is
-	// SET ONLINE on connection
-	// and
-	// SET OFFLINE on disconnection
-	/*
+	// Protocol-level pong: update activity timestamp to keep connection alive
 	if (opCode == uWS::PONG)
 	{
 		// Update status
@@ -567,7 +561,6 @@ void FSocket::OnMessageReceived_Pong(auto* ws, std::string_view message, uWS::Op
 			UserManager->UpdateUserActivity(ConnectionUserId);
 		}
 	}
-	*/
 }
 
 void FSocket::AddWebSocketForConnectedUser(auto* ws, FWebSocketSessionData* WebSocketSessionData)

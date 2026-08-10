@@ -1032,6 +1032,82 @@ These messages handle the community server system with channels and voice chat. 
         data:
             message  Error description string
 
+
+2.3 PING / PONG
+
+    Application-level ping/pong for round-trip latency measurement and connection
+    keep-alive verification. Available in both "priv" and "servers" sections.
+
+    Ping/pong is a lightweight request-response that carries zero rate-limit cost
+    and minimal server overhead. The server responds immediately with its current
+    microsecond timestamp, allowing the client to calculate real-time latency.
+
+    Note: uWebSockets also sends protocol-level WebSocket pings automatically
+    (sendPingsAutomatically=true, idleTimeout=300s). The application-level
+    ping/pong documented here provides higher-level latency data for UI display
+    and client-side health monitoring.
+
+2.3.1 Client Request
+
+    type: ping
+        Send a ping to measure latency. Works in either section (priv or servers).
+
+        data:
+            timestamp  number  Optional. Client's current time in microseconds
+                                since epoch. If provided, the server echoes it
+                                back so the client can calculate round-trip time.
+
+        Example (priv section):
+            {
+                "section": "priv",
+                "type": "ping",
+                "data": {
+                    "timestamp": 1753284000123456
+                }
+            }
+
+        Example (servers section):
+            {
+                "section": "servers",
+                "type": "ping",
+                "data": {
+                    "timestamp": 1753284000123456
+                }
+            }
+
+2.3.2 Server Response
+
+    type: pong
+        Server responds immediately with echoed client timestamp and server time.
+
+        data:
+            client_timestamp  number  Echo of the client's timestamp (0 if not provided)
+            server_timestamp  number  Server's current time in microseconds since epoch
+
+        Example response:
+            {
+                "type": "pong",
+                "data": {
+                    "client_timestamp": 1753284000123456,
+                    "server_timestamp": 1753284000156789
+                }
+            }
+
+        Round-trip time calculation:
+            RTT = (client_receive_time - client_send_time)
+            or approximate using: server_timestamp - client_timestamp
+            (accounts for one-way travel + server processing, typically < 1ms)
+
+2.3.3 Protocol-Level Pong
+
+    In addition to the application-level ping/pong, the server responds to
+    WebSocket protocol-level pings (uWS::PING opcode) with protocol pongs
+    (uWS::PONG) and updates the user's last-activity timestamp. This keeps the
+    connection alive and prevents idle timeout disconnection.
+
+    The idle timeout is 300 seconds (5 minutes). WebSocket protocol pings are
+    sent automatically by uWebSockets at a lower level and require no client code.
+
 ============================================
 SECTION 3: DATA STRUCTURES
 ============================================

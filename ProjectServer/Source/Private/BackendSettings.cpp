@@ -15,6 +15,7 @@ FBackendSettings::FBackendSettings()
     : MaxMessageSize(1024)
     , UnauthenticatedRequestsPerHour(300)
     , AuthenticatedRequestsPerHour(2000)
+    , WebSocketIdleTimeoutSeconds(300)          // 5 minutes
     , InviteDefaultMaxUses(1000)
     , InviteDefaultExpiresInSeconds(2592000)   // 30 days
     , InviteMaxExpiresInSeconds(31536000)       // 365 days (12 months)
@@ -53,6 +54,13 @@ void FBackendSettings::LoadBackendSettings()
         if (AuthenticatedRequestsPerHourField.IsValid())
         {
             AuthenticatedRequestsPerHour = AuthenticatedRequestsPerHourField.GetValueAsInt();
+        }
+
+        // --- WebSocket settings ---
+        const FIniField WebSocketIdleTimeoutSecondsField = BackendSettingsIniObject->FindFieldByName("WebSocketIdleTimeoutSeconds");
+        if (WebSocketIdleTimeoutSecondsField.IsValid())
+        {
+            WebSocketIdleTimeoutSeconds = WebSocketIdleTimeoutSecondsField.GetValueAsInt();
         }
 
         const FIniField InviteDefaultMaxUsesField = BackendSettingsIniObject->FindFieldByName("InviteDefaultMaxUses");

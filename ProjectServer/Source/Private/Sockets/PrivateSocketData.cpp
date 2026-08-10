@@ -374,6 +374,35 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
+		/** Ping/Pong — application-level latency measurement and keep-alive */
+		case ESocketMessagePrivateType::Ping:
+		{
+			// Echo client's timestamp if provided, plus server time, for RTT calculation
+			const auto NowUs = std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::system_clock::now().time_since_epoch()).count();
+
+			Uint64 ClientTimestamp = 0;
+			if (JsonMessage["data"].contains("timestamp"))
+			{
+				if (JsonMessage["data"]["timestamp"].is_string())
+					ClientTimestamp = std::stoull(JsonMessage["data"]["timestamp"].get<std::string>());
+				else
+					ClientTimestamp = JsonMessage["data"]["timestamp"].get<Uint64>();
+			}
+
+			nlohmann::json PongJson;
+			PongJson["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Pong);
+			PongJson["data"]["client_timestamp"] = ClientTimestamp;
+			PongJson["data"]["server_timestamp"] = NowUs;
+
+			std::visit([&](auto* ws)
+			{
+				ws->send(PongJson.dump(), uWS::TEXT);
+			}, wsVariant);
+
+			break;
+		}
+
 		/** Errors */
 		case ESocketMessagePrivateType::Unknown:
 		default:
@@ -415,12 +444,26 @@ void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::
 			{
 				const Uint64 OutId = ConversationsManager->AddMessage(ConversationId, ConnectionUserId, Content);
 
+				// Build the message payload used for both direct confirmation and broadcast
 				nlohmann::json MessageJson;
 				MessageJson["sender_id"] = ConnectionUserId;
 				MessageJson["message_id"] = OutId;
 				MessageJson["conversation_id"] = ConversationId;
 				MessageJson["conversation_message"] = Content;
 
+				// 1) Send immediate confirmation back to the sender
+				//    This is consistent with every other handler (CreateFriendRequest, etc.)
+				//    that sends a direct ws->send() response to the requester.
+				nlohmann::json ConfirmJson;
+				ConfirmJson["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Message);
+				ConfirmJson["message"] = MessageJson;
+				ConfirmJson["message"]["status"] = "sent";
+
+				ws->send(ConfirmJson.dump(), opCode);
+
+				// 2) Broadcast to all conversation members (including sender, so they
+				//    also get the echo without the "status":"sent" marker if desired —
+				//    but sender already has the confirmation above, so this is fine).
 				nlohmann::json JsonRoot;
 				JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::Message);
 				JsonRoot["message"] = MessageJson;
