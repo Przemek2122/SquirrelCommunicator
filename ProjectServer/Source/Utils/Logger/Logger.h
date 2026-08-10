@@ -29,18 +29,23 @@ public:
         }
     }
 
-    void Log(const std::string& level, const std::string& message, const std::string& color = "\033[0m") {
-        std::string timestamp = GetTimestamp();
-        std::string fullMessage = timestamp + " [" + level + "] " + message;
+    void Log(const std::string& level, const int levelNum, const std::string& message, const std::string& color = "\033[0m") {
+#if !DEBUG
+        if (VerboseLevel >= levelNum)
+#endif
         {
-            std::lock_guard<std::mutex> lock(consoleMutex);
-            std::cout << color << fullMessage << "\033[0m" << std::endl;
+            std::string timestamp = GetTimestamp();
+            std::string fullMessage = timestamp + " [" + level + "] " + message;
+            {
+                std::lock_guard<std::mutex> lock(consoleMutex);
+                std::cout << color << fullMessage << "\033[0m" << std::endl;
+            }
+            {
+                std::lock_guard<std::mutex> lock(queueMutex);
+                messageQueue.push(fullMessage);
+            }
+            queueCV.notify_one();
         }
-        {
-            std::lock_guard<std::mutex> lock(queueMutex);
-            messageQueue.push(fullMessage);
-        }
-        queueCV.notify_one();
     }
 
     /// Set verbosity level.
@@ -127,13 +132,13 @@ private:
 // specific issue.
 // ============================================================================
 
-#define LOG_ERROR(msg)   { std::ostringstream oss; oss << msg; Logger::Instance().Log("ERROR",   oss.str(), "\033[31m"); }
-#define LOG_WARN(msg)    { std::ostringstream oss; oss << msg; Logger::Instance().Log("WARN",    oss.str(), "\033[33m"); }
-#define LOG_INFO(msg)    { std::ostringstream oss; oss << msg; Logger::Instance().Log("INFO",    oss.str(), "\033[0m");  }
-#define LOG_VERBOSE(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("VERBOSE", oss.str(), "\033[36m"); }
+#define LOG_ERROR(msg)   { std::ostringstream oss; oss << msg; Logger::Instance().Log("ERROR", 0,   oss.str(), "\033[31m"); }
+#define LOG_WARN(msg)    { std::ostringstream oss; oss << msg; Logger::Instance().Log("WARN", 1,    oss.str(), "\033[33m"); }
+#define LOG_INFO(msg)    { std::ostringstream oss; oss << msg; Logger::Instance().Log("INFO", 2,    oss.str(), "\033[0m");  }
+#define LOG_VERBOSE(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("VERBOSE", 3, oss.str(), "\033[36m"); }
 
 #if DEBUG
-#define LOG_DEBUG(msg)   { std::ostringstream oss; oss << msg; Logger::Instance().Log("DEBUG",   oss.str(), "\033[90m"); }
+#define LOG_DEBUG(msg)   { std::ostringstream oss; oss << msg; Logger::Instance().Log("DEBUG", 0,   oss.str(), "\033[90m"); }
 #else
 #define LOG_DEBUG(msg)   { }
 #endif
