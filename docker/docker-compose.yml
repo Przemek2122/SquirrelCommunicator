@@ -9,6 +9,7 @@ services:
         VERSION: ${BACKEND_VERSION:?Set BACKEND_VERSION in .env.backend}
     env_file:
       - .env.backend
+      - .env.encryptionpass
       - .env.voice
 
     devices:
