@@ -3,6 +3,8 @@
 #include "EngineCompat.h"
 #include "soci/session.h"
 
+namespace soci { class connection_pool; }
+
 /** Enum for returning DB operation result */
 enum class EDatabaseOperationResult : Uint8
 {
@@ -46,6 +48,10 @@ enum class EDatabaseOperationResult : Uint8
  * Class for MYSQL connections
  * https://soci.sourceforge.net/doc/master/backends/mysql/
  *
+ * Uses a connection pool internally so that each FDataBaseConnect instance
+ * borrows a pre-opened session instead of creating a new TCP connection.
+ * The session is automatically returned to the pool when this object is destroyed.
+ *
  * @Note sample usage above
  */
 class FDataBaseConnect
@@ -57,7 +63,24 @@ public:
 	bool IsConnected() const { return bIsConnected; }
 	soci::session& GetSession() { return *Session; }
 
+	/**
+	 * Initialize the global connection pool.
+	 * Must be called once after FDataBaseSettings::Initialize() and before
+	 * any FDataBaseConnect instances are created.
+	 * @param PoolSize Number of connections to keep in the pool (default 10).
+	 */
+	static void InitPool(size_t PoolSize = 10);
+
+	/** Shutdown the connection pool and close all connections. */
+	static void ShutdownPool();
+
 protected:
+	/** Session borrowed from the pool (returned on destruction) */
 	std::unique_ptr<soci::session> Session;
 	bool bIsConnected;
+
+private:
+	/** Global connection pool (created by InitPool, destroyed by ShutdownPool) */
+	static std::unique_ptr<soci::connection_pool> Pool;
+	static bool bPoolInitialized;
 };

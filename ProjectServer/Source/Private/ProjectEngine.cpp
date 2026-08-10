@@ -2,6 +2,7 @@
 
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
+#include "ThreadCompat.h"
 #include "SQRLLIniObject.h"
 #include "Auth/TransferTokenManager.h"
 #include "DataBase/DataBaseConnect.h"
@@ -33,6 +34,9 @@ FProjectEngine::FProjectEngine()
 {
 	// Collect Database settings
 	FDataBaseSettings::Initialize();
+
+	// Initialize DB connection pool (must be after settings are loaded)
+	FDataBaseConnect::InitPool(GetNumberOfLogicalCPU());
 
 	RestEndpointsFactories.Push(ENDPOINT_FACTORY(FTestEndpoint));
 	RestEndpointsFactories.Push(ENDPOINT_FACTORY(FAuthEndpoint));
@@ -285,6 +289,9 @@ void FProjectEngine::PreExit()
 	//CrowAppFutureAsync.wait();
 
 	LOG_INFO("Stopped crow");
+
+	// Release all pooled DB connections
+	FDataBaseConnect::ShutdownPool();
 }
 
 void FProjectEngine::AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap)
