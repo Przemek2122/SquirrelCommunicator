@@ -39,6 +39,11 @@ public:
     /** WebSocket idle timeout in seconds before uWS disconnects an inactive client (default 300 = 5 min) */
     int32 GetWebSocketIdleTimeoutSeconds() const { return WebSocketIdleTimeoutSeconds; }
 
+    // --- Logging settings ---
+
+    /** Whether verbose logging is enabled (logs all raw WebSocket messages, etc.) */
+    bool IsVerboseLoggingEnabled() const { return bEnableVerboseLogging; }
+
     // --- Invite settings ---
 
     /** Default max number of uses per invite */
@@ -121,6 +126,9 @@ protected:
 
     // --- WebSocket settings ---
     int32 WebSocketIdleTimeoutSeconds;
+
+    // --- Logging settings ---
+    bool bEnableVerboseLogging;
 
     // --- Invite settings ---
     int32 InviteDefaultMaxUses;

@@ -243,9 +243,7 @@ void FSocket::Async()
 
 void FSocket::OnClientConnected(auto* ws)
 {
-#if DEBUG
-	LOG_INFO("Client connected");
-#endif
+	LOG_VERBOSE("Client connected");
 
 	FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
 	if (WebSocketSessionData != nullptr)
@@ -318,9 +316,7 @@ void FSocket::OnClientConnected(auto* ws)
 
 void FSocket::OnClientDisconnected(auto* ws, int code, std::string_view message)
 {
-#if DEBUG
-	LOG_INFO("Client disconnected");
-#endif
+	LOG_VERBOSE("Client disconnected");
 
 	FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
 	if (WebSocketSessionData != nullptr)
@@ -450,9 +446,7 @@ std::string FSocket::GenerateVoiceRoomNameFromIds(std::vector<Uint64> IdArray)
 
 void FSocket::OnMessageReceived_TEXT(auto* ws, std::string_view message, uWS::OpCode opCode)
 {
-#if DEBUG
-	LOG_INFO("Received: " << message);
-#endif
+	LOG_VERBOSE("Received: " << message);
 
 	// --- Two-tier global rate limit: WebSocket connections are always authenticated ---
 	// Per-UserID rate limit (Tier 2). Each token/user gets their own quota.

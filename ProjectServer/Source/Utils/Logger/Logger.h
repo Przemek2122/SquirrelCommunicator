@@ -43,8 +43,12 @@ public:
         queueCV.notify_one();
     }
 
+    static void SetVerbose(const bool bEnable) { bVerbose = bEnable; }
+    static bool IsVerbose() { return bVerbose; }
+
 private:
     Logger() : bRunning(true) {
+        bVerbose = false;
         logFile.open("communicator.log", std::ios::app);
         fileWriterThread = std::jthread([this](std::stop_token stoken) {
             FileWriterLoop(stoken);
@@ -92,9 +96,16 @@ private:
     std::mutex queueMutex;
     std::condition_variable queueCV;
     std::atomic<bool> bRunning;
+    static bool bVerbose;
 };
 
+#define LOG_VERBOSE(msg) { if (Logger::IsVerbose()) { std::ostringstream oss; oss << msg; Logger::Instance().Log("VERBOSE", oss.str(), "\033[36m"); } }
 #define LOG_INFO(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("INFO", oss.str(), "\033[0m"); }
-#define LOG_DEBUG(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("DEBUG", oss.str(), "\033[90m"); }
 #define LOG_WARN(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("WARN", oss.str(), "\033[33m"); }
 #define LOG_ERROR(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("ERROR", oss.str(), "\033[31m"); }
+
+#if DEBUG
+#define LOG_DEBUG(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("DEBUG", oss.str(), "\033[90m"); }
+#else
+#define LOG_DEBUG(msg) {  }
+#endif
