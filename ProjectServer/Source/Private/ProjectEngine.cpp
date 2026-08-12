@@ -24,6 +24,10 @@
 // Endpoint factory macro - replaces FClassStorage
 #define ENDPOINT_FACTORY(EndpointName) FEndpointFactory([](FProjectEngine* engine) -> FCrowAppEndpoint* { return new EndpointName(engine); })
 
+// How often (in seconds) the DB pool is scanned for dead connections
+// and reconnected.  1800 = 30 minutes.
+static constexpr Uint64 DB_POOL_KEEPALIVE_INTERVAL_SEC = 1800;
+
 FProjectEngine::FProjectEngine()
 	: BackendSettings(std::make_unique<FBackendSettings>())
 	, SocketManager(std::make_unique<FSocketManager>())
@@ -184,6 +188,16 @@ void FProjectEngine::PostSecondTick()
 	UserManager->PostSecondTick();
 	TransferTokenManager->PostSecondTick();
 	ServersManager->PostSecondTick();
+
+	// Periodically scan the DB pool for dead connections and reconnect them.
+	// At borrow-time, dead connections fall back to standalone connections,
+	// so this is a best-effort optimization — not a correctness requirement.
+	SecondsSinceLastPoolKeepAlive++;
+	if (SecondsSinceLastPoolKeepAlive >= DB_POOL_KEEPALIVE_INTERVAL_SEC)
+	{
+		FDataBaseConnect::KeepPoolAlive();
+		SecondsSinceLastPoolKeepAlive = 0;
+	}
 }
 
 void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettingsIni)

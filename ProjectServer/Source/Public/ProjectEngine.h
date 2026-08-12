@@ -126,4 +126,6 @@ protected:
 	std::string KeyFilePath;
 	std::string CertFilePath;
 
+	/** Seconds since last DB pool keepalive cycle */
+	Uint64 SecondsSinceLastPoolKeepAlive = 0;
 };

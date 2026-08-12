@@ -16,43 +16,45 @@ enum class EDatabaseOperationResult : Uint8
 	DataNotFound
 };
 
-/*
-	FDataBaseConnect Connect;
-	if (Connect.IsConnected())
-	{
-		try
-		{
-			// Get database connection session
-			soci::session& DataBaseSession = Connect.GetSession();
-			soci::indicator Ind;
-
-			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text) VALUES (:conv_id, :sender_id, :text)",
-				soci::use(InConversationId),
-				soci::use(SenderId),
-				soci::use(InMessage, Ind);
-
-			if (Ind == soci::i_ok)
-			{
-				
-			}
-		}
-		catch (const soci::soci_error& Error)
-		{
-			// Handle SOCI error
-			LOG_ERROR("Database error: " << Error.what());
-		}
-	}
- */
 
 /**
- * Class for MYSQL connections
- * https://soci.sourceforge.net/doc/master/backends/mysql/
+ * RAII database connection handle with automatic health-checking.
  *
- * Uses a connection pool internally so that each FDataBaseConnect instance
- * borrows a pre-opened session instead of creating a new TCP connection.
- * The session is automatically returned to the pool when this object is destroyed.
+ * **At borrow time** (constructor):
+ *  1. Lease a session from the global connection pool.
+ *  2. Validate with a cheap "SELECT 1" ping.
+ *  3. If alive → use it.
+ *  4. If dead  → return it to the pool as-is (slot freed, connection dead),
+ *     then create a fresh standalone connection for this instance.
+ *     The dead slot will be revived by KeepPoolAlive() during the next
+ *     maintenance cycle.
  *
- * @Note sample usage above
+ * When the pool has not been initialized yet (early boot), a standalone
+ * connection is created directly — no pool involved.
+ *
+ * **Pool maintenance** (KeepPoolAlive):
+ *  Runs periodically (e.g. every 30 min from the main tick).  Uses
+ *  try_lease() to discover free slots, validates each with SELECT 1,
+ *  and reconnects dead ones by closing and reopening them.  Slots
+ *  currently leased to other threads are never touched — only free
+ *  (idle) connections are maintained.  This avoids concurrent access
+ *  to the same soci::session from two threads.
+ *
+ * Usage pattern (unchanged — zero caller changes):
+ * @code
+ *   FDataBaseConnect Connect;
+ *   if (Connect.IsConnected())
+ *   {
+ *       soci::session& Session = Connect.GetSession();
+ *       // … run queries …
+ *   }
+ * @endcode
+ *
+ * Every session carries these MySQL session variables:
+ *   - wait_timeout        = 86400   (24 h)
+ *   - interactive_timeout = 86400
+ *   - net_read_timeout    = 30      (prevents query hangs)
+ *   - net_write_timeout   = 30
  */
 class FDataBaseConnect
 {
@@ -65,22 +67,47 @@ public:
 
 	/**
 	 * Initialize the global connection pool.
-	 * Must be called once after FDataBaseSettings::Initialize() and before
-	 * any FDataBaseConnect instances are created.
-	 * @param PoolSize Number of connections to keep in the pool (default 10).
+	 * Must be called once after FDataBaseSettings::Initialize() and
+	 * before any FDataBaseConnect instances are created.
+	 * @param PoolSize Number of connections to keep (default 10).
 	 */
 	static void InitPool(size_t PoolSize = 10);
 
-	/** Shutdown the connection pool and close all connections. */
+	/** Shut down the global connection pool and close all connections. */
 	static void ShutdownPool();
 
+	/**
+	 * Walk every *free* slot in the pool, ping with SELECT 1, and
+	 * reconnect dead connections in-place.  Slots currently leased to
+	 * other threads are skipped (they are still in use and assumed alive).
+	 *
+	 * Should be called periodically from the main tick (e.g. every 30 min).
+	 *
+	 * This is the *only* place where pool-internal sessions are repaired.
+	 * The borrow-time path (constructor) never mutates a pooled session
+	 * — it only validates and falls back to a standalone connection.
+	 */
+	static void KeepPoolAlive();
+
 protected:
-	/** Session borrowed from the pool (returned on destruction) */
+	/** Session: either leased from pool or standalone. */
 	std::unique_ptr<soci::session> Session;
 	bool bIsConnected;
 
 private:
-	/** Global connection pool (created by InitPool, destroyed by ShutdownPool) */
+	/**
+	 * Ping the current session with "SELECT 1".
+	 * @return true if alive, false if the connection is dead.
+	 */
+	bool ValidateConnection();
+
+	/**
+	 * Apply MySQL session variables (timeouts) on the current session.
+	 * Safe to call multiple times; failures are non-fatal.
+	 */
+	void SetSessionTimeouts();
+
+	/** Global connection pool (created by InitPool, destroyed by ShutdownPool). */
 	static std::unique_ptr<soci::connection_pool> Pool;
 	static bool bPoolInitialized;
 };
