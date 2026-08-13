@@ -52,6 +52,7 @@ ProjectServer/Assets/Config/cert.pem
 /ProjectServer/ThirdParty/uwebsockets
 /ProjectServer/ThirdParty/cpr
 /ProjectServer/ThirdParty/eve
+/ProjectServer/ThirdParty/sentry-native
 
 # Ignore IntelliJ configurations
 ProjectServer/.idea/*

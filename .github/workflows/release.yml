@@ -36,7 +36,8 @@ jobs:
             libssl-dev \
             libmariadb-dev \
             libmariadb-dev-compat \
-            zlib1g-dev
+            zlib1g-dev \
+            libcurl4-openssl-dev
 
       - name: Get current version
         id: get_version
@@ -78,18 +79,58 @@ jobs:
 
       - name: Configure CMake
         run: |
-          cmake -B ProjectServer/build -S ProjectServer -DCMAKE_BUILD_TYPE=Release
+          # RelWithDebInfo keeps optimized code AND embeds debug symbols so the
+          # built binary can be uploaded to Sentry for crash symbolication.
+          cmake -B ProjectServer/build -S ProjectServer -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build
         run: |
           cmake --build ProjectServer/build --target communicatorsrv -j$(nproc)
 
+      - name: Check Sentry secrets
+        id: sentry_check
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload debug symbols to Sentry
+        if: steps.sentry_check.outputs.enabled == 'true'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          curl -sL https://sentry.io/get-cli/ | bash
+
+          # The release identifier is the git commit hash — the exact value that
+          # was compiled into the binary via CMake (SQRLL_VERSION).  This keeps
+          # the uploaded debug symbols matched to the exact build that ships.
+          RELEASE="$(git rev-parse --short HEAD)"
+
+          sentry-cli releases new "$RELEASE"
+          sentry-cli debug-files upload \
+            --include-sources \
+            ProjectServer/build/bin/Release/Project/communicatorsrv
+          sentry-cli releases finalize "$RELEASE"
+
       - name: Package binary
         run: |
           cd ProjectServer/build/bin/Release/Project
+          # crashpad_handler is copied next to the binary by CMake post-build when
+          # Sentry is enabled, and must ship alongside it for crash reporting.
+          PACKAGE_FILES="communicatorsrv Assets/"
+          if [ -f crashpad_handler ]; then
+            PACKAGE_FILES="communicatorsrv crashpad_handler Assets/"
+          fi
           tar -czf communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz \
-            communicatorsrv \
-            Assets/
+            $PACKAGE_FILES
           mv communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz $GITHUB_WORKSPACE/
 
       - name: Create Release
@@ -114,6 +155,7 @@ jobs:
             ```bash
             tar -xzf communicatorsrv-${{ steps.bump_version.outputs.new_version }}-linux-x64.tar.gz
             chmod +x communicatorsrv
+            [ -f crashpad_handler ] && chmod +x crashpad_handler
             ./communicatorsrv
             ```
         env:

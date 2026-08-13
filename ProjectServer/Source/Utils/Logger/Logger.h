@@ -49,10 +49,10 @@ public:
     }
 
     /// Set verbosity level.
-    ///   0 = ERROR + STATE only
-    ///   1 = ERROR + STATE + WARN  (default)
-    ///   2 = ERROR + STATE + WARN + INFO
-    ///   3 = ERROR + STATE + WARN + INFO + VERBOSE
+    ///   0 = ERROR only
+    ///   1 = ERROR + WARN  (default)
+    ///   2 = ERROR + WARN + INFO
+    ///   3 = ERROR + WARN + INFO + VERBOSE
     ///
     /// Called once during init — not synchronized (safe: no concurrent readers yet).
     static void SetVerboseLevel(const int Level) { VerboseLevel = Level; }
@@ -117,8 +117,8 @@ private:
 // ============================================================================
 //
 // Level thresholds (non-DEBUG builds):
-//   STATE   — VerboseLevel >= 0  (always fires)
-//   ERROR   — VerboseLevel >= 0  (always fires)
+//   ERROR   — VerboseLevel >= 0  (always fires in practice)
+//   STATE   — VerboseLevel >= 0  (always fires; lifecycle/status milestones)
 //   WARN    — VerboseLevel >= 1  (DEFAULT)
 //   INFO    — VerboseLevel >= 2
 //   VERBOSE — VerboseLevel >= 3
@@ -133,8 +133,8 @@ private:
 // specific issue.
 // ============================================================================
 
-#define LOG_STATE(msg)   { std::ostringstream oss; oss << msg; Logger::Instance().Log("STATE", 0,   oss.str(), "\033[32m"); }
 #define LOG_ERROR(msg)   { std::ostringstream oss; oss << msg; Logger::Instance().Log("ERROR", 0,   oss.str(), "\033[31m"); }
+#define LOG_STATE(msg)   { std::ostringstream oss; oss << msg; Logger::Instance().Log("STATE", 0,   oss.str(), "\033[32m"); }
 #define LOG_WARN(msg)    { std::ostringstream oss; oss << msg; Logger::Instance().Log("WARN", 1,    oss.str(), "\033[33m"); }
 #define LOG_INFO(msg)    { std::ostringstream oss; oss << msg; Logger::Instance().Log("INFO", 2,    oss.str(), "\033[0m");  }
 #define LOG_VERBOSE(msg) { std::ostringstream oss; oss << msg; Logger::Instance().Log("VERBOSE", 3, oss.str(), "\033[36m"); }

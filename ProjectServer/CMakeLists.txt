@@ -36,6 +36,30 @@ endif()
 find_package(OpenSSL REQUIRED)
 
 
+#==============================================================================
+# Sentry (optional crash reporting)
+#==============================================================================
+
+# Toggle to disable Sentry at configure time (e.g. for local builds without
+# libcurl / zlib dev headers):  cmake -DSQRLL_ENABLE_SENTRY=OFF ...
+option(SQRLL_ENABLE_SENTRY "Enable Sentry crash reporting (sentry-native)" ON)
+
+# Extract the current Git commit hash and expose it to C++ as SQRLL_VERSION.
+# This value is also used by the CI workflow when uploading debug symbols, so
+# the release reported to Sentry always matches the exact binary built.
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE SQRLL_GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(SQRLL_GIT_HASH STREQUAL "")
+    set(SQRLL_GIT_HASH "unknown")
+endif()
+message(STATUS "SQRLL_VERSION (git): ${SQRLL_GIT_HASH}")
+
+
 
 #==============================================================================
 # ThirdParty Dependencies
@@ -207,6 +231,37 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/eve/include")
     endif()
 endif()
 
+# Download sentry-native (crash reporting). Unlike the other third-party deps,
+# a failure to fetch Sentry is NON-FATAL: the server simply builds without it.
+if(SQRLL_ENABLE_SENTRY)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/sentry-native/CMakeLists.txt")
+        message(STATUS "Downloading sentry-native to ThirdParty/sentry-native...")
+        execute_process(
+            COMMAND git clone --depth 1 --branch 0.16.2
+                --recurse-submodules --shallow-submodules
+                https://github.com/getsentry/sentry-native.git ThirdParty/sentry-native
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            RESULT_VARIABLE SENTRY_GIT_RESULT
+        )
+        if(NOT SENTRY_GIT_RESULT EQUAL 0)
+            message(WARNING "Failed to download sentry-native - continuing WITHOUT Sentry (disable explicitly with -DSQRLL_ENABLE_SENTRY=OFF).")
+            set(SQRLL_ENABLE_SENTRY OFF)
+        endif()
+    endif()
+
+    if(SQRLL_ENABLE_SENTRY AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/sentry-native/CMakeLists.txt")
+        set(SENTRY_BACKEND crashpad CACHE STRING "Sentry backend" FORCE)
+        set(SENTRY_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        set(SENTRY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(SENTRY_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(SENTRY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+        set(SENTRY_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/sentry-native ${CMAKE_BINARY_DIR}/sentry)
+    else()
+        set(SQRLL_ENABLE_SENTRY OFF)
+    endif()
+endif()
+
 # Local submodules
 add_subdirectory(ThirdParty/IniReader)
 add_subdirectory(ThirdParty/Encryption)
@@ -302,10 +357,14 @@ set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "${PROJECT_NAME}")
 
 message(STATUS "Added project executable")
 
+# Expose the git commit hash to C++ (used as the Sentry release identifier)
+target_compile_definitions("${PROJECT_NAME}" PRIVATE SQRLL_VERSION="${SQRLL_GIT_HASH}")
+
 set_target_properties("${PROJECT_NAME}" PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY            "${CMAKE_BINARY_DIR}/bin/Debug/Project"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG      "${CMAKE_BINARY_DIR}/bin/Debug/Project"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE    "${CMAKE_BINARY_DIR}/bin/Release/Project"
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/bin/Release/Project"
 )
 
 #==============================================================================
@@ -359,7 +418,7 @@ target_sources("${PROJECT_NAME}"
 
 # Source dirs
 source_group(TREE "${PROJECT_SOURCE_DIR}"
-    PREFIX "Sources"  
+    PREFIX "Sources"
     FILES ${PROJECT_SOURCE_FILES_PUBLIC} ${PROJECT_SOURCE_FILES_PRIVATE}
 )
 
@@ -403,6 +462,49 @@ if(TARGET cpr::cpr)
     target_link_libraries("${PROJECT_NAME}" PRIVATE cpr::cpr)
 else()
     message(WARNING "CPR not found - email features will not link properly")
+endif()
+
+#==============================================================================
+# Sentry (crash reporting)
+#==============================================================================
+if(SQRLL_ENABLE_SENTRY)
+    # sentry-native exposes both a raw 'sentry' target and the namespaced
+    # 'sentry::sentry' alias depending on the version.
+    if(TARGET sentry::sentry)
+        set(SQRLL_SENTRY_TARGET sentry::sentry)
+    elseif(TARGET sentry)
+        set(SQRLL_SENTRY_TARGET sentry)
+    else()
+        message(WARNING "Sentry sources present but sentry target not found - continuing WITHOUT Sentry.")
+        set(SQRLL_SENTRY_TARGET "")
+    endif()
+
+    if(SQRLL_SENTRY_TARGET)
+        target_compile_definitions("${PROJECT_NAME}" PRIVATE
+            SQRLL_HAS_SENTRY=1
+            SENTRY_BUILD_STATIC=1
+        )
+        target_link_libraries("${PROJECT_NAME}" PRIVATE ${SQRLL_SENTRY_TARGET})
+
+        # Crashpad backend: copy the crashpad_handler executable next to the
+        # server binary (sentry spawns it at runtime to write minidumps).
+        if(TARGET crashpad_handler)
+            add_dependencies("${PROJECT_NAME}" crashpad_handler)
+            add_custom_command(TARGET "${PROJECT_NAME}" POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:crashpad_handler>"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/crashpad_handler"
+                COMMENT "Copying Sentry crashpad_handler next to communicatorsrv"
+            )
+        endif()
+
+        # Ensure a GNU build-id is embedded so Sentry can match uploaded symbols.
+        if(UNIX AND NOT APPLE)
+            target_link_options("${PROJECT_NAME}" PRIVATE "-Wl,--build-id")
+        endif()
+    endif()
+else()
+    message(STATUS "Sentry disabled - building without crash reporting.")
 endif()
 
 #==============================================================================

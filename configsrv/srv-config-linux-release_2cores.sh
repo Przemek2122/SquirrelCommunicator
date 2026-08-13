@@ -10,7 +10,8 @@ mkdir -p buildsrv/linux-$ARCH
 cd buildsrv/linux-$ARCH
 
 # Use CMAKE to generate ProjectServer (standalone — no Engine)
-cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ../../ProjectServer
+# RelWithDebInfo keeps optimized code AND debug symbols for Sentry symbolication.
+cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo ../../ProjectServer
 
 # Build the server binary
 echo "Building communicatorsrv..."

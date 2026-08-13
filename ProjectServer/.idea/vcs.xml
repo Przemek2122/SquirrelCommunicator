@@ -9,6 +9,15 @@
     <mapping directory="$PROJECT_DIR$/ThirdParty/cpr" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/eve" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/json" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/benchmark" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/breakpad" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/crashpad" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/crashpad/third_party/lss/lss" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/crashpad/third_party/mini_chromium/mini_chromium" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/crashpad/third_party/zlib/zlib" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/libunwindstack-ndk" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ThirdParty/sentry-native/external/third_party/lss" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/soci" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/uWebSockets" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ThirdParty/uWebSockets/fuzzing/libEpollFuzzer" vcs="Git" />

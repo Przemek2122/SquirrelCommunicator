@@ -7,13 +7,14 @@ ARG REPO=Przemek2122/SquirrelCommunicator
 
 RUN test -n "$VERSION" || (echo "ERROR: VERSION build arg is required. Usage: docker build --build-arg VERSION=0.0.1 ..." && exit 1)
 
-# Runtime dependencies only (no compiler)
+# Runtime dependencies (no compiler). git is used at BUILD time only, to fetch
+# the latest BackendSettings.ini from the repository.
 RUN dnf install -y \
         openssl zlib \
         mariadb-connector-c \
         boost-date-time \
         libidn2 libnghttp2 libpsl \
-        curl \
+        curl git \
     && dnf clean all && rm -rf /var/cache/dnf
 
 # Database linking for runtime
@@ -25,6 +26,29 @@ RUN curl -fSL "https://github.com/${REPO}/releases/download/v${VERSION}/communic
         -o release.tar.gz \
     && tar -xzf release.tar.gz \
     && rm release.tar.gz \
-    && chmod +x communicatorsrv
+    && chmod +x communicatorsrv \
+    && if [ -f crashpad_handler ]; then chmod +x crashpad_handler; fi
+
+# Replace the config snapshot baked into the release tarball with the LATEST
+# config from the repository. This runs at BUILD time and is cached in the image
+# layer, so there is NO network access at container runtime and no dependency on
+# GitHub when the container starts.
+#
+# The repository is cloned here (shallow, no submodules) and the config is copied
+# from ProjectServer/Assets/Config/BackendSettings.ini over the baked-in copy.
+# If the fetch fails for any reason the build still succeeds and keeps the
+# baked-in config, so the image can always start.
+#
+# Bump CONFIG_CACHE_BUST (or build with --no-cache) to force a re-fetch of the
+# latest config.
+ARG CONFIG_CACHE_BUST=1
+RUN echo "refreshing config from ${REPO} (bust=${CONFIG_CACHE_BUST})" \
+    && ( \
+        git clone --depth 1 "https://github.com/${REPO}.git" /tmp/squirrel-repo \
+        && mkdir -p /app/Assets/Config \
+        && cp /tmp/squirrel-repo/ProjectServer/Assets/Config/BackendSettings.ini /app/Assets/Config/BackendSettings.ini \
+        && rm -rf /tmp/squirrel-repo \
+        && echo "config refreshed from repository" \
+    ) || echo "WARNING: config refresh failed; keeping config baked into the release tarball"
 
 CMD ["./communicatorsrv"]

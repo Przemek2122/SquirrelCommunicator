@@ -1,4 +1,4 @@
-# ── Stage 1: Build ──────────────────────────────────────────────────
+# ── Stage 1: Build ─────────────────────────────────────────────────────────────
 FROM fedora:latest AS builder
 
 # System packages for compilation
@@ -29,12 +29,12 @@ RUN git clone --recurse-submodules https://github.com/Przemek2122/SquirrelCommun
 WORKDIR /build/SquirrelCommunicator
 RUN git pull && git submodule update --init --recursive
 
-# Build release
+# Build release (RelWithDebInfo keeps debug symbols for Sentry symbolication)
 WORKDIR /build/SquirrelCommunicator/ProjectServer
-RUN cmake -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+RUN cmake -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo
 RUN cmake --build build --target communicatorsrv --parallel $(nproc)
 
-# ── Stage 2: Runtime ────────────────────────────────────────────────
+# ── Stage 2: Runtime ───────────────────────────────────────────────────────────
 FROM fedora:latest
 
 # Runtime dependencies only (no compiler)
@@ -49,9 +49,16 @@ RUN dnf install -y \
 # Database linking for runtime
 RUN ln -sf /usr/lib64/libmariadb.so.3 /usr/lib64/libmysqlclient.so
 
-# Copy only the built binary and assets
+# Copy the whole build output dir (binary, crashpad_handler if Sentry is
+# enabled, and Assets). Using the directory copy keeps this robust whether or
+# not crashpad_handler was produced.
 WORKDIR /app
-COPY --from=builder /build/SquirrelCommunicator/ProjectServer/build/bin/Release/Project/communicatorsrv .
-COPY --from=builder /build/SquirrelCommunicator/ProjectServer/Assets ./Assets
+COPY --from=builder /build/SquirrelCommunicator/ProjectServer/build/bin/Release/Project/ ./
+
+# Explicitly guarantee the config INI comes from the repository checkout, not
+# from any snapshot embedded in the build output. This mirrors the behavior of
+# Dockerfile.release: both images take ProjectServer/Assets/Config/BackendSettings.ini
+# straight from the cloned repository, regardless of how the binary was produced.
+COPY --from=builder /build/SquirrelCommunicator/ProjectServer/Assets/Config/BackendSettings.ini ./Assets/Config/BackendSettings.ini
 
 CMD ["./communicatorsrv"]

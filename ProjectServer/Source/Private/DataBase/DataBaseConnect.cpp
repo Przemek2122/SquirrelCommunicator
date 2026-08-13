@@ -80,6 +80,7 @@ void FDataBaseConnect::KeepPoolAlive()
 {
     static std::mutex MaintenanceMutex;
 
+    // Use try_lock so that in case of overlapping background calls, one thread yields instead of hanging and waiting
     if (!MaintenanceMutex.try_lock())
         return;
 
@@ -89,84 +90,83 @@ void FDataBaseConnect::KeepPoolAlive()
         return;
 
     const std::string& ConnectionString = FDataBaseSettings::GetConnectionString();
+    std::size_t Pos = 0;
 
-    // Custom RAII wrapper to guarantee give_back() is called even on std::bad_alloc
-    struct FScopedLease {
+    // RAII guard for leased connections ensuring that regardless of exceptions or crashes the destructor will always return the connections to the pool
+    struct FPoolLeaseGuard {
         soci::connection_pool* PoolPtr;
-        std::size_t Pos;
-        bool bIsLeased;
+        std::vector<std::size_t> LeasedSlots;
 
-        FScopedLease(soci::connection_pool* InPool) : PoolPtr(InPool), Pos(0), bIsLeased(false) {}
-        ~FScopedLease() { if (bIsLeased) PoolPtr->give_back(Pos); }
-
-        bool TryLease() {
-            bIsLeased = PoolPtr->try_lease(Pos, 0);
-            return bIsLeased;
+        ~FPoolLeaseGuard() {
+            for (std::size_t Slot : LeasedSlots) {
+                PoolPtr->give_back(Slot);
+            }
         }
-    };
+    } LeaseGuard{Pool.get(), {}};
 
-    std::vector<std::size_t> FreeSlots;
+    // Fetch all currently available connections without returning them immediately
+    // Since we do not return them in the loop, try_lease will finish when all free connections are leased
+    while (Pool->try_lease(Pos, 0))
     {
-        FScopedLease Lease(Pool.get());
-        while (Lease.TryLease())
-        {
-            // If push_back throws std::bad_alloc, FScopedLease destructor returns the slot
-            FreeSlots.push_back(Lease.Pos);
-            Lease.PoolPtr->give_back(Lease.Pos);
-            Lease.bIsLeased = false;
-        }
+        // If push_back throws std::bad_alloc, the LeaseGuard destructor will return the already collected connections
+        LeaseGuard.LeasedSlots.push_back(Pos);
     }
 
     size_t ReplacedCount = 0;
 
-    for (std::size_t SlotPos : FreeSlots)
+    // Validation with full exception safety
+    for (std::size_t SlotPos : LeaseGuard.LeasedSlots)
     {
-        FScopedLease Lease(Pool.get());
-        Lease.Pos = SlotPos;
-        Lease.bIsLeased = Pool->try_lease(Lease.Pos, 0);
-
-        if (!Lease.bIsLeased)
-            continue;
+        soci::session& Session = Pool->at(SlotPos);
+        bool bIsAlive = false;
 
         try
         {
-            soci::session& Session = Pool->at(Lease.Pos);
             Session.once << "SELECT 1";
+            bIsAlive = true;
         }
         catch (const soci::soci_error&)
         {
+            // Expected behavior for a dead connection
+        }
+        catch (...)
+        {
+            // Catching everything saves us from a hard application crash
+            LOG_ERROR("KeepPoolAlive: Unknown error during SELECT 1 on slot " << SlotPos);
+        }
+
+        if (!bIsAlive)
+        {
             try
             {
-                soci::session& Session = Pool->at(Lease.Pos);
-
-                try { Session.close(); }
-                catch (...) { /* expected for dead connections */ }
+                // Safe closure, ignore errors since the connection is already dead
+                try { Session.close(); } catch (...) {}
 
                 Session.open(soci::mysql, ConnectionString);
                 Session.once << SESSION_VARS;
 
                 ++ReplacedCount;
             }
-            catch (const std::exception& e) // Catch standard exceptions too
+            catch (const std::exception& e)
             {
                 LOG_ERROR("KeepPoolAlive: failed to replace dead connection at index "
-                    << Lease.Pos << ": " << e.what());
+                          << SlotPos << ": " << e.what());
             }
             catch (...)
             {
-                LOG_ERROR("KeepPoolAlive: unknown exception while replacing dead connection.");
+                LOG_ERROR("KeepPoolAlive: FATAL unknown exception while replacing dead connection.");
             }
         }
-
-        // FScopedLease destructor automatically calls give_back() here
     }
 
     if (ReplacedCount > 0)
     {
         LOG_INFO("KeepPoolAlive: replaced " << ReplacedCount
-            << " dead pool connection(s) out of "
-            << FreeSlots.size() << " free slot(s) checked");
+                 << " dead pool connection(s) out of "
+                 << LeaseGuard.LeasedSlots.size() << " free slot(s) checked");
     }
+
+    // The LeaseGuard destructor automatically calls give_back() for all slots in the vector
 }
 
 FDataBaseConnect::FDataBaseConnect()
@@ -174,36 +174,49 @@ FDataBaseConnect::FDataBaseConnect()
 {
     if (bPoolInitialized && Pool)
     {
-        // pool available
+        // Pool is available, acquire session using RAII
         try
         {
-            // Lease a session (blocks until one is free).
+            // Lease a session
+            // std::unique_ptr invokes the special SOCI deleter which automatically performs give_back() upon destruction
             Session = std::make_unique<soci::session>(*Pool);
 
             if (ValidateConnection())
             {
-                // Fast path: pooled connection is alive.
+                // Fast path: connection is stable
                 bIsConnected = true;
             }
             else
             {
-                // Connection is dead.  Destroy the leased session
-                // (returns the dead slot to the pool as "free")
-                // and create a standalone connection instead.
-                LOG_WARN("Pooled connection dead — using standalone fallback"
-                    " (slot will be revived by KeepPoolAlive).");
+                // Dead connection
+                // Repair it on the fly to prevent a connection storm
+                LOG_WARN("Pooled connection dead - attempting to reconnect in place.");
 
-                Session.reset();  // returns dead slot to pool
+                // Attempt to close the broken socket and ignore exceptions
+                try { Session->close(); } catch (...) {}
 
-                const std::string& ConnectionString =
-                    FDataBaseSettings::GetConnectionString();
-                Session = std::make_unique<soci::session>(
-                    soci::mysql, ConnectionString);
-                SetSessionTimeouts();
-                bIsConnected = true;
+                try
+                {
+                    const std::string& ConnectionString = FDataBaseSettings::GetConnectionString();
+                    Session->open(soci::mysql, ConnectionString);
+                    SetSessionTimeouts();
+                    bIsConnected = true;
+
+                    LOG_STATE("Pooled connection successfully re-established on the fly.");
+                }
+                catch (const std::exception& e)
+                {
+                    LOG_ERROR("Failed to re-establish pooled connection: " << e.what());
+
+                    // If the server completely crashed, reset the session
+                    // This triggers the internal SOCI destructor and returns the broken slot back to the pool
+                    // It will be picked up by the cyclic KeepPoolAlive when the database comes back online
+                    Session.reset();
+                    bIsConnected = false;
+                }
             }
         }
-        catch (const soci::soci_error& e)
+        catch (const std::exception& e)
         {
             LOG_ERROR("Failed to lease connection from pool: " << e.what());
             bIsConnected = false;
@@ -211,31 +224,23 @@ FDataBaseConnect::FDataBaseConnect()
     }
     else
     {
-        // no pool (early boot / TestDataBaseConnection)
-        const std::string& ConnectionString =
-            FDataBaseSettings::GetConnectionString();
-
+        // No pool available, fallback for early boot or TestDataBaseConnection
         try
         {
-            Session = std::make_unique<soci::session>(
-                soci::mysql, ConnectionString);
+            const std::string& ConnectionString = FDataBaseSettings::GetConnectionString();
+            Session = std::make_unique<soci::session>(soci::mysql, ConnectionString);
             SetSessionTimeouts();
             bIsConnected = true;
         }
-        catch (const soci::soci_error& e)
+        catch (const std::exception& e)
         {
-            LOG_ERROR("Database connection failed: " << e.what());
+            LOG_ERROR("Standalone database connection failed: " << e.what());
             bIsConnected = false;
         }
     }
 }
 
-FDataBaseConnect::~FDataBaseConnect()
-{
-    // soci::session destructor automatically:
-    //   - returns the connection to the pool (if leased), or
-    //   - closes the standalone connection
-}
+FDataBaseConnect::~FDataBaseConnect() = default;
 
 bool FDataBaseConnect::ValidateConnection()
 {
