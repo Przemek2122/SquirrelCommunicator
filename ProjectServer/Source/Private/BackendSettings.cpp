@@ -158,8 +158,7 @@ void FBackendSettings::LoadMessageEncryptionKey()
     if (EnvKey != nullptr && EnvKey[0] != '\0')
     {
         MessageEncryptionKey = std::string(EnvKey);
-        LOG_INFO("✅ Message encryption key loaded from environment variable MESSAGE_ENCRYPTION_KEY. "
-                 "At-rest message encryption is ENABLED.");
+        LOG_STATE("Message encryption key loaded from environment variable MESSAGE_ENCRYPTION_KEY. - message encryption is ENABLED.");
         return;
     }
 

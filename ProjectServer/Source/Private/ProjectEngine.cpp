@@ -279,16 +279,16 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 			LOG_ERROR("Attempted to start crow with SSL but Key or Cert files are missing\n.");
 
 
-			LOG_INFO("Expected paths:");
-			LOG_INFO("CertFilePath: " << CertFilePath);
-			LOG_INFO("KeyFilePath: " << KeyFilePath);
+			LOG_STATE("Expected paths:");
+			LOG_STATE("CertFilePath: " << CertFilePath);
+			LOG_STATE("KeyFilePath: " << KeyFilePath);
 
-			LOG_INFO("\nTo generate for testing use bat script in Assets.");
+			LOG_STATE("\nTo generate for testing use bat script in Assets.");
 		}
 	}
 	else
 	{
-		LOG_INFO("REST server (CrowCPP) will start without SSL");
+		LOG_STATE("REST server (CrowCPP) will start without SSL");
 
 		CrowAppFutureAsync = CrowApp.port(static_cast<uint16_t>(ServerPort))
 			.multithreaded()
@@ -377,7 +377,7 @@ void FProjectEngine::TestDataBaseConnection()
 			int result;
 			DataBaseSession << "SELECT 1", soci::into(result);
 
-			LOG_INFO("Database has connection.");
+			LOG_STATE("Database has connection.");
 		}
 		catch (const std::exception& e)
 		{

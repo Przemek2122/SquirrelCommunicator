@@ -55,7 +55,7 @@ void FDataBaseConnect::InitPool(const size_t PoolSize)
 
         bPoolInitialized = true;
 
-        LOG_INFO("Database connection pool initialized with " << PoolSize << " connections.");
+        LOG_STATE("Database connection pool initialized with " << PoolSize << " connections.");
     }
     catch (const soci::soci_error& e)
     {
@@ -72,7 +72,7 @@ void FDataBaseConnect::ShutdownPool()
         Pool.reset();
         bPoolInitialized = false;
 
-        LOG_INFO("Database connection pool shut down.");
+        LOG_STATE("Database connection pool shut down.");
     }
 }
 
