@@ -76,16 +76,10 @@ void FDataBaseConnect::ShutdownPool()
     }
 }
 
-// KeepPoolAlive — periodic pool maintenance (runs from main tick)
-//
-// Strategy: use try_lease to discover and test ONLY unleased (free) slots.
-// Slots currently leased to other threads are never touched, avoiding
-// concurrent access to the same soci::session.
 void FDataBaseConnect::KeepPoolAlive()
 {
     static std::mutex MaintenanceMutex;
 
-    // Non-blocking: if another thread is already running maintenance, skip.
     if (!MaintenanceMutex.try_lock())
         return;
 
@@ -96,40 +90,55 @@ void FDataBaseConnect::KeepPoolAlive()
 
     const std::string& ConnectionString = FDataBaseSettings::GetConnectionString();
 
-    // collect all currently-free slot positions ---
+    // Custom RAII wrapper to guarantee give_back() is called even on std::bad_alloc
+    struct FScopedLease {
+        soci::connection_pool* PoolPtr;
+        std::size_t Pos;
+        bool bIsLeased;
+
+        FScopedLease(soci::connection_pool* InPool) : PoolPtr(InPool), Pos(0), bIsLeased(false) {}
+        ~FScopedLease() { if (bIsLeased) PoolPtr->give_back(Pos); }
+
+        bool TryLease() {
+            bIsLeased = PoolPtr->try_lease(Pos, 0);
+            return bIsLeased;
+        }
+    };
+
     std::vector<std::size_t> FreeSlots;
     {
-        std::size_t Pos = 0;
-        while (Pool->try_lease(Pos, 0))   // 0 = don't wait for a busy slot
+        FScopedLease Lease(Pool.get());
+        while (Lease.TryLease())
         {
-            FreeSlots.push_back(Pos);
-            Pool->give_back(Pos);
+            // If push_back throws std::bad_alloc, FScopedLease destructor returns the slot
+            FreeSlots.push_back(Lease.Pos);
+            Lease.PoolPtr->give_back(Lease.Pos);
+            Lease.bIsLeased = false;
         }
     }
 
-    // validate each free slot, revive dead ones ---
     size_t ReplacedCount = 0;
 
     for (std::size_t SlotPos : FreeSlots)
     {
-        // Re-lease.  If another thread grabbed it since pass 1, skip.
-        std::size_t Pos = SlotPos;
-        if (!Pool->try_lease(Pos, 0))
+        FScopedLease Lease(Pool.get());
+        Lease.Pos = SlotPos;
+        Lease.bIsLeased = Pool->try_lease(Lease.Pos, 0);
+
+        if (!Lease.bIsLeased)
             continue;
 
         try
         {
-            soci::session& Session = Pool->at(Pos);
+            soci::session& Session = Pool->at(Lease.Pos);
             Session.once << "SELECT 1";
         }
         catch (const soci::soci_error&)
         {
-            // Connection is dead — close and reopen in-place.
             try
             {
-                soci::session& Session = Pool->at(Pos);
+                soci::session& Session = Pool->at(Lease.Pos);
 
-                // close() may throw if the socket is in a bad state.
                 try { Session.close(); }
                 catch (...) { /* expected for dead connections */ }
 
@@ -138,14 +147,18 @@ void FDataBaseConnect::KeepPoolAlive()
 
                 ++ReplacedCount;
             }
-            catch (const soci::soci_error& e2)
+            catch (const std::exception& e) // Catch standard exceptions too
             {
-                LOG_ERROR("KeepPoolAlive: failed to replace dead connection"
-                    " at index " << Pos << ": " << e2.what());
+                LOG_ERROR("KeepPoolAlive: failed to replace dead connection at index "
+                    << Lease.Pos << ": " << e.what());
+            }
+            catch (...)
+            {
+                LOG_ERROR("KeepPoolAlive: unknown exception while replacing dead connection.");
             }
         }
 
-        Pool->give_back(Pos);
+        // FScopedLease destructor automatically calls give_back() here
     }
 
     if (ReplacedCount > 0)
@@ -156,23 +169,6 @@ void FDataBaseConnect::KeepPoolAlive()
     }
 }
 
-// ---------------------------------------------------------------------------
-// Constructor
-//
-// Flow:
-//   1. Lease a session from the pool (blocks until one is free).
-//   2. Validate with SELECT 1.
-//   3. If alive  → use it (optimal path, ~1 µs overhead for the ping).
-//   4. If dead   → return it to the pool (slot freed, connection dead)
-//                  and create a fresh standalone connection.
-//                  KeepPoolAlive() will revive the dead slot later.
-//   5. No pool  → standalone connection directly.
-//
-// IMPORTANT: we NEVER call close()/open() on a leased session because
-// that would replace the lease wrapper's backend with a regular backend,
-// breaking the pool's internal tracking.  Pool repair is done exclusively
-// by KeepPoolAlive() through properly-leased slots.
-// ---------------------------------------------------------------------------
 FDataBaseConnect::FDataBaseConnect()
     : bIsConnected(false)
 {
