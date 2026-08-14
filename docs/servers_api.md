@@ -665,9 +665,13 @@ These messages handle the community server system with channels and voice chat. 
 
         Server response type: server_join_voice
             data:
-                name       Voice room name for Go service
-                token      Voice room access token
-                user_name  Current user name
+                name         Voice room name for Go service
+                token        Voice room access token
+                user_name    Current user name
+                participants Array of users currently connected to the channel
+                             (including the joining user). Each entry:
+                             { user_id, user_name }
+
 
         Server broadcasts type: server_voice_joined to server members with:
             server_id, channel_id, user_id, user_name.

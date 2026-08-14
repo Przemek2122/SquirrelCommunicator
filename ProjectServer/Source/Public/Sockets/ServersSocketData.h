@@ -26,6 +26,7 @@ public:
     void ServerInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 TargetUserId);
     void ServerJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId);
     void ServerLeaveVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId);
+    void HandleGetVoiceChannelUsers(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId);
 
     // New WebSocket-based handlers (replacing REST endpoints)
     void HandleGetServerList(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint32 Offset = 0, Uint32 Limit = 50);

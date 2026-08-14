@@ -131,6 +131,13 @@ public:
     void LeaveVoiceChannel(Uint64 ServerId, Uint64 ChannelId, Uint64 UserId);
 
     /**
+     * Get the list of user IDs currently connected to a specific voice channel.
+     * Returns a thread-safe snapshot. Used to inform a newly joining user about
+     * who is already connected to the channel.
+     */
+    std::vector<Uint64> GetVoiceChannelConnectedUsers(Uint64 ServerId, Uint64 ChannelId);
+
+    /**
      * Get all voice channels a user is currently connected to.
      * Returns vector of {ServerId, ChannelId} pairs.
      * Used on WebSocket disconnect to auto-cleanup voice state.

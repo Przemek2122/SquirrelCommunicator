@@ -93,6 +93,7 @@ enum class ESocketMessageServersType : uint8
     ServerDeleteInvite,     // Request to delete an invite by code
     ServerListInvites,      // Request to list invites with pagination
     KickMember,             // Request to kick a member from the server
+    GetVoiceChannelUsers,   // Request to list users connected to a voice channel (without joining)
 
     /** Application-level ping/pong for latency measurement and keep-alive verification */
     Ping,
@@ -118,6 +119,7 @@ enum class ESocketMessageServersType : uint8
     ServerInviteDeleted,    // Response after deleting an invite
     ServerInvitesList,      // Response with paginated invite list
     ServerUserKicked,       // Broadcast when a member is kicked from the server
+    VoiceChannelUsers,      // Response with users currently connected to a voice channel
 
     Error = 255
 };

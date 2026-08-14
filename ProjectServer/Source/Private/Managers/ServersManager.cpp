@@ -969,6 +969,29 @@ void FServersManager::LeaveVoiceChannel(const Uint64 ServerId, const Uint64 Chan
     Users.erase(std::ranges::remove(Users, UserId).begin(), Users.end());
 }
 
+std::vector<Uint64> FServersManager::GetVoiceChannelConnectedUsers(const Uint64 ServerId, const Uint64 ChannelId)
+{
+    std::vector<Uint64> Result;
+
+    const std::shared_ptr<FServer> Server = GetServerById(ServerId);
+    if (!Server)
+    {
+        return Result;
+    }
+
+    const std::shared_ptr<FServerChannel> Channel = Server->GetChannel(ChannelId);
+    if (!Channel || Channel->ChannelType != EServerChannelType::Voice)
+    {
+        return Result;
+    }
+
+    // Thread-safe snapshot: ConnectedUsers is written under ServerMutex by
+    // JoinVoiceChannel/LeaveVoiceChannel, so read it under a shared lock.
+    std::shared_lock Lock(Server->GetMutex());
+    Result = Channel->ConnectedUsers;
+    return Result;
+}
+
 std::vector<std::pair<Uint64, Uint64>> FServersManager::GetUserVoiceChannels(const Uint64 UserId)
 {
     std::vector<std::pair<Uint64, Uint64>> Result;

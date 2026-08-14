@@ -239,6 +239,21 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
             break;
         }
 
+        case ESocketMessageServersType::GetVoiceChannelUsers:
+        {
+            if (DataJSON.contains("server_id") && DataJSON.contains("channel_id"))
+            {
+                const Uint64 ServerId = std::stoull(DataJSON["server_id"].get<std::string>());
+                const Uint64 ChannelId = std::stoull(DataJSON["channel_id"].get<std::string>());
+                HandleGetVoiceChannelUsers(wsVariant, opCode, ServerId, ChannelId);
+            }
+            else
+            {
+                FSocket::EarlyExit(wsVariant, "missing get_voice_channel_users fields", opCode);
+            }
+            break;
+        }
+
         // ========== NEW: WebSocket-based replacements for REST endpoints ==========
 
         case ESocketMessageServersType::GetServerList:
@@ -752,12 +767,26 @@ void FServersSocketData::ServerJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opC
     const std::string VoiceToken = ProjectEngine->GetRoomsManager()->GetRoomToken(VoiceServerName);
     const std::string UserName = GetUserName(CurrentUserId);
 
+    // Build the participant list so the newly joined user knows who was already
+    // connected to this voice channel (existing members get the join broadcast,
+    // but the joiner previously never learned who was already in the channel).
+    nlohmann::json ParticipantsArray = nlohmann::json::array();
+    const std::vector<Uint64> ConnectedUsers = ServersManager->GetVoiceChannelConnectedUsers(ServerId, ChannelId);
+    for (const Uint64 ConnectedUserId : ConnectedUsers)
+    {
+        nlohmann::json ParticipantJson;
+        ParticipantJson["user_id"] = std::to_string(ConnectedUserId);
+        ParticipantJson["user_name"] = GetUserName(ConnectedUserId);
+        ParticipantsArray.push_back(ParticipantJson);
+    }
+
     // Send data_stream_channel info back so frontend can connect to Go service
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerJoinVoice);
     ResponseJson["data"]["name"] = VoiceServerName;
     ResponseJson["data"]["token"] = VoiceToken;
     ResponseJson["data"]["user_name"] = UserName;
+    ResponseJson["data"]["participants"] = ParticipantsArray;
 
     std::visit([&](auto* ws)
     {
@@ -813,6 +842,62 @@ void FServersSocketData::ServerLeaveVoice(AnyWebSocket wsVariant, uWS::OpCode op
     BroadcastToServerMembers(ServerId, BroadcastJson, CurrentUserId);
 
     LOG_DEBUG("User " << CurrentUserId << " left voice channel " << ChannelId << " in server " << ServerId);
+}
+
+void FServersSocketData::HandleGetVoiceChannelUsers(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId)
+{
+    const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
+    if (CurrentUserId == 0)
+    {
+        FSocket::EarlyExit(wsVariant, "not authenticated", opCode);
+        return;
+    }
+
+    FServersManager* ServersManager = ProjectEngine->GetServersManager();
+
+    if (!ServersManager->IsUserInServer(ServerId, CurrentUserId))
+    {
+        FSocket::EarlyExit(wsVariant, "not a member of this server", opCode);
+        return;
+    }
+
+    // Verify channel exists and is voice type
+    std::shared_ptr<FServer> Server = ServersManager->GetServerById(ServerId);
+    if (!Server)
+    {
+        FSocket::EarlyExit(wsVariant, "server not found", opCode);
+        return;
+    }
+
+    std::shared_ptr<FServerChannel> Channel = Server->GetChannel(ChannelId);
+    if (!Channel || Channel->ChannelType != EServerChannelType::Voice)
+    {
+        FSocket::EarlyExit(wsVariant, "invalid voice channel", opCode);
+        return;
+    }
+
+    // Thread-safe snapshot of users currently connected to the voice channel.
+    // This does NOT add the requesting user to the channel.
+    nlohmann::json ParticipantsArray = nlohmann::json::array();
+    const std::vector<Uint64> ConnectedUsers = ServersManager->GetVoiceChannelConnectedUsers(ServerId, ChannelId);
+    for (const Uint64 ConnectedUserId : ConnectedUsers)
+    {
+        nlohmann::json ParticipantJson;
+        ParticipantJson["user_id"] = std::to_string(ConnectedUserId);
+        ParticipantJson["user_name"] = GetUserName(ConnectedUserId);
+        ParticipantsArray.push_back(ParticipantJson);
+    }
+
+    nlohmann::json ResponseJson;
+    ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::VoiceChannelUsers);
+    ResponseJson["data"]["server_id"] = ServerId;
+    ResponseJson["data"]["channel_id"] = ChannelId;
+    ResponseJson["data"]["participants"] = ParticipantsArray;
+
+    std::visit([&](auto* ws)
+    {
+        ws->send(ResponseJson.dump(), opCode);
+    }, wsVariant);
 }
 
 // ========== NEW: WebSocket handlers replacing REST endpoints ==========
@@ -1572,6 +1657,23 @@ nlohmann::json FServersSocketData::BuildServerDataJson(const Uint64 ServerId)
         ChannelJson["channel_name"] = Channel->ChannelName;
         ChannelJson["channel_type"] = (Channel->ChannelType == EServerChannelType::Text) ? "text" : "voice";
         ChannelJson["position"] = Channel->Position;
+
+        // Include currently connected users for voice channels so clients can see
+        // who is in a voice channel without joining it themselves.
+        if (Channel->ChannelType == EServerChannelType::Voice)
+        {
+            nlohmann::json ConnectedUsersArray = nlohmann::json::array();
+            const std::vector<Uint64> ConnectedUsers = ServersManager->GetVoiceChannelConnectedUsers(ServerId, Channel->ChannelId);
+            for (const Uint64 ConnectedUserId : ConnectedUsers)
+            {
+                nlohmann::json UserJson;
+                UserJson["user_id"] = std::to_string(ConnectedUserId);
+                UserJson["user_name"] = GetUserName(ConnectedUserId);
+                ConnectedUsersArray.push_back(UserJson);
+            }
+            ChannelJson["connected_users"] = ConnectedUsersArray;
+        }
+
         ChannelsArray.push_back(ChannelJson);
     }
     ServerJson["channels"] = ChannelsArray;
