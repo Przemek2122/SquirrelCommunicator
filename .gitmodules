@@ -3,6 +3,10 @@
 	path = services/SquirrelCommunicatorVoice
 	url = https://github.com/Przemek2122/SquirrelCommunicatorVoice
 	branch = main
+[submodule "services/SquirrelCommunicatorImage"]
+	path = services/SquirrelCommunicatorImage
+	url = https://github.com/sqrll-net/SquirrelCommunicatorImage
+	branch = main
 [submodule "ProjectServer/ThirdParty/IniReader"]
 	path = ProjectServer/ThirdParty/IniReader
 	url = https://github.com/Przemek2122/SQRLL_INI_Reader

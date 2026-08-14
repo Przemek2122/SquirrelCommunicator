@@ -51,6 +51,28 @@ services:
     restart: unless-stopped
 
 
+  image_service:
+    build:
+      context: ../services/SquirrelCommunicatorImage
+      dockerfile: Dockerfile
+    env_file:
+      - .env.image
+    volumes:
+      # Location of images on disk
+      - ./sqrll_data/media:/var/data/sqrll/media
+    ports:
+      - "8083:8083" # Image port
+    network_mode: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "autoheal=true"
+    restart: unless-stopped
+
+
   autoheal:
     image: willfarrell/autoheal
     restart: always

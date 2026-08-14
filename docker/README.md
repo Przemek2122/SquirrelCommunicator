@@ -69,7 +69,7 @@ docker compose up -d backend
 
 ```
 # Version of the backend release to deploy
-BACKEND_VERSION=1.0.2
+BACKEND_VERSION=1.0.9
 
 # Database connections env vars
 SQRLL_COMM_DB_HOST=127.0.0.1
@@ -104,6 +104,16 @@ SQRLL_VOICE_PORT=8082
 
 # The main password for communicating with the backend (Change this!)
 SQRLL_VOICE_API_KEY=
+```
+
+### `.env.image` (voice service container env)
+
+```
+PORT=8083
+SQRLL_IMAGE_API_KEY=
+MAX_DISK_GB=200
+MAX_RAM_MB=1024
+MAX_UPLOAD_MB=8
 ```
 
 ### `.env.encryptionpass` (Encryption password file)
