@@ -111,8 +111,9 @@ CREATE TABLE IF NOT EXISTS server_messages (
 --   2. C++ in-memory cache (std::unordered_map) performs binary/case-sensitive lookup.
 --   3. Under _ci collation, "AbC123" and "abc123" are treated as identical, which can
 --      cause a mismatch between the DB lookup result and the C++ cache lookup.
---   4. The application generates codes with mixed case (FEncryptionUtil::GenerateSecureSalt),
---      so the DB must preserve and distinguish case for correctness.
+--   4. The application generates codes as base-62 alphanumeric strings (secure random
+--      bytes encoded via FEncryptionUtil::ToBaseN_Irreversible), so the DB must
+--      preserve and distinguish case for correctness.
 CREATE TABLE IF NOT EXISTS server_invites (
     invite_code  VARCHAR(16)     COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
     server_id    BIGINT UNSIGNED NOT NULL,

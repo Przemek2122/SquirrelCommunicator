@@ -1886,8 +1886,9 @@ std::string FServersManager::GenerateServerToken()
 
 std::string FServersManager::GenerateInviteCode()
 {
-    static constexpr int32 CodeLength = 16;
-    return FEncryptionUtil::GenerateSecureSalt(CodeLength);
+    static constexpr int32 RawLength = 8;
+    const std::string Raw = FEncryptionUtil::GenerateSecureSalt(RawLength);
+    return FEncryptionUtil::ToBaseN_Irreversible(Raw, FPredefinedCharsets::BASE62);
 }
 
 std::string FServersManager::FormatTimestamp(const std::chrono::system_clock::time_point& Time)

@@ -1,6 +1,6 @@
 # Squirrel Communicator Server API Documentation
 
-Version 1.6
+Version 1.7
 
 This document describes all server endpoints and WebSocket message types available in Squirrel Communicator. The system uses two communication channels: REST API over HTTPS for authentication and account management, and WebSocket for real time messaging and server operations.
 
@@ -687,8 +687,24 @@ These messages handle the community server system with channels and voice chat. 
             data:
                 status  disconnected
 
-        Server broadcasts type: server_voice_left to server members with:
-            server_id, channel_id, user_id, user_name.
+    type: get_voice_channel_users
+        Get the list of users currently connected to a voice channel WITHOUT joining it.
+        The requesting user must be a member of the server. Unlike server_join_voice,
+        this is a read-only query and does not add the user to the channel.
+
+        data:
+            server_id     string  Server ID
+            channel_id  string  Voice channel ID
+
+        Server response type: voice_channel_users
+            data:
+                server_id     Server ID (number)
+                channel_id  Voice channel ID (number)
+                participants Array of users currently connected to the channel.
+                             Each entry: { user_id, user_name }
+
+        The same participant list is also available in the channel object's
+        connected_users field inside server data responses (see Section 3.3).
 
     type: get_server_list
         Get list of all servers the current user belongs to. Supports pagination.
@@ -740,7 +756,7 @@ These messages handle the community server system with channels and voice chat. 
 
         Server response type: server_invite_created
             data:
-                invite_code         Generated invite code string (10 random alphanumeric characters)
+                invite_code         Generated invite code string (random alphanumeric characters, max 16)
                 invite_url          Full invite URL https://comm.sqrll.net/invite/code
                 max_uses            Actual max uses value applied
                 expires_at          Unix timestamp (seconds) when invite expires
