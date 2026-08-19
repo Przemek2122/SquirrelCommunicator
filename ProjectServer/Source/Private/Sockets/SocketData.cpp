@@ -63,6 +63,11 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
         case HashString("remove_friend"):           return ESocketMessagePrivateType::RemoveFriend;
         case HashString("data_stream_channel"):     return ESocketMessagePrivateType::DataStreamChannel;
         case HashString("user_calling"):            return ESocketMessagePrivateType::UserCalling;
+        case HashString("friend_request_received"): return ESocketMessagePrivateType::FriendRequestReceived;
+        case HashString("friend_request_accepted"): return ESocketMessagePrivateType::FriendRequestAccepted;
+        case HashString("friend_request_rejected"): return ESocketMessagePrivateType::FriendRequestRejected;
+        case HashString("friend_request_canceled"): return ESocketMessagePrivateType::FriendRequestCanceled;
+        case HashString("friend_removed"):          return ESocketMessagePrivateType::FriendRemoved;
 
         case HashString("ping"):                    return ESocketMessagePrivateType::Ping;
         case HashString("pong"):                    return ESocketMessagePrivateType::Pong;
@@ -97,6 +102,11 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
         case ESocketMessagePrivateType::RemoveFriend:           return "remove_friend";
         case ESocketMessagePrivateType::DataStreamChannel:      return "data_stream_channel";
         case ESocketMessagePrivateType::UserCalling:            return "user_calling";
+        case ESocketMessagePrivateType::FriendRequestReceived:  return "friend_request_received";
+        case ESocketMessagePrivateType::FriendRequestAccepted:  return "friend_request_accepted";
+        case ESocketMessagePrivateType::FriendRequestRejected:  return "friend_request_rejected";
+        case ESocketMessagePrivateType::FriendRequestCanceled:  return "friend_request_canceled";
+        case ESocketMessagePrivateType::FriendRemoved:          return "friend_removed";
 
         case ESocketMessagePrivateType::Ping:                   return "ping";
         case ESocketMessagePrivateType::Pong:                   return "pong";

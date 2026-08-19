@@ -60,6 +60,13 @@ enum class ESocketMessagePrivateType : uint8
     DataStreamChannel,
     UserCalling,
 
+    /** Server -> Client friend/friend-request push notifications */
+    FriendRequestReceived,   // Incoming friend request notification (sent to target)
+    FriendRequestAccepted,   // Friend request was accepted (sent to original requester)
+    FriendRequestRejected,   // Friend request was rejected (sent to original requester)
+    FriendRequestCanceled,   // Incoming friend request was canceled (sent to target)
+    FriendRemoved,           // User was removed from friend list (sent to removed user)
+
     /** Application-level ping/pong for latency measurement and keep-alive verification */
     Ping,
     Pong,

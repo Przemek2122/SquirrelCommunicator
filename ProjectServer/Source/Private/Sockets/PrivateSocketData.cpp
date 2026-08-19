@@ -867,6 +867,8 @@ void FPrivateSocketData::OnMessageReceived_CreateFriendRequest(AnyWebSocket wsVa
 			{
 				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CreateFriendRequest, "friend request added");
 				ws->send(JSON.dump(), opCode);
+				// Notify the target user that they received a friend request.
+				SendFriendEventToUser(OtherUserId, ESocketMessagePrivateType::FriendRequestReceived, CurrentUserId);
 			}
 			else if (Status == EFriendRequestStatus::RequestAlreadyExists)
 			{
@@ -924,6 +926,8 @@ void FPrivateSocketData::OnMessageReceived_AcceptFriendRequest(AnyWebSocket wsVa
 			{
 				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::AcceptFriendRequest, "friend request accepted");
 				ws->send(JSON.dump(), opCode);
+				// Notify the original requester that the request was accepted (they are now friends).
+				SendFriendEventToUser(OtherUserId, ESocketMessagePrivateType::FriendRequestAccepted, CurrentUserId);
 			}
 			else if (Status == EAcceptFriendRequestStatus::RequestNotExists)
 			{
@@ -967,6 +971,8 @@ void FPrivateSocketData::OnMessageReceived_RejectFriendRequest(AnyWebSocket wsVa
 			{
 				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RejectFriendRequest, "friend request rejected");
 				ws->send(JSON.dump(), opCode);
+				// Notify the original requester that the request was rejected.
+				SendFriendEventToUser(OtherUserId, ESocketMessagePrivateType::FriendRequestRejected, CurrentUserId);
 			}
 			else if (Status == ERejectFriendRequestStatus::RequestNotExists)
 			{
@@ -1006,6 +1012,8 @@ void FPrivateSocketData::OnMessageReceived_CancelFriendRequest(AnyWebSocket wsVa
 		{
 			const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::CancelFriendRequest, "friend request canceled");
 			ws->send(JSON.dump(), opCode);
+			// Notify the target user that the incoming request was canceled.
+			SendFriendEventToUser(OtherUserId, ESocketMessagePrivateType::FriendRequestCanceled, CurrentUserId);
 		}
 		else if (Status == ECancelFriendRequestStatus::RequestNotExists)
 		{
@@ -1153,6 +1161,8 @@ void FPrivateSocketData::OnMessageReceived_RemoveFriend(AnyWebSocket wsVariant, 
 			{
 				const nlohmann::json JSON = FormatDataToJson(ESocketMessagePrivateType::RemoveFriend, "friend removed");
 				ws->send(JSON.dump(), opCode);
+				// Notify the removed user that they are no longer a friend.
+				SendFriendEventToUser(OtherUserId, ESocketMessagePrivateType::FriendRemoved, CurrentUserId);
 			}
 			else if (Status == ERemoveFriendStatus::FriendNotExists)
 			{
@@ -1348,4 +1358,53 @@ nlohmann::json FPrivateSocketData::FormatDataToJson(const ESocketMessagePrivateT
 	JsonRoot["message"] = Message;
 
 	return JsonRoot;
+}
+
+
+void FPrivateSocketData::SendFriendEventToUser(const Uint64 TargetUserId, const ESocketMessagePrivateType EventType, const Uint64 ActorUserId)
+{
+	FUserManager* UserManager = ProjectEngine->GetUserManager();
+	FSocketManager* SocketManager = ProjectEngine->GetSocketManager();
+
+	// Resolve the target user to find their socket. If offline / unknown there is nothing to send.
+	const std::shared_ptr<FUser> TargetUser = UserManager->GetUserById(TargetUserId);
+	if (TargetUser == nullptr)
+	{
+		return;
+	}
+
+	// Resolve actor display name to attach to the event payload.
+	std::string ActorUserName;
+	{
+		const std::shared_ptr<FUser> ActorUser = UserManager->GetUserById(ActorUserId);
+		if (ActorUser != nullptr)
+		{
+			ActorUserName = ActorUser->GetUserNameString();
+		}
+	}
+
+	nlohmann::json DataJson;
+	DataJson["user_id"] = ActorUserId;
+	if (!ActorUserName.empty())
+	{
+		DataJson["user_name"] = ActorUserName;
+	}
+
+	nlohmann::json JsonRoot;
+	JsonRoot["type"] = SocketMessagePrivateTypeToString(EventType);
+	JsonRoot["section"] = SocketMessageSectionToString(ESocketMessageSection::Priv);
+	JsonRoot["data"] = DataJson;
+
+	FFunctorLambda<void, void*> SocketAccessFunctor = [JsonRoot, TargetUserId](void* ws)
+	{
+		auto* WebSocket = static_cast<uWS::WebSocket<false, true, FWebSocketSessionData>*>(ws);
+
+		const std::string UserTopic = FSocket::GenerateUserTopic(TargetUserId);
+		if (WebSocket->isSubscribed(UserTopic))
+		{
+			WebSocket->send(JsonRoot.dump(), uWS::OpCode::TEXT);
+		}
+	};
+
+	SocketManager->EnqueueTaskForUserAtSocket(TargetUser->GetSocketId(), TargetUserId, SocketAccessFunctor);
 }

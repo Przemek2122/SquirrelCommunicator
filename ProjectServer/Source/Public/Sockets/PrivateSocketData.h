@@ -81,6 +81,9 @@ private:
 
     nlohmann::json FormatDataToJson(const ESocketMessagePrivateType Type, const std::string& Message);
 
+    /** Push a friend/friend-request event to a specific user (used to notify the "other" side of a change). */
+    void SendFriendEventToUser(Uint64 TargetUserId, ESocketMessagePrivateType EventType, Uint64 ActorUserId);
+
 private:
     /** Pointer to main class */
     FSocket* Socket;

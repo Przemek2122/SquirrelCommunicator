@@ -120,6 +120,9 @@ public:
      * @param Ciphertext  The raw ciphertext (base64-encoded if encrypted, or plaintext).
      * @param Status      Whether this message was encrypted at rest.
      *                    When Unencrypted, Ciphertext is returned as-is without decryption.
+     * @return On success the decrypted plaintext. If the message is marked encrypted
+     *         but the key is missing or mismatched (or the data is corrupted), returns
+     *         "[ENCRYPTED - INVALID KEY]" instead of leaking the raw ciphertext.
      */
     [[nodiscard]] std::string DecryptMessage(const std::string& Ciphertext, EMessageEncryptionStatus Status) const;
 

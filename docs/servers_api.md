@@ -1,6 +1,6 @@
 # Squirrel Communicator Server API Documentation
 
-Version 1.7
+Version 1.8
 
 This document describes all server endpoints and WebSocket message types available in Squirrel Communicator. The system uses two communication channels: REST API over HTTPS for authentication and account management, and WebSocket for real time messaging and server operations.
 
@@ -411,6 +411,48 @@ These messages use the priv section and handle direct messages, conversations, f
 
         Server response type: remove_friend
             message: friend removed or friend not found
+
+    Server to Client Push Messages (Friend / Friend-Request Events)
+
+    The server pushes the following events to the "other" user affected by a
+    friend or friend-request change, so their UI updates in real time without
+    re-fetching the friend list. Each push uses section: priv and includes the
+    acting user's ID and display name in data.
+
+    type: friend_request_received
+        Sent to a user when someone sends them a friend request.
+
+        data:
+            user_id    number  ID of the user who sent the request
+            user_name  string  Display name of the user who sent the request
+
+    type: friend_request_accepted
+        Sent to the original requester when their friend request is accepted.
+
+        data:
+            user_id    number  ID of the user who accepted the request
+            user_name  string  Display name of the user who accepted the request
+
+    type: friend_request_rejected
+        Sent to the original requester when their friend request is rejected.
+
+        data:
+            user_id    number  ID of the user who rejected the request
+            user_name  string  Display name of the user who rejected the request
+
+    type: friend_request_canceled
+        Sent to the target when the sender cancels their friend request.
+
+        data:
+            user_id    number  ID of the user who canceled the request
+            user_name  string  Display name of the user who canceled the request
+
+    type: friend_removed
+        Sent to a user when they are removed from someone's friend list.
+
+        data:
+            user_id    number  ID of the user who removed them
+            user_name  string  Display name of the user who removed them
 
 2.1.3 Voice and Calling
 
@@ -1197,6 +1239,11 @@ SECTION 3: DATA STRUCTURES
         status      number  Message status code
     }
 
+    Note: When a message is encrypted at rest and the server cannot decrypt it
+    (missing or mismatched encryption key, or corrupted data), the message field
+    is set to "[ENCRYPTED - INVALID KEY]" instead of the raw ciphertext. See
+    Section 9 for details.
+
 ============================================
 SECTION 4: PERMISSION SYSTEM
 ============================================
@@ -1635,3 +1682,35 @@ Lower position values appear first in the channel list.
     The server_channels table has a position column (INT NOT NULL DEFAULT 0)
     used for ordering. For existing databases, run migration_channel_position.sql
     to add this column and backfill positions for existing channels.
+
+============================================
+SECTION 9: MESSAGE ENCRYPTION AT REST
+============================================
+
+Messages (private conversation messages and server channel messages) may be
+stored encrypted at rest. Each message row carries an is_encrypted flag
+indicating whether its text/content field holds ciphertext.
+
+When the server serves a message to a client, it attempts to decrypt any
+encrypted message using the configured server-side key:
+
+    - On success, the client receives the decrypted plaintext.
+    - If the message is not encrypted, the plaintext is returned as-is.
+    - If decryption fails (the key is missing, the key is mismatched, or the
+      data is corrupted), the server returns the placeholder string:
+
+          [ENCRYPTED - INVALID KEY]
+
+      instead of the raw ciphertext. Exposing the raw ciphertext could aid
+      breaking the encryption key, so it is never sent to the client.
+
+The placeholder can appear in these message content fields:
+
+    - Conversation messages:   the message field (Section 3.6 Message Object).
+    - Server channel messages: the content field (server_message broadcast,
+      server_messages and get_server_messages responses).
+
+The placeholder is plain ASCII text and requires no special handling beyond
+being displayed as-is by the client. Clients should treat it as an indication
+that the message could not be decrypted (e.g., due to a server-side key
+mismatch after a key rotation or database migration).

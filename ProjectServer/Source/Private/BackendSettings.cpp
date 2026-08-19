@@ -11,6 +11,14 @@
 #include <filesystem>
 #include <algorithm>
 
+namespace
+{
+    // Shown to clients when an encrypted message cannot be decrypted because the
+    // server-side key is missing or mismatched. We must never expose the raw
+    // ciphertext, as doing so could aid breaking the encryption key.
+    constexpr const char* INVALID_ENCRYPTION_KEY_PLACEHOLDER = "[ENCRYPTED - INVALID KEY]";
+}
+
 FBackendSettings::FBackendSettings()
     : MaxMessageSize(1024)
     , UnauthenticatedRequestsPerHour(300)
@@ -259,11 +267,11 @@ std::string FBackendSettings::DecryptMessage(const std::string& Ciphertext, cons
         return Ciphertext;
     }
 
-    // DB says encrypted, but no key loaded → should never happen, return as-is defensively
+    // DB says encrypted, but no key loaded → cannot decrypt without a key.
     if (MessageEncryptionKey.empty())
     {
-        LOG_ERROR("Message is marked as encrypted in DB but no encryption key is loaded — returning raw data");
-        return Ciphertext;
+        LOG_ERROR("Message is marked as encrypted in DB but no encryption key is loaded");
+        return INVALID_ENCRYPTION_KEY_PLACEHOLDER;
     }
 
     try
@@ -271,15 +279,15 @@ std::string FBackendSettings::DecryptMessage(const std::string& Ciphertext, cons
         std::string Decrypted = SQRLLEncryption::Decrypt(SQRLLEncryption::FromBaseN(Ciphertext, SQRLLPredefinedCharsets::BASE64), MessageEncryptionKey, MessageEncryptionSettings);
         if (Decrypted.empty() && !Ciphertext.empty())
         {
-            // Decryption failed (wrong key or tampered data) — return as-is to avoid data loss
-            LOG_ERROR("Message decryption failed (key mismatch or corruption) — returning raw data");
-            return Ciphertext;
+            // Decryption failed (wrong key or tampered data) — never expose raw ciphertext.
+            LOG_ERROR("Message decryption failed (key mismatch or corruption)");
+            return INVALID_ENCRYPTION_KEY_PLACEHOLDER;
         }
         return Decrypted;
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("Message decryption error: " << e.what() << " — returning raw data");
-        return Ciphertext;
+        LOG_ERROR("Message decryption error: " << e.what());
+        return INVALID_ENCRYPTION_KEY_PLACEHOLDER;
     }
 }
