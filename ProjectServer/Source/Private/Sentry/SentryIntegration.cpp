@@ -5,6 +5,8 @@
 
 #ifdef SQRLL_HAS_SENTRY
     #include <sentry.h>
+    #include <cstdarg>
+    #include <cstdio>
     #include <cstdlib>
     #include <filesystem>
     #include <string>
@@ -19,28 +21,35 @@
         // backend can return 0 from sentry_init() even when it failed to spawn
         // the handler, so these log lines are often the only clue that crashes
         // are being dropped.
-        void SentryLogger(sentry_level_t Level, const char* Message, void* /*UserData*/)
+        //
+        // sentry-native calls this with a printf-style format string plus a
+        // va_list of arguments, so it must be formatted with vsnprintf before
+        // it can be logged.
+        void SentryLogger(sentry_level_t Level, const char* Message, va_list Args, void* /*UserData*/)
         {
             if (Message == nullptr || Message[0] == '\0')
             {
                 return;
             }
 
+            char Buffer[2048];
+            vsnprintf(Buffer, sizeof(Buffer), Message, Args);
+
             switch (Level)
             {
                 case SENTRY_LEVEL_FATAL:
                 case SENTRY_LEVEL_ERROR:
-                    LOG_ERROR("Sentry: " << Message);
+                    LOG_ERROR("Sentry: " << Buffer);
                     break;
                 case SENTRY_LEVEL_WARNING:
-                    LOG_WARN("Sentry: " << Message);
+                    LOG_WARN("Sentry: " << Buffer);
                     break;
                 case SENTRY_LEVEL_INFO:
-                    LOG_INFO("Sentry: " << Message);
+                    LOG_INFO("Sentry: " << Buffer);
                     break;
                 case SENTRY_LEVEL_DEBUG:
                 default:
-                    LOG_DEBUG("Sentry: " << Message);
+                    LOG_DEBUG("Sentry: " << Buffer);
                     break;
             }
         }
