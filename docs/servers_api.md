@@ -1,6 +1,6 @@
 # Squirrel Communicator Server API Documentation
 
-Version 1.8
+Version 1.9
 
 This document describes all server endpoints and WebSocket message types available in Squirrel Communicator. The system uses two communication channels: REST API over HTTPS for authentication and account management, and WebSocket for real time messaging and server operations.
 
@@ -17,7 +17,9 @@ REST endpoints are subject to two-tier global rate limiting: unauthenticated req
 
 POST /api/v1/users/register
 
-    Register a new user account. Subject to per-IP registration rate limiting (default 10 registrations/hour, configurable via RegisterAccountLimitPerHour).
+    Start a new account registration. Subject to per-IP registration rate limiting (default 10 registrations/hour, configurable via RegisterAccountLimitPerHour).
+
+    The account is NOT created immediately. The server generates a 6 digit verification code, stores the registration as pending, and emails the code to the provided address. The email also contains a verification link (Brevo param LINK) that opens the registration-verification page pre-filled with the code and email. Call /api/v1/users/register/verify with the code to complete registration.
 
     Request body:
         username  string  Display name 4 to 109 characters
@@ -31,13 +33,35 @@ POST /api/v1/users/register
 
         200 OK
             status  success
-            message  User registered successfully.
+            message  Registration started. Check your email for the verification code.
         400 Bad Request
             Registration failed. User may already exist or invalid input.
             Registration failed. Password too weak.
-            Registration failed. Password bad, please change.
+
+    Note: This endpoint (and the email it sends) is used only for database registration. Third party integrations (Google / Microsoft) do not send any email.
+
+    The verification link (Brevo param LINK) points at the backend public base URL:
+        Debug builds   http://localhost:<port>/register/verify?code=<code>&email=<email>
+        Release builds https://comm.sqrll.net/register/verify?code=<code>&email=<email>
+    The registration email template (Brevo templateId 2) must render {{ params.LINK }}
+    as the clickable link, alongside {{ params.TOKEN }} and {{ params.USERNAME }}.
+
+POST /api/v1/users/register/verify
+
+    Complete a pending registration by validating the code sent to the email address. On success the account is created.
+
+    Request body:
+        email  string  Email address used during registration
+        code   string  6 digit code from the email
+
+    Responses:
+        200 OK
+            status  success
+            message  Registration completed. You can now log in.
+        400 Bad Request
+            Invalid or expired verification code.
         500 Internal Server Error
-            Database insert or connection failure.
+            Registration failed. Please try again.
 
 POST /api/v1/users/login
 
@@ -799,7 +823,7 @@ These messages handle the community server system with channels and voice chat. 
         Server response type: server_invite_created
             data:
                 invite_code         Generated invite code string (random alphanumeric characters, max 16)
-                invite_url          Full invite URL https://comm.sqrll.net/invite/code
+                invite_url          Full invite URL <base>/invite/code. <base> is the backend public base URL: https://comm.sqrll.net in release, or http://localhost:<port> in debug.
                 max_uses            Actual max uses value applied
                 expires_at          Unix timestamp (seconds) when invite expires
                 expires_in_seconds  Actual expiration duration in seconds applied

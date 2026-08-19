@@ -9,6 +9,7 @@
 #include "DataBase/DataBaseSettings.h"
 #include "Managers/ConversationsManager.h"
 #include "Managers/PasswordResetManager.h"
+#include "Managers/EmailVerificationManager.h"
 #include "Managers/RoomsServiceManager.h"
 #include "Managers/ServersManager.h"
 #include "Rest/AccountEndpoint.h"
@@ -34,6 +35,7 @@ FProjectEngine::FProjectEngine()
 	, ConversationsManager(std::make_unique<FConversationsManager>())
 	, ServersManager(std::make_unique<FServersManager>())
 	, PasswordResetManager(nullptr)
+	, EmailVerificationManager(nullptr)
 	, bIsSSLEnabled(false)
 {
 	// Collect Database settings
@@ -111,6 +113,16 @@ void FProjectEngine::Init()
 
 		PasswordResetManager = std::make_unique<FPasswordResetManager>(PasswordResetTokenAliveTimeMins);
 		PasswordResetManager->Init();
+		// Get time for registration verification code to be alive
+		const FIniField RegistrationCodeAliveTimeMinsField = ServerSettingsIni->FindFieldByName("RegistrationCodeAliveTimeMins");
+		int32 RegistrationCodeAliveTimeMins = 30;
+		if (RegistrationCodeAliveTimeMinsField.IsValid())
+		{
+			RegistrationCodeAliveTimeMins = RegistrationCodeAliveTimeMinsField.GetValueAsInt();
+		}
+
+		EmailVerificationManager = std::make_unique<FEmailVerificationManager>(RegistrationCodeAliveTimeMins);
+		EmailVerificationManager->Init();
 
 		// Get domain name from ini
 		{
@@ -138,6 +150,30 @@ void FProjectEngine::Init()
 
 			OriginWhitelist.InsertAt(0 ,"http://" + DebugDomainField.GetValueAsString());
 			DomainName = DebugDomainField.GetValueAsString();
+		}
+#endif
+
+		// Base URL used for public-facing links (registration verification
+		// emails, invite links, etc.). Release builds use BackendAddress1;
+		// debug builds target the local REST server on localhost without SSL.
+		{
+			const FIniField BackendAddressField = ServerSettingsIni->FindFieldByName("BackendAddress1");
+			if (BackendAddressField.IsValid())
+			{
+				PublicBaseUrl = BackendAddressField.GetValueAsString();
+			}
+		}
+
+#if DEBUG
+		{
+			// Local development: REST server listens on localhost:<Port> without SSL.
+			int32 DebugPort = 8080;
+			const FIniField PortField = ServerSettingsIni->FindFieldByName("Port");
+			if (PortField.IsValid())
+			{
+				DebugPort = PortField.GetValueAsInt();
+			}
+			PublicBaseUrl = "http://localhost:" + std::to_string(DebugPort);
 		}
 #endif
 

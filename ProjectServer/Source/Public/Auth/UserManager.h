@@ -75,6 +75,12 @@ public:
 	 */
 	ERegisterUserStatus RegisterUser(const std::string& InUserName, const std::string& InUserPassword, const std::string& InUserEMail);
 
+	/** Validate registration input and produce a password hash. No database write. */
+	ERegisterUserStatus PrepareRegistration(const std::string& InUserName, const std::string& InUserPassword, const std::string& InUserEMail, std::string& OutPasswordHash);
+
+	/** Finalize a pending registration by inserting the user into the database and cache. */
+	ERegisterUserStatus CompleteRegistration(const std::string& InUserName, const std::string& InUserPasswordHash, const std::string& InUserEMail);
+
 	/** Integration user creation */
 	ERegisterUserStatus RegisterIntegration(const std::string& InUserName, const std::string& InUserEMail);
 

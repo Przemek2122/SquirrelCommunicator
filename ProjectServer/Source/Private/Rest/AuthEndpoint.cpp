@@ -5,6 +5,9 @@
 #include "AbuseProtection/AbuseProtection.h"
 #include "Auth/UserManager.h"
 #include "WebUtils/CookieHelper.h"
+#include "Managers/EmailVerificationManager.h"
+#include "Managers/MailSender.h"
+#include "nlohmann/json.hpp"
 
 FAuthEndpoint::FAuthEndpoint(FProjectEngine* InProjectEngine)
 	: FCrowAppEndpoint(InProjectEngine)
@@ -23,7 +26,6 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 			const std::string& ClientIP = req.remote_ip_address;
 
 			// --- Registration rate limiting (per-IP, default 10/hr) ---
-			// Check BEFORE calling RegisterUser to prevent mass account creation.
 			FAbuseProtection* AbuseProtection = ProjectEngine->GetAbuseProtection();
 			if (!AbuseProtection->CanAddressRegisterAccount(ClientIP))
 			{
@@ -41,71 +43,126 @@ void FAuthEndpoint::RegisterRoutes(crow::App<FCrowAppMiddleware>& App)
 				const std::string UserPassword = JsonData["password"].s();
 				const std::string EMail = JsonData["email"].s();
 
-				const ERegisterUserStatus RegisterStatus = ProjectEngine->GetUserManager()->RegisterUser(UserName, UserPassword, EMail);
+				FUserManager* UserManager = ProjectEngine->GetUserManager();
+
+				// Step 1: validate input and prepare a password hash. The account is not created yet.
+				std::string PasswordHash;
+				const ERegisterUserStatus PrepareStatus = UserManager->PrepareRegistration(UserName, UserPassword, EMail, PasswordHash);
 
 				// Count every registration attempt against the hourly limit (success or failure).
-				// This prevents spammers from retrying with different usernames/emails/passwords.
 				AbuseProtection->AddRegisterAccountAttempt(ClientIP);
 
-				switch (RegisterStatus)
+				if (PrepareStatus == ERegisterUserStatus::Unknown)
 				{
-					case ERegisterUserStatus::Unknown:
+					// Do not send a verification mail to an already registered account.
+					if (UserManager->FindUserByMail(EMail) != nullptr)
 					{
 						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
-
-						break;
 					}
-					case ERegisterUserStatus::Successful:
+					else
 					{
-						ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+						// Generate the verification code and keep the registration pending.
+						FEmailVerificationManager* VerificationManager = ProjectEngine->GetEmailVerificationManager();
+						const FPendingRegistration Pending = VerificationManager->GenerateVerificationCode(EMail, UserName, PasswordHash);
 
-						OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "User registered successfully."} });
+						// Build the link the user clicks to continue registration.
+						// Debug builds point at the local REST server (http://localhost:<port>),
+						// release builds point at the production domain.
+						const std::string VerifyLink = ProjectEngine->GetPublicBaseUrl() + "/register/verify?code=" + Pending.VerificationCode + "&email=" + EMail;
 
-						break;
+						// Send the code by email. Database registrations only - integrations never reach this route.
+						try
+						{
+							const nlohmann::json JsonBody = {
+								{"to", {{ {"email", EMail} }}},
+								{"templateId", 2}, // registration verification template
+								{"params", {
+									{"TOKEN", Pending.VerificationCode},
+									{"USERNAME", UserName},
+									{"LINK", VerifyLink}
+								}}
+							};
+							FMailSender::SendMail(JsonBody);
+						}
+						catch (const std::exception& e)
+						{
+							LOG_ERROR("Registration verification mail failed: " << e.what());
+						}
+
+						OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Registration started. Check your email for the verification code."} });
 					}
-					case ERegisterUserStatus::MailTaken:
+				}
+				else
+				{
+					switch (PrepareStatus)
 					{
-						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
-
-						break;
-					}
-					case ERegisterUserStatus::PasswordLengthIncorrect:
-					{
-						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password too weak."} });
-
-						break;
-					}
-					case ERegisterUserStatus::PasswordIncorrect:
-					{
-						OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password bad, please change."} });
-
-						break;
-					}
-					case ERegisterUserStatus::DataBaseInsertFailed:
-					{
-						LOG_ERROR("ERegisterUserStatus::DataBaseInsertFailed:");
-
-						OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
-
-						break;
-					}
-					case ERegisterUserStatus::DataBaseConnectionFailed:
-					{
-						LOG_ERROR("ERegisterUserStatus::DataBaseConnectionFailed:");
-
-						OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Sorry."} });
-
-						break;
-					}
-					default:
-					{
-						LOG_ERROR("RegisterStatus unknown case");
+						case ERegisterUserStatus::PasswordLengthIncorrect:
+						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. Password too weak."} });
+							break;
+						}
+						case ERegisterUserStatus::MailLengthIncorrect:
+						case ERegisterUserStatus::UserNameLengthIncorrect:
+						case ERegisterUserStatus::MailIncorrect:
+						case ERegisterUserStatus::PasswordIncorrect:
+						default:
+						{
+							OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Registration failed. User may already exist or invalid input."} });
+							break;
+						}
 					}
 				}
 			}
 			else
 			{
 				OutResponse = FCrowUtils::CreateResponse(429, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message","Too many requests."} });
+			}
+
+			return OutResponse;
+		});
+
+	CROW_ROUTE(App, "/api/v1/users/register/verify")
+		.methods("POST"_method, "OPTIONS"_method)
+		([this](const crow::request& req)
+		{
+			crow::response OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid JSON."} });
+
+			// Get IP address
+			const std::string& ClientIP = req.remote_ip_address;
+
+			const crow::json::rvalue JsonData = crow::json::load(req.body);
+			if (JsonData)
+			{
+				const std::string EMail = JsonData["email"].s();
+				const std::string Code = JsonData["code"].s();
+
+				FEmailVerificationManager* VerificationManager = ProjectEngine->GetEmailVerificationManager();
+				const FPendingRegistration Pending = VerificationManager->ValidateCode(EMail, Code);
+
+				if (Pending.IsValid())
+				{
+					const ERegisterUserStatus CompleteStatus = ProjectEngine->GetUserManager()->CompleteRegistration(Pending.UserName, Pending.PasswordHash, Pending.UserMail);
+
+					if (CompleteStatus == ERegisterUserStatus::Successful)
+					{
+						VerificationManager->ConsumeCode(EMail, Code);
+
+						OutResponse = FCrowUtils::CreateResponse(crow::status::OK, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Success }, { "message", "Registration completed. You can now log in."} });
+					}
+					else
+					{
+						LOG_ERROR("Registration verify failed with status: " << static_cast<int>(CompleteStatus));
+
+						OutResponse = FCrowUtils::CreateResponse(crow::status::INTERNAL_SERVER_ERROR, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Registration failed. Please try again."} });
+					}
+				}
+				else
+				{
+					// Throttle brute force attempts against the code.
+					ProjectEngine->GetAbuseProtection()->AddRateLimitedAttempt(ClientIP);
+
+					OutResponse = FCrowUtils::CreateResponse(crow::status::BAD_REQUEST, { { FPredefinedMessages::Status::Name, FPredefinedMessages::Status::Error }, { "message", "Invalid or expired verification code."} });
+				}
 			}
 
 			return OutResponse;

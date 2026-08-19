@@ -19,6 +19,7 @@ class FServersManager;
 class FTransferTokenManager;
 class FRoomsServiceManager;
 class FPasswordResetManager;
+class FEmailVerificationManager;
 class FConversationsManager;
 class FSocketManager;
 class FAbuseProtection;
@@ -61,6 +62,7 @@ public:
 	FBackendSettings* GetBackendSettings() const { return BackendSettings.get(); }
 	FAbuseProtection* GetAbuseProtection() const { return AbuseProtectionPtr.get(); }
 	FPasswordResetManager* GetPasswordResetManager() const { return PasswordResetManager.get(); }
+	FEmailVerificationManager* GetEmailVerificationManager() const { return EmailVerificationManager.get(); }
 	FFriendListManager* GetFriendListManager() const { return FriendListManager.get(); }
 	FRoomsServiceManager* GetRoomsManager() const { return RoomsManager.get(); }
 
@@ -68,6 +70,16 @@ public:
 	CUnorderedMap<std::string, std::string> GetDefaultHeadersCache() const { return DefaultHeadersCache; }
 	const CArray<std::string>& GetOriginWhitelist() const { return OriginWhitelist; }
 	std::string GetMailAPIKey() const { return MailAPIKey; }
+
+	/**
+	 * Base URL used when building public-facing links (registration
+	 * verification emails, invite links, etc.).
+	 *
+	 * Debug builds target the local REST server (http://localhost:<Port>),
+	 * while release builds use BackendAddress1 from the INI
+	 * (e.g. https://comm.sqrll.net).
+	 */
+	std::string GetPublicBaseUrl() const { return PublicBaseUrl; }
 
 protected:
 
@@ -101,6 +113,9 @@ protected:
 	/** PasswordResetManager */
 	std::unique_ptr<FPasswordResetManager> PasswordResetManager;
 
+	/** Email verification manager for registration codes */
+	std::unique_ptr<FEmailVerificationManager> EmailVerificationManager;
+
 	/** FriendListManager */
 	std::unique_ptr<FFriendListManager> FriendListManager;
 
@@ -121,6 +136,9 @@ protected:
 
 	CArray<std::string> OriginWhitelist;
 	std::string DomainName;
+
+	/** Base URL for public links (scheme + host + optional port). */
+	std::string PublicBaseUrl;
 
 	bool bIsSSLEnabled;
 	std::string KeyFilePath;

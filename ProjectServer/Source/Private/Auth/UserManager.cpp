@@ -37,6 +37,19 @@ void FUserManager::PostSecondTick()
 
 ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, const std::string& InUserPassword, const std::string& InUserEMail)
 {
+	std::string OutPasswordHash;
+	ERegisterUserStatus RegisterUserStatus = PrepareRegistration(InUserName, InUserPassword, InUserEMail, OutPasswordHash);
+
+	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
+	{
+		RegisterUserStatus = CompleteRegistration(InUserName, OutPasswordHash, InUserEMail);
+	}
+
+	return RegisterUserStatus;
+}
+
+ERegisterUserStatus FUserManager::PrepareRegistration(const std::string& InUserName, const std::string& InUserPassword, const std::string& InUserEMail, std::string& OutPasswordHash)
+{
 	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
 
 	// Check password
@@ -57,47 +70,59 @@ ERegisterUserStatus FUserManager::RegisterUser(const std::string& InUserName, co
 		RegisterUserStatus = ERegisterUserStatus::UserNameLengthIncorrect;
 	}
 
-	// Check mail
+	// Check mail format
 	if (!FStringHelpers::ValidateMail(InUserEMail))
 	{
 		RegisterUserStatus = ERegisterUserStatus::MailIncorrect;
 	}
-	
+
 	if (RegisterUserStatus == ERegisterUserStatus::Unknown)
 	{
-		const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
-		FUser* User = UserPtr.get();
-		User->SetUserName(InUserName);
-		User->SetPassword(HashUserPassword(InUserPassword));
-		User->SetUserEMail(InUserEMail);
-		User->UpdateLastActiveTime();
+		OutPasswordHash = HashUserPassword(InUserPassword);
+	}
 
-		// Check if mail is taken // sql << "select name from person where id = 7", into(name, ind);
-		bool bUserExists;
-		const EDatabaseOperationResult DBOpResult = DoesUserWithMailExists(InUserEMail, bUserExists);
+	return RegisterUserStatus;
+}
 
-		if (DBOpResult == EDatabaseOperationResult::Success && !bUserExists)
+ERegisterUserStatus FUserManager::CompleteRegistration(const std::string& InUserName, const std::string& InUserPasswordHash, const std::string& InUserEMail)
+{
+	ERegisterUserStatus RegisterUserStatus = ERegisterUserStatus::Unknown;
+
+	// Check if mail is taken
+	bool bUserExists = false;
+	const EDatabaseOperationResult DBOpResult = DoesUserWithMailExists(InUserEMail, bUserExists);
+
+	if (DBOpResult == EDatabaseOperationResult::Success && !bUserExists)
+	{
+		Uint64 Id = 0;
+		UploadUserToDataBase(InUserName, InUserPasswordHash, InUserEMail, Id);
+
+		if (Id > 0)
 		{
-			Uint64 Id = 0;
-			UploadUserToDataBase(InUserName, User->GetUserPasswordHash(), InUserEMail, Id);
+			const std::shared_ptr<FUser> UserPtr = std::make_shared<FUser>(this);
+			FUser* User = UserPtr.get();
+			User->SetUserName(InUserName);
+			User->SetPassword(InUserPasswordHash);
+			User->SetUserEMail(InUserEMail);
+			User->SetUserId(Id);
+			User->UpdateLastActiveTime();
 
-			if (Id > 0)
-			{
-				User->SetUserId(Id);
+			OnRegisterSuccessful(UserPtr);
 
-				RegisterUserStatus = ERegisterUserStatus::Successful;
-
-				OnRegisterSuccessful(UserPtr);
-			}
-			else
-			{
-				RegisterUserStatus = ERegisterUserStatus::DataBaseInsertFailed;
-			}
+			RegisterUserStatus = ERegisterUserStatus::Successful;
 		}
 		else
 		{
-			RegisterUserStatus = ERegisterUserStatus::MailTaken;
+			RegisterUserStatus = ERegisterUserStatus::DataBaseInsertFailed;
 		}
+	}
+	else if (DBOpResult != EDatabaseOperationResult::Success)
+	{
+		RegisterUserStatus = ERegisterUserStatus::DataBaseConnectionFailed;
+	}
+	else
+	{
+		RegisterUserStatus = ERegisterUserStatus::MailTaken;
 	}
 
 	return RegisterUserStatus;

@@ -1045,7 +1045,7 @@ void FServersSocketData::HandleServerCreateInvite(AnyWebSocket wsVariant, uWS::O
     nlohmann::json ResponseJson;
     ResponseJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerInviteCreated);
     ResponseJson["data"]["invite_code"] = InviteCode;
-    ResponseJson["data"]["invite_url"] = "https://comm.sqrll.net/invite/" + InviteCode;
+    ResponseJson["data"]["invite_url"] = ProjectEngine->GetPublicBaseUrl() + "/invite/" + InviteCode;
     ResponseJson["data"]["max_uses"] = ActualMaxUses;
     ResponseJson["data"]["expires_at"] = ExpiresAtUnix;         // Unix timestamp (seconds)
     ResponseJson["data"]["expires_in_seconds"] = ActualExpiresInSeconds;
