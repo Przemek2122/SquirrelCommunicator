@@ -69,7 +69,7 @@ docker compose up -d backend
 
 ```
 # Version of the backend release to deploy
-BACKEND_VERSION=1.0.9
+BACKEND_VERSION=1.1.0
 
 # Database connections env vars
 SQRLL_COMM_DB_HOST=127.0.0.1
