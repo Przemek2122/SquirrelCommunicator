@@ -41,7 +41,7 @@ POST /api/v1/users/register
     Note: This endpoint (and the email it sends) is used only for database registration. Third party integrations (Google / Microsoft) do not send any email.
 
     The verification link (Brevo param LINK) points at the backend public base URL:
-        Debug builds   http://localhost:<port>/register/verify?code=<code>&email=<email>
+        Debug builds   http://<DebugDomain>:<port>/register/verify?code=<code>&email=<email>  (DebugDomain defaults to localhost)
         Release builds https://comm.sqrll.net/register/verify?code=<code>&email=<email>
     The registration email template (Brevo templateId 2) must render {{ params.LINK }}
     as the clickable link, alongside {{ params.TOKEN }} and {{ params.USERNAME }}.
@@ -823,7 +823,7 @@ These messages handle the community server system with channels and voice chat. 
         Server response type: server_invite_created
             data:
                 invite_code         Generated invite code string (random alphanumeric characters, max 16)
-                invite_url          Full invite URL <base>/invite/code. <base> is the backend public base URL: https://comm.sqrll.net in release, or http://localhost:<port> in debug.
+                invite_url          Full invite URL <base>/invite/code. <base> is the backend public base URL: https://comm.sqrll.net in release, or http://<DebugDomain>:<port> in debug (DebugDomain defaults to localhost).
                 max_uses            Actual max uses value applied
                 expires_at          Unix timestamp (seconds) when invite expires
                 expires_in_seconds  Actual expiration duration in seconds applied

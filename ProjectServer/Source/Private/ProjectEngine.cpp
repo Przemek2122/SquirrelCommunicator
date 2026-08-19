@@ -143,19 +143,10 @@ void FProjectEngine::Init()
 			}
 		}
 
-#if DEBUG
-		{
-			// Debug domain
-			FIniField DebugDomainField = ServerSettingsIni->FindFieldByName("DebugDomain");
-
-			OriginWhitelist.InsertAt(0 ,"http://" + DebugDomainField.GetValueAsString());
-			DomainName = DebugDomainField.GetValueAsString();
-		}
-#endif
-
 		// Base URL used for public-facing links (registration verification
 		// emails, invite links, etc.). Release builds use BackendAddress1;
-		// debug builds target the local REST server on localhost without SSL.
+		// debug builds target the local REST server on <DebugDomain>:<Port>
+		// without SSL.
 		{
 			const FIniField BackendAddressField = ServerSettingsIni->FindFieldByName("BackendAddress1");
 			if (BackendAddressField.IsValid())
@@ -166,14 +157,28 @@ void FProjectEngine::Init()
 
 #if DEBUG
 		{
-			// Local development: REST server listens on localhost:<Port> without SSL.
+			// Debug domain override (defaults to localhost). This keeps the
+			// verification/invite links, CORS whitelist and cookie domain all
+			// consistent with the configured debug host.
+			std::string DebugDomainName = "localhost";
+			const FIniField DebugDomainField = ServerSettingsIni->FindFieldByName("DebugDomain");
+			if (DebugDomainField.IsValid() && !DebugDomainField.GetValueAsString().empty())
+			{
+				DebugDomainName = DebugDomainField.GetValueAsString();
+			}
+
+			OriginWhitelist.InsertAt(0, "http://" + DebugDomainName);
+			DomainName = DebugDomainName;
+
+			// Local development: REST server listens on <DebugDomain>:<Port>
+			// without SSL, so the public base URL must include the port.
 			int32 DebugPort = 8080;
 			const FIniField PortField = ServerSettingsIni->FindFieldByName("Port");
 			if (PortField.IsValid())
 			{
 				DebugPort = PortField.GetValueAsInt();
 			}
-			PublicBaseUrl = "http://localhost:" + std::to_string(DebugPort);
+			PublicBaseUrl = "http://" + DebugDomainName + ":" + std::to_string(DebugPort);
 		}
 #endif
 

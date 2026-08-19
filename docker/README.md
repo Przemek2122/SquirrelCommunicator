@@ -69,7 +69,7 @@ docker compose up -d backend
 
 ```
 # Version of the backend release to deploy
-BACKEND_VERSION=1.1.0
+BACKEND_VERSION=1.0.9
 
 # Database connections env vars
 SQRLL_COMM_DB_HOST=127.0.0.1
@@ -89,6 +89,10 @@ SENTRY_DSN=
 # Which Sentry environment this deployment belongs to
 # (production / staging / development). Defaults to "production" if unset.
 SENTRY_ENVIRONMENT=production
+
+# Optional: override the crashpad database directory (minidumps, pending reports).
+# Defaults to ".sentry-native" in the working directory (/app inside the image).
+# SENTRY_DB_PATH=/app/.sentry-native
 ```
 
 ### `.env.voice` (voice service container env)
@@ -142,6 +146,7 @@ Set these in `.env.backend`:
 
 - `SENTRY_DSN` — required to enable crash reporting. If empty, the server runs normally but does not report crashes.
 - `SENTRY_ENVIRONMENT` — optional label (`production`, `staging`, `development`). Defaults to `production`.
+- `SENTRY_DB_PATH` — optional crashpad database directory. Defaults to `.sentry-native` in the working directory.
 
 ### CI variables (GitHub Secrets)
 
@@ -154,6 +159,48 @@ symbolicated (stack traces show source lines instead of raw addresses):
 
 If any of these are missing, the release workflow still completes — it just skips
 the debug-symbol upload step.
+
+### Verifying crash reporting works
+
+All `sentry-native` diagnostics are routed into the application log (both the
+console and `communicator.log`) prefixed with `Sentry:`. After starting the
+container, look for:
+
+- `Sentry initialized (release: …, environment: …, database: …, dsn: set)` — Sentry
+  is on and a DSN was found. If instead you see `SENTRY_DSN is not set`, crash
+  reporting is disabled and you must set `SENTRY_DSN` in `.env.backend`.
+- `Sentry: …` `WARN`/`ERROR` lines — these reveal why events are not arriving
+  (e.g. `crashpad_handler` not found, an invalid DSN, or network/transport
+  failures). The handler must be executable and located next to `communicatorsrv`.
+- `Sentry: removed N stale crashpad lock file(s).` — the startup cleanup removed
+  lock files left behind by a previous handler that was killed mid-upload. This
+  is expected after a crash-induced container restart and is what allows the
+  pending minidump from that crash to be uploaded.
+
+### Why crash reports can go missing in Docker
+
+Two things happen when the server crashes inside a container and none of them
+produce a visible error by default:
+
+1. **The handler is killed mid-upload.** The server runs as PID 1. When it
+   crashes, the container is stopped and the `crashpad_handler` child process is
+   `SIGKILL`ed before it can finish uploading the minidump.
+2. **Stale lock files block the next upload.** crashpad guards each pending report
+   with a `<uuid>.lock` file created with `O_CREAT|O_EXCL`. The killed handler
+   leaves those files behind, so on the next start the new handler hits
+   `open …/pending/<uuid>.lock: File exists (17)` and silently skips the report.
+
+The backend now mitigates both:
+
+- It waits for the upload to finish before the process exits
+  (`sentry_options_set_crashpad_wait_for_upload`), keeping the container alive
+  until the handler completes.
+- It removes stale `.lock` files at startup, so any minidump still pending from a
+  previous crash is uploaded on the next start.
+
+The crashpad database is also kept on a named Docker volume
+(`sqrll_sentry:/app/.sentry-native`) so minidumps survive `docker compose down`
+and `up`, not just in-place restarts.
 
 ### Disabling Sentry at build time
 

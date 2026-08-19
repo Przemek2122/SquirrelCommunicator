@@ -15,6 +15,11 @@ services:
     devices:
         - "/dev/urandom:/dev/urandom"
 
+    volumes:
+        # Persist the crashpad database across container restarts AND recreations
+        # so a minidump written by a crash can still be uploaded on the next start.
+        - sqrll_sentry:/app/.sentry-native
+
     ports:
       - "8080:8080" # Backend rest
       - "8081:8081" # Backend socket
@@ -81,3 +86,7 @@ services:
       - AUTOHEAL_START_PERIOD=30      # 30 seconds to start for each container
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
+
+volumes:
+  sqrll_sentry:

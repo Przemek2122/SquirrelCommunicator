@@ -75,9 +75,9 @@ public:
 	 * Base URL used when building public-facing links (registration
 	 * verification emails, invite links, etc.).
 	 *
-	 * Debug builds target the local REST server (http://localhost:<Port>),
-	 * while release builds use BackendAddress1 from the INI
-	 * (e.g. https://comm.sqrll.net).
+	 * Debug builds target the local REST server (http://<DebugDomain>:<Port>,
+	 * e.g. http://localhost:8080), while release builds use BackendAddress1
+	 * from the INI (e.g. https://comm.sqrll.net).
 	 */
 	std::string GetPublicBaseUrl() const { return PublicBaseUrl; }
 

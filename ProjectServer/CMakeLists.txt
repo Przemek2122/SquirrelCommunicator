@@ -490,10 +490,13 @@ if(SQRLL_ENABLE_SENTRY)
         # server binary (sentry spawns it at runtime to write minidumps).
         if(TARGET crashpad_handler)
             add_dependencies("${PROJECT_NAME}" crashpad_handler)
+            # Use $<TARGET_FILE_NAME:...> so the copied file keeps its platform
+            # extension (e.g. crashpad_handler.exe on Windows). Without the
+            # extension the SDK cannot locate the handler.
             add_custom_command(TARGET "${PROJECT_NAME}" POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "$<TARGET_FILE:crashpad_handler>"
-                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/crashpad_handler"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/$<TARGET_FILE_NAME:crashpad_handler>"
                 COMMENT "Copying Sentry crashpad_handler next to communicatorsrv"
             )
         endif()
