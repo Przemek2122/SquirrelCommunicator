@@ -108,6 +108,12 @@ SQRLL_VOICE_PORT=8082
 
 # The main password for communicating with the backend (Change this!)
 SQRLL_VOICE_API_KEY=
+
+# API key for gifs, get one on https://partner.klipy.com/api-keys
+SQRLL_KLIPY_API_KEY=
+
+# URL for service for CORS policy. example: http://localhost:8083 or https://comm.sqrll.net/
+SQRLL_IMAGE_SERVICE_URL=
 ```
 
 ### `.env.image` (voice service container env)
@@ -125,6 +131,30 @@ MAX_UPLOAD_MB=8
 ```
 # Message encryption key (used instead of MessageEncryptionKeyFile from ini config).
 SQRLL_MESSAGE_ENCRYPTION_KEY=
+```
+
+### Apache config for redirecting page
+##### Apache config is recommended for safe ussage with follwoing config
+##### Content for like 
+
+```
+        # C++ backend REST (/api/v1/*)
+        ProxyPass        /api  http://localhost:8080/api
+        ProxyPassReverse /api  http://localhost:8080/api
+
+        RewriteEngine On
+
+        # GO voice service (HTTP + WebSocket) — rooms, gifs, files, voice, screenshare
+        RewriteCond %{HTTP:Upgrade} =websocket [NC]
+        RewriteRule ^/voice-ws/(.*) ws://localhost:8082/$1 [P,L]
+        ProxyPass        /voice-ws  http://localhost:8082
+        ProxyPassReverse /voice-ws  http://localhost:8082
+
+        # WebSocket of C++ server
+        RewriteCond %{HTTP:Upgrade} =websocket [NC]
+        RewriteRule /ws/(.*) ws://localhost:8081/$1 [P,L]
+        ProxyPass        /ws  http://localhost:8081
+        ProxyPassReverse /ws  http://localhost:8081
 ```
 
 ## Sentry Crash Reporting
