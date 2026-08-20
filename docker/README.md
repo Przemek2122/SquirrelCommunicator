@@ -111,14 +111,14 @@ SQRLL_VOICE_API_KEY=
 
 # API key for gifs, get one on https://partner.klipy.com/api-keys
 SQRLL_KLIPY_API_KEY=
-
-# URL for service for CORS policy. example: http://localhost:8083 or https://comm.sqrll.net/
-SQRLL_IMAGE_SERVICE_URL=
 ```
 
 ### `.env.image` (voice service container env)
 
 ```
+# Address for voice service
+SQRLL_IMAGE_SERVICE_URL=127.0.0.1:8083
+
 PORT=8083
 SQRLL_IMAGE_API_KEY=
 MAX_DISK_GB=200
