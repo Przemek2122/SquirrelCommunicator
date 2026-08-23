@@ -612,7 +612,7 @@ bool FServersManager::RenameChannel(Uint64 ServerId, Uint64 ChannelId, const std
     return true;
 }
 
-Uint64 FServersManager::AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 SenderId, const std::string& SenderName, const std::string& Content)
+Uint64 FServersManager::AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 SenderId, const std::string& SenderName, const std::string& Content, const EMessageType MessageType)
 {
     auto Server = GetServerById(ServerId);
     if (!Server)
@@ -626,6 +626,7 @@ Uint64 FServersManager::AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 Sen
     Message.SenderId = SenderId;
     Message.SenderName = SenderName;
     Message.Content = Content;
+    Message.MessageType = MessageType;
     Message.CreatedAt = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
 
     Uint64 OutMessageId = 0;
@@ -1207,13 +1208,14 @@ bool FServersManager::UploadMessageToDB(const FServerMessage& Message, Uint64& O
         // Message status: Sent=0
         const int MsgStatus = 0;
 
-        Session << "INSERT INTO server_messages (channel_id, sender_id, content, created_at, text_status, is_encrypted) VALUES (:cid, :sid, :content, :created, :status, :encrypted)",
+        Session << "INSERT INTO server_messages (channel_id, sender_id, content, created_at, text_status, is_encrypted, message_type) VALUES (:cid, :sid, :content, :created, :status, :encrypted, :type)",
             soci::use(Message.ChannelId),
             soci::use(Message.SenderId),
             soci::use(StoredContent),
             soci::use(Message.CreatedAt),
             soci::use(MsgStatus),
-            soci::use(static_cast<int>(bEncrypted ? 1 : 0));
+            soci::use(static_cast<int>(bEncrypted ? 1 : 0)),
+            soci::use(static_cast<int>(Message.MessageType));
 
         long long LastId = 0;
         Session.get_last_insert_id("server_messages", LastId);
@@ -1786,12 +1788,13 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, const std::shared
         const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
         int TextStatus = 0;
         int IsEncrypted = 0;
+        int MessageType = 0;
 
         // Pagination: fetch messages before a timestamp, newest first
         if (BeforeTimestamp > 0)
         {
             soci::statement St = (Session.prepare <<
-                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at, sm.text_status, sm.is_encrypted "
+                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at, sm.text_status, sm.is_encrypted, sm.message_type "
                 "FROM server_messages sm "
                 "JOIN users u ON sm.sender_id = u.id "
                 "WHERE sm.channel_id = :cid AND sm.created_at < :before "
@@ -1803,6 +1806,7 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, const std::shared
                 soci::into(CreatedAt),
                 soci::into(TextStatus),
                 soci::into(IsEncrypted),
+                soci::into(MessageType),
                 soci::use(ChannelId),
                 soci::use(BeforeTimestamp),
                 soci::use(Limit));
@@ -1825,6 +1829,7 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, const std::shared
                     Message.Content = Content;
                 }
                 Message.CreatedAt = CreatedAt;
+                Message.MessageType = static_cast<EMessageType>(MessageType);
                 Server->AddMessage(Message);
             }
         }
@@ -1832,7 +1837,7 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, const std::shared
         {
             // No timestamp filter: get the most recent messages
             soci::statement St = (Session.prepare <<
-                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at, sm.text_status, sm.is_encrypted "
+                "SELECT sm.id, sm.sender_id, u.username, sm.content, sm.created_at, sm.text_status, sm.is_encrypted, sm.message_type "
                 "FROM server_messages sm "
                 "JOIN users u ON sm.sender_id = u.id "
                 "WHERE sm.channel_id = :cid "
@@ -1844,6 +1849,7 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, const std::shared
                 soci::into(CreatedAt),
                 soci::into(TextStatus),
                 soci::into(IsEncrypted),
+                soci::into(MessageType),
                 soci::use(ChannelId),
                 soci::use(Limit));
 
@@ -1865,6 +1871,7 @@ bool FServersManager::DownloadMessagesFromDB(Uint64 ChannelId, const std::shared
                     Message.Content = Content;
                 }
                 Message.CreatedAt = CreatedAt;
+                Message.MessageType = static_cast<EMessageType>(MessageType);
                 Server->AddMessage(Message);
             }
         }

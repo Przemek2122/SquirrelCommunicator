@@ -3,6 +3,7 @@
 #pragma once
 
 #include "EngineCompat.h"
+#include "Managers/MessageType.h"
 #include <variant>
 #include <uwebsockets/WebSocket.h>
 
@@ -52,6 +53,7 @@ enum class ESocketMessagePrivateType : uint8
     GetFriendList,
     InitialClientData,
     InitialConversations,
+    ImageApiKey,           // Server -> Client: per-session image service API key
     CreateFriendRequest,
     AcceptFriendRequest,
     RejectFriendRequest,
@@ -148,3 +150,9 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
 
 /** Converts Servers-specific enum back to string for outgoing messages. */
 std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnum);
+
+/** Converts an incoming "message_type" string ("text"/"image"/"gif"/"video") to its enum. Defaults to Text. */
+EMessageType StringToMessageType(std::string_view InTypeString);
+
+/** Converts an EMessageType back to its wire representation ("text"/"image"/"gif"/"video"). */
+std::string MessageTypeToString(EMessageType InTypeEnum);

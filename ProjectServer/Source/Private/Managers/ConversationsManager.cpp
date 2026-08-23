@@ -99,12 +99,12 @@ bool FConversationsManager::IsMessageInConversation(Uint64 InMessageId, Uint64 I
 	return false;
 }
 
-Uint64 FConversationsManager::AddMessage(const Uint64 InConversationId, const Uint64 InSenderId, const std::string& InMessage)
+Uint64 FConversationsManager::AddMessage(const Uint64 InConversationId, const Uint64 InSenderId, const std::string& InMessage, const EMessageType InMessageType)
 {
 	std::shared_ptr<FConversationData> ConversationPtr = GetConversation(InConversationId);
 
 	Uint64 OutId = 0;
-	const EDatabaseOperationResult Result = UploadMessage(InConversationId, InSenderId, InMessage, OutId);
+	const EDatabaseOperationResult Result = UploadMessage(InConversationId, InSenderId, InMessage, InMessageType, OutId);
 	if (Result == EDatabaseOperationResult::Success)
 	{
 		const Uint64 NowNanos = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
@@ -114,6 +114,7 @@ Uint64 FConversationsManager::AddMessage(const Uint64 InConversationId, const Ui
 		ConversationMessageData.SenderId = InSenderId;
 		ConversationMessageData.Message = InMessage;
 		ConversationMessageData.CreatedAt = NowNanos;
+		ConversationMessageData.MessageType = InMessageType;
 
 		// Lock conversation for adding message
 		std::unique_lock Lock(ConversationPtr->Lock);
@@ -438,15 +439,17 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 			unsigned long long CreatedAt = 0;
 			int TextStatus = 0;
 			int IsEncrypted = 0;
+			int MessageType = 0;
 
 			soci::statement Stmt = (DataBaseSession.prepare <<
-				"SELECT id, sender_id, text, created_at, text_status, is_encrypted FROM messages WHERE conversation_id = :conv_id ORDER BY id DESC LIMIT :limit OFFSET :offset",
+				"SELECT id, sender_id, text, created_at, text_status, is_encrypted, message_type FROM messages WHERE conversation_id = :conv_id ORDER BY id DESC LIMIT :limit OFFSET :offset",
 				soci::into(MessageId),
 				soci::into(SenderId),
 				soci::into(MessageText),
 				soci::into(CreatedAt),
 				soci::into(TextStatus),
 				soci::into(IsEncrypted),
+				soci::into(MessageType),
 				soci::use(InConversationId),
 				soci::use(InLimit),
 				soci::use(InOffset));
@@ -475,6 +478,8 @@ std::vector<FConversationMessageData> FConversationsManager::DownloadConversatio
 				MessageData.CreatedAt = static_cast<Uint64>(CreatedAt);
 				// Restore edit/delete status from the text_status column
 				MessageData.Status = static_cast<EConversationMessageStatus>(TextStatus);
+				// Restore the message type discriminator
+				MessageData.MessageType = static_cast<EMessageType>(MessageType);
 
 				ConversationData.push_back(MessageData);
 			}
@@ -756,7 +761,7 @@ void FConversationsManager::AddConversationsForUserToCache(const Uint64 InConver
 	}
 }
 
-EDatabaseOperationResult FConversationsManager::UploadMessage(const Uint64 InConversationId, const Uint64 SenderId, const std::string& InMessage, Uint64& OutId)
+EDatabaseOperationResult FConversationsManager::UploadMessage(const Uint64 InConversationId, const Uint64 SenderId, const std::string& InMessage, const EMessageType InMessageType, Uint64& OutId)
 {
 	EDatabaseOperationResult DatabaseOperationResult = EDatabaseOperationResult::Unknown;
 
@@ -780,13 +785,14 @@ EDatabaseOperationResult FConversationsManager::UploadMessage(const Uint64 InCon
 			const int MsgStatus = static_cast<int>(EConversationMessageStatus::Sent);
 
 			const Uint64 NowNanos = static_cast<Uint64>(std::chrono::system_clock::now().time_since_epoch().count());
-			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text, created_at, text_status, is_encrypted) VALUES (:conv_id, :sender_id, :text, :created, :status, :encrypted)",
+			DataBaseSession << "INSERT INTO messages (conversation_id, sender_id, text, created_at, text_status, is_encrypted, message_type) VALUES (:conv_id, :sender_id, :text, :created, :status, :encrypted, :type)",
 				soci::use(InConversationId),
 				soci::use(SenderId),
 				soci::use(StoredText, Ind),
 				soci::use(NowNanos),
 				soci::use(MsgStatus),
-				soci::use(static_cast<int>(bEncrypted ? 1 : 0));
+				soci::use(static_cast<int>(bEncrypted ? 1 : 0)),
+				soci::use(static_cast<int>(InMessageType));
 
 			// Get last inserted ID
 			long long LastInsertId;

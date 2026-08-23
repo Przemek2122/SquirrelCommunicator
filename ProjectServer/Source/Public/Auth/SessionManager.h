@@ -5,6 +5,9 @@
 #include "EngineCompat.h"
 #include <shared_mutex>
 #include <thread>
+#include <set>
+#include <functional>
+#include <string>
 
 struct FUserSessionData
 {
@@ -55,6 +58,13 @@ public:
 	bool DeactivateSession(const std::string& InSessionToken);
 	bool IsSessionTokenAlive(const std::string& InSessionToken);
 
+	/**
+	 * Set a callback invoked whenever a session is deactivated (explicit logout
+	 * or natural expiry). Used to release per-session resources such as the
+	 * image service API key. Invoked after the internal lock has been released.
+	 */
+	void SetOnSessionDeactivatedCallback(std::function<void(const std::string&)> InCallback);
+
 private:
 	std::string CreateTokenFromId(Uint64 InUserId) const;
 
@@ -62,11 +72,14 @@ private:
 	/** Session to user Id map */
 	CUnorderedMap<std::string, FUserSessionData, Uint64> SessionIdToUserIdMap;
 
-	/** Map with user id to session token mapping */
-	CUnorderedMap<Uint64, std::string, Uint64> UserIdToSessionTokenMap;
+	/** Map with user id to a set of session tokens (multiple devices supported) */
+	CUnorderedMap<Uint64, std::set<std::string>> UserIdToSessionTokenMap;
 
 	/** Mutex for UserDataBase */
 	std::shared_mutex SessionIdToUserIdMapMutex;
+
+	/** Invoked after a session is removed (e.g. to revoke per-session image keys). */
+	std::function<void(const std::string&)> OnSessionDeactivatedCallback;
 
 	/** Last updated time in async work */
 	Uint64 AsyncWorkLastTime;

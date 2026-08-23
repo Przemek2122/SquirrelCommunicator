@@ -1,8 +1,10 @@
 # Squirrel Communicator Server API Documentation
 
-Version 1.9
+Version 2.0
 
 This document describes all server endpoints and WebSocket message types available in Squirrel Communicator. The system uses two communication channels: REST API over HTTPS for authentication and account management, and WebSocket for real time messaging and server operations.
+
+Media files (images, GIFs, videos) are handled by a separate content-addressable image service; its REST API is documented in docs/image_service_api.md. This document covers the image_api_key WebSocket event (Section 2.1.4) that grants the client access to that service.
 
 ============================================
 SECTION 1: REST API ENDPOINTS
@@ -292,11 +294,12 @@ These messages use the priv section and handle direct messages, conversations, f
 2.1.1 Client to Server Messages
 
     type: message
-        Send a message in a conversation.
+        Send a message in a conversation. Supports text, image, gif and video.
 
         data:
             conversation_id  string  Conversation ID
-            content          string  Message text
+            content          string  Message text (for text) or the SHA-256 content hash of a verified upload (for image/gif/video)
+            message_type     string  Optional. One of: text (default), image, gif, video. Media types require `content` to be a 64-char hex SHA-256 hash.
 
     type: message_edit
         Edit an existing message in a conversation.
@@ -337,7 +340,7 @@ These messages use the priv section and handle direct messages, conversations, f
 
         Server response type: load_more_messages
             status   success or no_more_messages or unauthorized
-            message  Array of message objects with message, sender_id fields
+            message  Array of message objects with message, sender_id, message_type fields
 
     type: get_conversations
         Get list of recent conversations for the current user.
@@ -351,7 +354,7 @@ These messages use the priv section and handle direct messages, conversations, f
                 id          Conversation ID
                 users       Array of user objects id, name, status
                 userids     Array of user IDs
-                messages    Array of last 25 messages with message, message_id, sender_id, time, status
+                messages    Array of last 25 messages with message, message_id, sender_id, time, status, message_type
 
     type: add_conversation
         Create or open a conversation with another user. Only works if users are friends.
@@ -501,6 +504,28 @@ These messages use the priv section and handle direct messages, conversations, f
             data:
                 user_id  Caller user ID
 
+2.1.4 Image Service Key
+
+    The backend issues a per-session API key for the SquirrelCommunicatorImage
+    service (content-addressable media storage + GIF provider proxy). The key is
+    issued at login and delivered to the client over the WebSocket as soon as the
+    connection is established, so the client can upload images/GIFs/videos and
+    query the GIF search/trending endpoints directly against the image service.
+
+    type: image_api_key
+        Server -> Client. Sent automatically after the connection is established
+        (immediately after initial_client_data). Sent in the priv section.
+
+        data:
+            key       string  Per-session image service API key. Empty string when unavailable.
+            available boolean True when the key is usable; false when the image service is
+                              disabled or unreachable. On false the client should hide media
+                              upload/GIF UI and retry on reconnect.
+
+        The key must be sent as the X-SQRLL-API-KEY header on image service upload
+        and GIF requests. It is revoked automatically on logout or session expiry.
+        See docs/image_service_api.md for endpoint details.
+
 --------------------------------------------
 2.2 SERVERS
 --------------------------------------------
@@ -544,15 +569,16 @@ These messages handle the community server system with channels and voice chat. 
         Server broadcasts type: server_user_left to remaining server members.
 
     type: server_message
-        Send a text message in a server channel.
+        Send a message in a server channel. Supports text, image, gif and video.
 
         data:
             server_id     string  Server ID
             channel_id  string  Channel ID
-            content     string  Message text
+            content     string  Message text (for text) or the SHA-256 content hash of a verified upload (for image/gif/video)
+            message_type string  Optional. One of: text (default), image, gif, video. Media types require `content` to be a 64-char hex SHA-256 hash.
 
         Server broadcasts type: server_message to all server members with:
-            server_id, channel_id, message_id, sender_id, sender_name, content, timestamp.
+            server_id, channel_id, message_id, sender_id, sender_name, content, message_type, timestamp.
 
     type: create_channel
         Create a new channel in a server. The channel is auto-assigned the next
@@ -796,7 +822,7 @@ These messages handle the community server system with channels and voice chat. 
 
         Server response type: server_messages
             data:
-                messages  Array of message objects with message_id, channel_id, sender_id, sender_name, content, timestamp
+                messages  Array of message objects with message_id, channel_id, sender_id, sender_name, content, message_type, timestamp
                 has_more  boolean
 
     type: server_create_invite
@@ -1256,12 +1282,20 @@ SECTION 3: DATA STRUCTURES
 3.6 Message Object
 
     {
-        message     string  Message content
-        message_id  number  Unique message identifier
-        sender_id   number  User ID of sender
-        time        number  Creation timestamp
-        status      number  Message status code
+        message      string  Message content (plain text, or a SHA-256 content
+                             hash for media messages)
+        message_id   number  Unique message identifier
+        sender_id    number  User ID of sender
+        time         number  Creation timestamp
+        status       number  Message status code
+        message_type string  text, image, gif or video
     }
+
+    For image/gif/video messages, the message field holds the SHA-256 content
+    hash of a verified upload to the image service (see Section 10), and
+    message_type indicates the media kind. The server rejects media messages
+    whose content is not a well-formed 64-character hex SHA-256 hash (it replies
+    with type: error and message: invalid media hash).
 
     Note: When a message is encrypted at rest and the server cannot decrypt it
     (missing or mismatched encryption key, or corrupted data), the message field
@@ -1738,3 +1772,29 @@ The placeholder is plain ASCII text and requires no special handling beyond
 being displayed as-is by the client. Clients should treat it as an indication
 that the message could not be decrypted (e.g., due to a server-side key
 mismatch after a key rotation or database migration).
+
+============================================
+SECTION 10: IMAGE SERVICE API
+============================================
+
+Media files (images, GIFs, videos) are not stored by this server. They live in a
+separate content-addressable Go microservice (SquirrelCommunicatorImage). The
+backend only issues and revokes the per-session API key (see the image_api_key
+event in Section 2.1.4); the client talks to the image service directly using
+that key.
+
+Full endpoint reference (upload, download, GIF search/trending/fetch, key
+management, environment variables): see docs/image_service_api.md.
+
+Environment variables consumed by this backend for image service integration:
+
+    SQRLL_IMAGE_API_KEY   Admin/master key for the image service key-management
+                          endpoints. Must match the image service's admin key.
+    SQRLL_IMAGE_ADDRESS   Base URL/host of the image service (e.g. http://localhost
+                          or http://image_service).
+    SQRLL_IMAGE_PORT      Port of the image service (e.g. 8083). Optional when
+                          SQRLL_IMAGE_ADDRESS already includes the port.
+
+    If any of these are missing or the service is unreachable, media upload and
+    GIF features are disabled and the image_api_key event reports available: false.
+

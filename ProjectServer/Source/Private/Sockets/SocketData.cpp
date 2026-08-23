@@ -56,6 +56,7 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
         case HashString("get_friend_request_list"): return ESocketMessagePrivateType::GetFriendRequestList;
         case HashString("initial_client_data"):     return ESocketMessagePrivateType::InitialClientData;
         case HashString("initial_conversations"):   return ESocketMessagePrivateType::InitialConversations;
+        case HashString("image_api_key"):         return ESocketMessagePrivateType::ImageApiKey;
         case HashString("create_friend_request"):   return ESocketMessagePrivateType::CreateFriendRequest;
         case HashString("accept_friend_request"):   return ESocketMessagePrivateType::AcceptFriendRequest;
         case HashString("reject_friend_request"):   return ESocketMessagePrivateType::RejectFriendRequest;
@@ -95,6 +96,7 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
         case ESocketMessagePrivateType::GetFriendRequestList:   return "get_friend_request_list";
         case ESocketMessagePrivateType::InitialClientData:      return "initial_client_data";
         case ESocketMessagePrivateType::InitialConversations:   return "initial_conversations";
+        case ESocketMessagePrivateType::ImageApiKey:          return "image_api_key";
         case ESocketMessagePrivateType::CreateFriendRequest:    return "create_friend_request";
         case ESocketMessagePrivateType::AcceptFriendRequest:    return "accept_friend_request";
         case ESocketMessagePrivateType::RejectFriendRequest:    return "reject_friend_request";
@@ -231,5 +233,29 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
 
         case ESocketMessageServersType::Unknown:
         default:                                              return "unknown";
+    }
+}
+
+EMessageType StringToMessageType(const std::string_view InTypeString)
+{
+    switch (HashString(InTypeString))
+    {
+        case HashString("image"): return EMessageType::Image;
+        case HashString("gif"):   return EMessageType::Gif;
+        case HashString("video"): return EMessageType::Video;
+        case HashString("text"):  return EMessageType::Text;
+        default:                  return EMessageType::Text;
+    }
+}
+
+std::string MessageTypeToString(const EMessageType InTypeEnum)
+{
+    switch (InTypeEnum)
+    {
+        case EMessageType::Image: return "image";
+        case EMessageType::Gif:   return "gif";
+        case EMessageType::Video: return "video";
+        case EMessageType::Text:
+        default:                  return "text";
     }
 }

@@ -96,7 +96,15 @@ void FServersSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
                 const Uint64 ServerId = std::stoull(DataJSON["server_id"].get<std::string>());
                 const Uint64 ChannelId = std::stoull(DataJSON["channel_id"].get<std::string>());
                 const std::string Content = DataJSON["content"].get<std::string>();
-                ServerMessage(wsVariant, opCode, ServerId, ChannelId, Content);
+
+                // Optional message type discriminator ("text"/"image"/"gif"/"video"). Defaults to text.
+                EMessageType MessageType = EMessageType::Text;
+                if (DataJSON.contains("message_type"))
+                {
+                    MessageType = StringToMessageType(DataJSON["message_type"].get<std::string>());
+                }
+
+                ServerMessage(wsVariant, opCode, ServerId, ChannelId, Content, MessageType);
             }
             else
             {
@@ -582,7 +590,7 @@ void FServersSocketData::LeaveServer(AnyWebSocket wsVariant, uWS::OpCode opCode,
     LOG_INFO("User " << CurrentUserId << " left server " << ServerId);
 }
 
-void FServersSocketData::ServerMessage(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId, const std::string& Content)
+void FServersSocketData::ServerMessage(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId, const std::string& Content, const EMessageType MessageType)
 {
     const Uint64 CurrentUserId = GetUserIdFromWS(wsVariant);
     if (CurrentUserId == 0)
@@ -607,10 +615,18 @@ void FServersSocketData::ServerMessage(AnyWebSocket wsVariant, uWS::OpCode opCod
         return;
     }
 
+    // Media messages must reference the content-addressable image service by a
+    // well-formed SHA-256 hash. This is what makes media "verified" server-side.
+    if (MessageType != EMessageType::Text && !IsValidSha256Hex(Content))
+    {
+        FSocket::EarlyExit(wsVariant, "invalid media hash", opCode);
+        return;
+    }
+
     const std::string UserName = GetUserName(CurrentUserId);
 
     // Persist the message
-    const Uint64 MessageId = ServersManager->AddMessage(ServerId, ChannelId, CurrentUserId, UserName, Content);
+    const Uint64 MessageId = ServersManager->AddMessage(ServerId, ChannelId, CurrentUserId, UserName, Content, MessageType);
     if (MessageId == 0)
     {
         FSocket::EarlyExit(wsVariant, "failed to save message", opCode);
@@ -626,6 +642,7 @@ void FServersSocketData::ServerMessage(AnyWebSocket wsVariant, uWS::OpCode opCod
     BroadcastJson["data"]["sender_id"] = CurrentUserId;
     BroadcastJson["data"]["sender_name"] = UserName;
     BroadcastJson["data"]["content"] = Content;
+    BroadcastJson["data"]["message_type"] = MessageTypeToString(MessageType);
     BroadcastJson["data"]["timestamp"] = std::chrono::system_clock::now().time_since_epoch().count();
 
     BroadcastToServerMembers(ServerId, BroadcastJson);
@@ -975,6 +992,7 @@ void FServersSocketData::HandleGetServerMessages(AnyWebSocket wsVariant, uWS::Op
         MsgJson["sender_id"] = std::to_string(Msg.SenderId);
         MsgJson["sender_name"] = Msg.SenderName;
         MsgJson["content"] = Msg.Content;
+        MsgJson["message_type"] = MessageTypeToString(Msg.MessageType);
         MsgJson["timestamp"] = Msg.CreatedAt;
         MessagesArray.push_back(MsgJson);
     }

@@ -24,7 +24,7 @@ public:
     void PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& JsonMessage, uWS::OpCode opCode);
 
     /** Called when user is sending a message */
-    void OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, const std::string& Content);
+    void OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, const std::string& Content, EMessageType MessageType = EMessageType::Text);
 
     /** Called when user is editing a message */
     void OnMessageReceived_MessageEdit(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 MessageId, const std::string& Content);

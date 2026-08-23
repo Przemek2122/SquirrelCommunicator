@@ -3,6 +3,7 @@
 #pragma once
 
 #include "EngineCompat.h"
+#include "Managers/MessageType.h"
 #include <shared_mutex>
 #include <vector>
 #include <unordered_map>
@@ -79,8 +80,9 @@ struct FServerMessage
     Uint64 ChannelId = 0;
     Uint64 SenderId = 0;
     std::string SenderName;
-    std::string Content;
-    Uint64 CreatedAt = 0; // Unix timestamp as epoch nanoseconds (BIGINT UNSIGNED in DB)
+    std::string Content;      // For media types this holds the verified content hash.
+    Uint64 CreatedAt = 0;     // Unix timestamp as epoch nanoseconds (BIGINT UNSIGNED in DB)
+    EMessageType MessageType = EMessageType::Text;
 
     FServerMessage() = default;
 };

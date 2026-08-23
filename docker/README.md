@@ -100,7 +100,7 @@ SENTRY_ENVIRONMENT=production
 - SQRLL_VOICE_API_KEY - It is backend password to do not allow random calls to create random rooms.
 
 ```
-# Address for backend app
+# Address for voice service
 SQRLL_VOICE_ADDRESS=127.0.0.1
 
 # The port the Go service runs on for Voice and Backend app server
@@ -116,12 +116,17 @@ SQRLL_KLIPY_API_KEY=
 ### `.env.image` (voice service container env)
 
 ```
-# Address for voice service
-SQRLL_IMAGE_SERVICE_URL=127.0.0.1:8083
+# Address for image service
+SQRLL_IMAGE_SERVICE_URL=127.0.0.1
 
-PORT=8083
+# The port the Go service runs on
+SQRLL_IMAGE_PORT=8083
+
+# The main password for communicating with the backend (Change this!)
 SQRLL_IMAGE_API_KEY=
-MAX_DISK_GB=200
+
+# Image service settings itself
+MAX_DISK_GB=100
 MAX_RAM_MB=1024
 MAX_UPLOAD_MB=8
 ```

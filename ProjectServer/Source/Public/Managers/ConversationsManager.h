@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EngineCompat.h"
+#include "Managers/MessageType.h"
 #include <shared_mutex>
 
 enum class EDatabaseOperationResult : Uint8;
@@ -26,6 +27,7 @@ struct FConversationMessageData
 		, SenderId(0)
 		, CreatedAt(0)
 		, Status(EConversationMessageStatus::Sent)
+		, MessageType(EMessageType::Text)
 	{
 	}
 
@@ -34,7 +36,7 @@ struct FConversationMessageData
 	/** Who sent message? */
 	Uint64 SenderId;
 
-	/** Actual message */
+	/** Actual message. For media types this holds the verified content hash. */
 	std::string Message;
 
 	/** Creation time as epoch nanoseconds (BIGINT UNSIGNED in DB) */
@@ -42,6 +44,9 @@ struct FConversationMessageData
 
 	/** Was edited */
 	EConversationMessageStatus Status;
+
+	/** What the message carries (text, image, gif, video). */
+	EMessageType MessageType;
 
 };
 
@@ -98,7 +103,7 @@ public:
 	bool IsUserInConversation(Uint64 InUserId, Uint64 InConversationId);
 	bool IsMessageInConversation(Uint64 InMessageId, Uint64 InConversationId);
 
-	Uint64 AddMessage(Uint64 InConversationId, Uint64 InSenderId, const std::string& InMessage);
+	Uint64 AddMessage(Uint64 InConversationId, Uint64 InSenderId, const std::string& InMessage, EMessageType InMessageType = EMessageType::Text);
 	void EditMessage(Uint64 InRequesterId, Uint64 InConversationId, Uint64 InMessageId, const std::string& InNewMessage);
 	void DeleteMessage(Uint64 InRequesterId, Uint64 InConversationId, Uint64 InMessageId);
 
@@ -145,7 +150,7 @@ private:
 	void AddConversationsForUserToCache(const Uint64 InConversationId, const CArray<Uint64>& InUserIds);
 
 	/** Send message to DB */
-	EDatabaseOperationResult UploadMessage(Uint64 InConversationId, Uint64 SenderId, const std::string& InMessage, Uint64& OutId);
+	EDatabaseOperationResult UploadMessage(Uint64 InConversationId, Uint64 SenderId, const std::string& InMessage, EMessageType InMessageType, Uint64& OutId);
 
 protected:
 	/** Map with conversations mapped into their data structs */

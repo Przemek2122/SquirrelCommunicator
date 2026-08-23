@@ -117,7 +117,7 @@ std::string FSessionManager::CreateSession(const Uint64 InUserId)
 
 	std::lock_guard<std::shared_mutex> MutexScopeLock(SessionIdToUserIdMapMutex);
 	SessionIdToUserIdMap.Emplace(SessionToken, UserSessionData);
-	UserIdToSessionTokenMap.Emplace(InUserId, SessionToken);
+	UserIdToSessionTokenMap[InUserId].insert(SessionToken);
 
 	return SessionToken;
 }
@@ -156,28 +156,44 @@ bool FSessionManager::RefreshSessionToken(const std::string& InSessionToken)
 
 bool FSessionManager::DoesUserHaveSession(const Uint64 InUserId)
 {
-	return UserIdToSessionTokenMap.ContainsKey(InUserId);
+	std::shared_lock<std::shared_mutex> ReadLock(SessionIdToUserIdMapMutex);
+
+	const auto Iter = UserIdToSessionTokenMap.find(InUserId);
+	return (Iter != UserIdToSessionTokenMap.end() && !Iter->second.empty());
 }
 
 bool FSessionManager::DeactivateSession(const std::string& InSessionToken)
 {
+	Uint64 UserId = 0;
 	bool bDeactivatedSession = false;
 
-	bool bSessionExists = false;
-
-	std::shared_lock ReadLock(SessionIdToUserIdMapMutex);
-	bSessionExists = SessionIdToUserIdMap.ContainsKey(InSessionToken);
-
-	if (bSessionExists)
 	{
-		const std::optional<FUserSessionData> UserSessionData = SessionIdToUserIdMap.FindValueByKey(InSessionToken);
-		if (UserSessionData.has_value())
-		{
-			const Uint64 UserId = UserSessionData->UserId;
-			bDeactivatedSession = UserIdToSessionTokenMap.Remove(UserId);
-		}
+		std::unique_lock<std::shared_mutex> WriteLock(SessionIdToUserIdMapMutex);
 
-		SessionIdToUserIdMap.Remove(InSessionToken);
+		const auto SessionIter = SessionIdToUserIdMap.find(InSessionToken);
+		if (SessionIter != SessionIdToUserIdMap.end())
+		{
+			UserId = SessionIter->second.UserId;
+			SessionIdToUserIdMap.erase(SessionIter);
+
+			const auto UserSessionsIter = UserIdToSessionTokenMap.find(UserId);
+			if (UserSessionsIter != UserIdToSessionTokenMap.end())
+			{
+				UserSessionsIter->second.erase(InSessionToken);
+				if (UserSessionsIter->second.empty())
+				{
+					UserIdToSessionTokenMap.erase(UserSessionsIter);
+				}
+			}
+
+			bDeactivatedSession = true;
+		}
+	}
+
+	// Notify after releasing the lock to avoid re-entrancy/deadlock.
+	if (bDeactivatedSession && OnSessionDeactivatedCallback)
+	{
+		OnSessionDeactivatedCallback(InSessionToken);
 	}
 
 	return bDeactivatedSession;
@@ -200,6 +216,11 @@ bool FSessionManager::IsSessionTokenAlive(const std::string& InSessionToken)
 	}
 
 	return bIsSessionTokenAlive;
+}
+
+void FSessionManager::SetOnSessionDeactivatedCallback(std::function<void(const std::string&)> InCallback)
+{
+	OnSessionDeactivatedCallback = std::move(InCallback);
 }
 
 std::string FSessionManager::CreateTokenFromId(const Uint64 InUserId) const

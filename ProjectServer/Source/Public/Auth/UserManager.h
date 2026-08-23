@@ -5,11 +5,14 @@
 #include "EngineCompat.h"
 
 #include <shared_mutex>
+#include <memory>
 #include "SessionManager.h"
 #include "User.h"
 #include "Encryption/PasswordEncryptionArgon.h"
 
 enum class EDatabaseOperationResult : Uint8;
+
+class FImageServiceManager;
 
 enum class ERegisterUserStatus : Uint8
 {
@@ -124,6 +127,9 @@ public:
 	bool GetUsersByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers);
 	std::shared_ptr<FUser> GetUserById(Uint64 InUserId);
 
+	/** Manager that issues/revokes per-session image service API keys. */
+	FImageServiceManager* GetImageServiceManager() const { return ImageServiceManager.get(); }
+
 private:
 	EDatabaseOperationResult DownloadUserFromDBByMail(const std::string& InUserEmail, std::shared_ptr<FUser>& UserPtr);
 	EDatabaseOperationResult DownloadUsersFromDBByIds(const std::vector<Uint64>& UserIds, std::vector<std::shared_ptr<FUser>>& OutUsers, bool bAutoAddToCache);
@@ -147,6 +153,13 @@ private:
 	bool ValidateEMailLength(const std::string& InEMail);
 
 private:
+	/**
+	 * Manager for image service (issues/revokes per-session upload keys).
+	 * Declared before SessionManager so it is destroyed after the session
+	 * manager's worker thread has been joined.
+	 */
+	std::unique_ptr<FImageServiceManager> ImageServiceManager;
+
 	/** Manager for user sessions */
 	std::unique_ptr<FSessionManager> SessionManager;
 

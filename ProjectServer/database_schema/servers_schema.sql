@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS server_members (
 -- text_status: INT(8) UNSIGNED — reserved for future edit/delete status (0=Sent).
 -- is_encrypted: TINYINT(1) UNSIGNED — whether content is encrypted at rest
 --   (0=plaintext, 1=encrypted). See EMessageEncryptionStatus in BackendSettings.h.
+-- message_type: TINYINT UNSIGNED — discriminates message content
+--   (0=text, 1=image, 2=gif, 3=video). For media types, `content` holds the SHA-256
+--   content hash of the verified upload from the image service.
 --
 -- Index strategy:
 --   idx_messages_channel_id (channel_id, id DESC) is the single compound index
@@ -89,6 +92,7 @@ CREATE TABLE IF NOT EXISTS server_messages (
     created_at    BIGINT UNSIGNED NOT NULL DEFAULT 0,
     text_status   INT(8) UNSIGNED DEFAULT NULL,
     is_encrypted  TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
+    message_type  TINYINT UNSIGNED NOT NULL DEFAULT 0,
 
     INDEX idx_messages_channel_id (channel_id, id DESC),
     INDEX idx_messages_sender (sender_id),

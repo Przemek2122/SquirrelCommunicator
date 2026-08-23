@@ -11,6 +11,7 @@ services:
       - .env.backend
       - .env.encryptionpass
       - .env.voice
+      - .env.image
 
     devices:
         - "/dev/urandom:/dev/urandom"
@@ -41,7 +42,6 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env.voice
-      - .env.image
 
     ports:
       - "8082:8082" # Voice port

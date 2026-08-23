@@ -57,8 +57,15 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 				const Uint64 ConversationId = std::stoull(ConversationIdString);
 				const std::string Content = JsonMessage["data"]["content"];
 
+				// Optional message type discriminator ("text"/"image"/"gif"/"video"). Defaults to text.
+				EMessageType MessageType = EMessageType::Text;
+				if (JsonMessage["data"].contains("message_type"))
+				{
+					MessageType = StringToMessageType(JsonMessage["data"]["message_type"].get<std::string>());
+				}
+
 				// Handle send message
-				OnMessageReceived_Message(wsVariant, opCode, ConversationId, Content);
+				OnMessageReceived_Message(wsVariant, opCode, ConversationId, Content, MessageType);
 			}
 			else
 			{
@@ -423,7 +430,7 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 	}
 }
 
-void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId, const std::string& Content)
+void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId, const std::string& Content, const EMessageType MessageType)
 {
 	std::visit([&](auto* ws)
 	{
@@ -437,12 +444,21 @@ void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::
 				return;
 			}
 
+			// Media messages must reference the content-addressable image service by a
+			// well-formed SHA-256 hash. This is what makes media "verified" server-side.
+			if (MessageType != EMessageType::Text && !IsValidSha256Hex(Content))
+			{
+				FSocket::EarlyExit(wsVariant, "invalid media hash", opCode);
+
+				return;
+			}
+
 			FConversationsManager* ConversationsManager = ProjectEngine->GetConversationsManager();
 			std::shared_ptr<FConversationData> Conversation = ConversationsManager->GetConversation(ConversationId);
 			const Uint64& ConnectionUserId = WebSocketSessionData->UserId;
 			if (Conversation != nullptr)
 			{
-				const Uint64 OutId = ConversationsManager->AddMessage(ConversationId, ConnectionUserId, Content);
+				const Uint64 OutId = ConversationsManager->AddMessage(ConversationId, ConnectionUserId, Content, MessageType);
 
 				// Build the message payload used for both direct confirmation and broadcast
 				nlohmann::json MessageJson;
@@ -450,6 +466,7 @@ void FPrivateSocketData::OnMessageReceived_Message(AnyWebSocket wsVariant, uWS::
 				MessageJson["message_id"] = OutId;
 				MessageJson["conversation_id"] = ConversationId;
 				MessageJson["conversation_message"] = Content;
+				MessageJson["message_type"] = MessageTypeToString(MessageType);
 
 				// 1) Send immediate confirmation back to the sender
 				//    This is consistent with every other handler (CreateFriendRequest, etc.)
@@ -732,6 +749,7 @@ void FPrivateSocketData::OnMessageReceived_LoadMoreMessages(AnyWebSocket wsVaria
 						nlohmann::json NewMessage;
 						NewMessage["message"] = Message.Message;
 						NewMessage["sender_id"] = Message.SenderId;
+						NewMessage["message_type"] = MessageTypeToString(Message.MessageType);
 
 						MessagesJsonArray.push_back(NewMessage);
 					}
@@ -1316,6 +1334,7 @@ nlohmann::json FPrivateSocketData::FormatConversationIntoJson(const CArray<Uint6
 					NewMessage["sender_id"] = Message.SenderId;
 					NewMessage["time"] = Message.CreatedAt;
 					NewMessage["status"] = Message.Status;
+					NewMessage["message_type"] = MessageTypeToString(Message.MessageType);
 
 					MessagesJsonArray.push_back(NewMessage);
 				}

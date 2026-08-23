@@ -29,6 +29,9 @@ SET time_zone = "+00:00";
 -- created_at changed from datetime to BIGINT UNSIGNED for consistency with servers/server_messages
 -- text_status: INT(8) UNSIGNED — message edit/delete status (0=Sent, 1=Edited, 2=Deleted)
 -- is_encrypted: TINYINT(1) — whether content is encrypted at rest (0=plaintext, 1=encrypted)
+-- message_type: TINYINT UNSIGNED — discriminates message content
+--   (0=text, 1=image, 2=gif, 3=video). For media types, `text` holds the SHA-256
+--   content hash of the verified upload from the image service.
 
 CREATE TABLE `messages` (
   `id` bigint(20) UNSIGNED NOT NULL,
@@ -37,7 +40,8 @@ CREATE TABLE `messages` (
   `text` varchar(4096) NOT NULL,
   `created_at` bigint(20) UNSIGNED NOT NULL DEFAULT 0,
   `text_status` int(8) UNSIGNED NOT NULL DEFAULT 0,
-  `is_encrypted` tinyint(1) UNSIGNED NOT NULL DEFAULT 0
+  `is_encrypted` tinyint(1) UNSIGNED NOT NULL DEFAULT 0,
+  `message_type` tinyint(1) UNSIGNED NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --

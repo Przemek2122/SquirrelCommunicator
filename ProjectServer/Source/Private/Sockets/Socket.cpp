@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "Managers/ConversationsManager.h"
+#include "Managers/ImageServiceManager.h"
 
 FSocket::FSocket(const int32 InSocketIndex, std::string InHost, const int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath)
 	: SocketIndex(InSocketIndex)
@@ -171,7 +172,8 @@ auto CreateSocketBehavior(FSocket* Socket) {
 				res->template upgrade<FWebSocketSessionData>(
 					{
 						.UserId = TempUserId,
-						.ClientIP = TempClientIp
+						.ClientIP = TempClientIp,
+						.SessionToken = AuthTokenValue
 					},  // userData
 					req->getHeader("sec-websocket-key"),
 					req->getHeader("sec-websocket-protocol"),
@@ -297,6 +299,34 @@ void FSocket::OnClientConnected(auto* ws)
 
 			// Send initial client data
 			ws->send(JsonRoot.dump(), uWS::TEXT);
+		}
+
+		// Deliver the per-session image API key (issued at login) to this device.
+		{
+			FImageServiceManager* ImageServiceManager = UserManger->GetImageServiceManager();
+			std::string ImageKey;
+			if (ImageServiceManager != nullptr)
+			{
+				ImageKey = ImageServiceManager->GetKeyForSession(WebSocketSessionData->SessionToken);
+
+				// If registration failed at login (e.g. service was briefly down),
+				// try issuing the key again now.
+				if (ImageKey.empty())
+				{
+					ImageKey = ImageServiceManager->RegisterKey(WebSocketSessionData->SessionToken);
+				}
+			}
+
+			nlohmann::json KeyData;
+			KeyData["key"] = ImageKey;
+			KeyData["available"] = !ImageKey.empty();
+
+			nlohmann::json KeyRoot;
+			KeyRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::ImageApiKey);
+			KeyRoot["section"] = SocketMessageSectionToString(ESocketMessageSection::Priv);
+			KeyRoot["data"] = KeyData;
+
+			ws->send(KeyRoot.dump(), uWS::TEXT);
 		}
 
 		// Update status to connected clients (friends)

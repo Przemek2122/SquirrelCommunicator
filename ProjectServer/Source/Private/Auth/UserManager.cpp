@@ -2,6 +2,7 @@
 
 #include "Logger/Logger.h"
 #include "Auth/UserManager.h"
+#include "Managers/ImageServiceManager.h"
 
 #include <nlohmann/json.hpp>
 
@@ -24,6 +25,18 @@ FUserManager::~FUserManager()
 void FUserManager::Init()
 {
 	CachedArgonSettings = GetArgonSettings();
+
+	// Image service: issues/revokes a per-session upload key on login/logout.
+	ImageServiceManager = std::make_unique<FImageServiceManager>();
+
+	// When a session dies (explicit logout OR natural expiry), withdraw its key.
+	SessionManager->SetOnSessionDeactivatedCallback([this](const std::string& SessionToken)
+	{
+		if (ImageServiceManager)
+		{
+			ImageServiceManager->RevokeKey(SessionToken);
+		}
+	});
 
 	SessionManager->Init();
 }
@@ -238,6 +251,12 @@ ELoginStatus FUserManager::LoginUser(const std::string& InUserEmail, const std::
 
 			OutSessionToken = SessionManager->CreateSession(Id);
 
+			// Best effort: issue a per-session image API key (delivered to the client over the WebSocket).
+			if (ImageServiceManager)
+			{
+				ImageServiceManager->RegisterKey(OutSessionToken);
+			}
+
 			LoginStatus = ELoginStatus::Successful;
 		}
 	}
@@ -280,6 +299,11 @@ ELoginStatus FUserManager::LoginIntegration(const std::string& InUserEmail, std:
 
 		OutSessionToken = SessionManager->CreateSession(Id);
 
+		if (ImageServiceManager)
+		{
+			ImageServiceManager->RegisterKey(OutSessionToken);
+		}
+
 		LoginStatus = ELoginStatus::Successful;
 	}
 
@@ -296,6 +320,11 @@ ELoginStatus FUserManager::LoginFromId(const Uint64 Id, std::string& OutSessionT
 		OnLoginSuccessful(UserPtr, false);
 
 		OutSessionToken = SessionManager->CreateSession(Id);
+
+		if (ImageServiceManager)
+		{
+			ImageServiceManager->RegisterKey(OutSessionToken);
+		}
 
 		LoginStatus = ELoginStatus::Successful;
 	}
