@@ -108,9 +108,6 @@ SQRLL_VOICE_PORT=8082
 
 # The main password for communicating with the backend (Change this!)
 SQRLL_VOICE_API_KEY=
-
-# API key for gifs, get one on https://partner.klipy.com/api-keys
-SQRLL_KLIPY_API_KEY=
 ```
 
 ### `.env.image` (voice service container env)
@@ -124,6 +121,9 @@ SQRLL_IMAGE_PORT=8083
 
 # The main password for communicating with the backend (Change this!)
 SQRLL_IMAGE_API_KEY=
+
+# API key for gifs, get one on https://partner.klipy.com/api-keys
+SQRLL_KLIPY_API_KEY=
 
 # Image service settings itself
 MAX_DISK_GB=100
