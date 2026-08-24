@@ -9,7 +9,7 @@
 FImageServiceManager::FImageServiceManager()
 {
 	const char* MasterKeyPtr = getenv("SQRLL_IMAGE_API_KEY");
-	const char* ServiceAddressPtr = getenv("SQRLL_IMAGE_ADDRESS");
+	const char* ServiceAddressPtr = getenv("SQRLL_IMAGE_SERVICE_URL");
 	const char* ServicePortPtr = getenv("SQRLL_IMAGE_PORT");
 
 	MasterApiKey = (MasterKeyPtr != nullptr) ? MasterKeyPtr : "";
@@ -30,7 +30,7 @@ FImageServiceManager::FImageServiceManager()
 
 	if (ServiceAddress.empty())
 	{
-		LOG_WARN("SQRLL_IMAGE_ADDRESS/SQRLL_IMAGE_PORT are not set - image service unavailable.");
+		LOG_WARN("SQRLL_IMAGE_SERVICE_URL/SQRLL_IMAGE_PORT are not set - image service unavailable.");
 	}
 }
 

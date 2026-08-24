@@ -1790,10 +1790,10 @@ Environment variables consumed by this backend for image service integration:
 
     SQRLL_IMAGE_API_KEY   Admin/master key for the image service key-management
                           endpoints. Must match the image service's admin key.
-    SQRLL_IMAGE_ADDRESS   Base URL/host of the image service (e.g. http://localhost
+    SQRLL_IMAGE_SERVICE_URL   Base URL/host of the image service (e.g. http://localhost
                           or http://image_service).
     SQRLL_IMAGE_PORT      Port of the image service (e.g. 8083). Optional when
-                          SQRLL_IMAGE_ADDRESS already includes the port.
+                          SQRLL_IMAGE_SERVICE_URL already includes the port.
 
     If any of these are missing or the service is unreachable, media upload and
     GIF features are disabled and the image_api_key event reports available: false.
