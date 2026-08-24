@@ -160,6 +160,17 @@ MAX_RAM_MB=1024
 MAX_UPLOAD_MB=8
 ```
 
+> [!WARNING]
+> The backend and the image service must be configured with the **same**
+> `SQRLL_IMAGE_API_KEY`. If they differ, the backend cannot issue per-session
+> API keys (the image service answers `403`), the client receives no key, and
+> every GIF / upload request fails with `401 Unauthorized`. After changing the
+> key, recreate **both** containers so they read the new value:
+>
+> ```bash
+> docker compose up -d --force-recreate backend image_service
+> ```
+
 ### `.env.encryptionpass` (Encryption password file)
 
 ```

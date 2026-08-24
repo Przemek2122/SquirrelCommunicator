@@ -23,6 +23,20 @@ FImageServiceManager::FImageServiceManager()
 		ServiceAddress = ServiceAddressPtr;
 	}
 
+	// Normalize the base URL so it always carries an explicit scheme. The
+	// config examples set SQRLL_IMAGE_SERVICE_URL to a bare host
+	// ("127.0.0.1"); without a scheme libcurl's behaviour is version-dependent
+	// (some builds guess http://, others reject the URL outright). The image
+	// service is plain HTTP internally, so default to that.
+	if (!ServiceAddress.empty())
+	{
+		if (ServiceAddress.rfind("http://", 0) != 0 &&
+			ServiceAddress.rfind("https://", 0) != 0)
+		{
+			ServiceAddress = "http://" + ServiceAddress;
+		}
+	}
+
 	if (MasterApiKey.empty())
 	{
 		LOG_WARN("SQRLL_IMAGE_API_KEY is not set - image uploads and GIFs will be unavailable.");
@@ -62,7 +76,14 @@ std::string FImageServiceManager::RegisterKey(const std::string& SessionToken)
 
 	if (Response.status_code != 201)
 	{
-		LOG_ERROR("Failed to register image API key. Status: " << Response.status_code << " Msg: " << Response.text);
+		if (Response.status_code == 403)
+		{
+			LOG_ERROR("Image service rejected the master key (403). SQRLL_IMAGE_API_KEY mismatch between backend and image service - no per-session key will be issued and GIF/upload requests will fail with 401.");
+		}
+		else
+		{
+			LOG_ERROR("Failed to register image API key. Status: " << Response.status_code << " Msg: " << Response.text);
+		}
 		return "";
 	}
 
