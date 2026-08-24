@@ -31,42 +31,50 @@ FSocket::FSocket(const int32 InSocketIndex, std::string InHost, const int32 InPo
 
 FSocket::~FSocket()
 {
+	RequestShutdown();
+}
+
+void FSocket::RequestShutdown()
+{
+	// Stop the listener first so no new connections are accepted while we
+	// drain the existing ones below.
 	if (AppListenSocket != nullptr)
 	{
-		// Stop the listener (already done)
 		us_listen_socket_close(bUseSSL, AppListenSocket);
+		AppListenSocket = nullptr; // Prevent a double close on a second call.
+	}
 
-		// Copy to avoid simultaneous access and delete
-		CUnorderedMap<Uint64, AnyWebSocket> tempCopyMap;
+	// Copy to avoid simultaneous access and delete.
+	CUnorderedMap<Uint64, AnyWebSocket> tempCopyMap;
 
-		{
-			// Lock should be redundant but if somebody were connecting in exact same time as close we might crash
-			std::unique_lock<std::shared_mutex> Lock(UserIdToWebSocketPtrMapMutex);
+	{
+		// Lock should be redundant but if somebody were connecting in exact same time as close we might crash
+		std::unique_lock<std::shared_mutex> Lock(UserIdToWebSocketPtrMapMutex);
 
-			// Safe copy
-			tempCopyMap = UserIdToWebSocketPtrMap;
-		}
+		// Safe copy
+		tempCopyMap = UserIdToWebSocketPtrMap;
+	}
 
-		// Close all existing sockets
-		for (std::pair<Uint64, AnyWebSocket> UserIdToSocketPair : tempCopyMap)
-		{
+	// Close all existing sockets. Each close drains the uWS loop, which causes
+	// the worker thread running Async()/Run() to return.
+	for (std::pair<Uint64, AnyWebSocket> UserIdToSocketPair : tempCopyMap)
+	{
 #if DEBUG
-			FFunctorLambda<void, void*> SocketAccessFunctor = [UserIdToSocketPair](void* ws)
+		FFunctorLambda<void, void*> SocketAccessFunctor = [UserIdToSocketPair](void* ws)
 #else
-			FFunctorLambda<void, void*> SocketAccessFunctor = [](void* ws)
+		FFunctorLambda<void, void*> SocketAccessFunctor = [](void* ws)
 #endif
-			{
+		{
 #if DEBUG
-				LOG_INFO("Killing socket session for ID: " << UserIdToSocketPair.first);
+			LOG_INFO("Killing socket session for ID: " << UserIdToSocketPair.first);
 #endif
 
-				auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
+			auto* WebSocket = static_cast<uWS::WebSocket<false, true, FUserSessionData>*>(ws);
 
-				WebSocket->close();
-			};
+			WebSocket->close();
+		};
 
-			AddDeferTaskForConnectionId(UserIdToSocketPair.first, SocketAccessFunctor);
-		}
+		AddDeferTaskForConnectionId(UserIdToSocketPair.first, SocketAccessFunctor);
 	}
 }
 

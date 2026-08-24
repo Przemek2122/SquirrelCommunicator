@@ -77,6 +77,18 @@ std::vector<std::shared_ptr<FServer>> FServersManager::GetUserServers(const Uint
 
 std::vector<Uint64> FServersManager::GetUserServerIds(Uint64 UserId)
 {
+    // Fast path: serve from the in-memory membership cache. It is invalidated on
+    // every membership mutation, so it never returns stale data. This removes a
+    // synchronous DB SELECT from the connect/disconnect hot path.
+    {
+        std::shared_lock Lock(UserToServerIdsCacheMutex);
+        const auto Iter = UserToServerIdsCache.find(UserId);
+        if (Iter != UserToServerIdsCache.end())
+        {
+            return Iter->second;
+        }
+    }
+
     std::vector<Uint64> ServerIds;
 
     FDataBaseConnect Connect;
@@ -106,6 +118,12 @@ std::vector<Uint64> FServersManager::GetUserServerIds(Uint64 UserId)
     catch (const std::exception& e)
     {
         LOG_ERROR("GetUserServerIds DB error: " << e.what());
+        return ServerIds;
+    }
+
+    {
+        std::unique_lock Lock(UserToServerIdsCacheMutex);
+        UserToServerIdsCache[UserId] = ServerIds;
     }
 
     return ServerIds;
@@ -154,6 +172,12 @@ Uint64 FServersManager::AddServer(const std::string& InServerName, Uint64 OwnerI
         ServersMap[NewServerId] = NewServer;
     }
 
+    // Invalidate the owner's membership cache (they gained a server).
+    {
+        std::unique_lock Lock(UserToServerIdsCacheMutex);
+        UserToServerIdsCache.erase(OwnerId);
+    }
+
     LOG_INFO("Created server '" << InServerName << "' with ID " << NewServerId);
     return NewServerId;
 }
@@ -169,6 +193,13 @@ bool FServersManager::RemoveServer(const Uint64 InServerId)
     {
         std::unique_lock Lock(ServersMapMutex);
         ServersMap.erase(InServerId);
+    }
+
+    // Removing a server affects the membership of every former member; clear the
+    // entire membership cache (rebuilding per-user would require a member list).
+    {
+        std::unique_lock Lock(UserToServerIdsCacheMutex);
+        UserToServerIdsCache.clear();
     }
 
     return true;
@@ -201,6 +232,12 @@ bool FServersManager::AddUserToServer(Uint64 ServerId, Uint64 UserId,
     Member.Status = "online";
     Server->AddMember(Member);
 
+    // Invalidate the membership cache so the next GetUserServerIds() re-queries.
+    {
+        std::unique_lock Lock(UserToServerIdsCacheMutex);
+        UserToServerIdsCache.erase(UserId);
+    }
+
     return true;
 }
 
@@ -219,6 +256,13 @@ bool FServersManager::RemoveUserFromServer(const Uint64 ServerId, const Uint64 U
     }
 
     Server->RemoveMember(UserId);
+
+    // Invalidate the membership cache so the next GetUserServerIds() re-queries.
+    {
+        std::unique_lock Lock(UserToServerIdsCacheMutex);
+        UserToServerIdsCache.erase(UserId);
+    }
+
     return true;
 }
 
@@ -435,14 +479,25 @@ bool FServersManager::MoveChannel(Uint64 ServerId, Uint64 ChannelId, uint32 NewP
         return false;
     }
 
+    // Build the {ChannelId -> Position} map and apply it under the server lock
+    // (also invalidates the sorted-channel cache). Writing Position without the
+    // lock would race with the sort in GetAllChannels().
+    {
+        std::unordered_map<Uint64, uint32> NewPositions;
+        NewPositions.reserve(Channels.size());
+        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+        {
+            NewPositions[Channels[i]->ChannelId] = static_cast<uint32>(i);
+        }
+        Server->SetChannelPositions(NewPositions);
+    }
+
     try
     {
         soci::session& Session = Connect.GetSession();
 
         for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
         {
-            Channels[i]->Position = i;
-
             Session << "UPDATE server_channels SET position = :pos WHERE id = :cid AND server_id = :sid",
                 soci::use(i),
                 soci::use(Channels[i]->ChannelId),
@@ -517,19 +572,24 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
         }
     }
 
-    // Build a lookup map: channel_id -> channel shared_ptr for fast position assignment
-    std::unordered_map<Uint64, std::shared_ptr<FServerChannel>> ChannelMap;
-    for (std::shared_ptr<FServerChannel>& Ch : Channels)
-    {
-        ChannelMap[Ch->ChannelId] = Ch;
-    }
-
     // Update all positions atomically in a single DB transaction
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
     {
         LOG_ERROR("ReorderChannels: Database connection failed");
         return false;
+    }
+
+    // Apply the new in-memory positions under the server lock (also invalidates
+    // the sorted-channel cache). The DB updates below use the loop index.
+    {
+        std::unordered_map<Uint64, uint32> NewPositions;
+        NewPositions.reserve(ChannelIds.size());
+        for (int32 i = 0; i < static_cast<int32>(ChannelIds.size()); ++i)
+        {
+            NewPositions[ChannelIds[i]] = static_cast<uint32>(i);
+        }
+        Server->SetChannelPositions(NewPositions);
     }
 
     try
@@ -539,14 +599,6 @@ bool FServersManager::ReorderChannels(const Uint64 ServerId, const std::vector<U
         for (int32 i = 0; i < static_cast<int32>(ChannelIds.size()); ++i)
         {
             const Uint64 ChannelId = ChannelIds[i];
-            auto It = ChannelMap.find(ChannelId);
-            if (It == ChannelMap.end())
-            {
-                // Should never reach here (validated above), but be defensive
-                continue;
-            }
-
-            It->second->Position = i;
 
             Session << "UPDATE server_channels SET position = :pos WHERE id = :cid AND server_id = :sid",
                 soci::use(i),
@@ -1067,8 +1119,13 @@ std::vector<std::pair<Uint64, Uint64>> FServersManager::GetUserVoiceChannels(con
                 continue;
             }
 
-            // Check if user is in ConnectedUsers
-            const std::vector<Uint64>& Users = Channel->ConnectedUsers;
+            // ConnectedUsers is mutated under ServerMutex by Join/LeaveVoiceChannel
+            // and LeaveAllVoiceChannelsInServer, so snapshot it under a shared lock.
+            std::vector<Uint64> Users;
+            {
+                std::shared_lock Lock(Server->GetMutex());
+                Users = Channel->ConnectedUsers;
+            }
             if (std::ranges::find(Users, UserId) != Users.end())
             {
                 Result.emplace_back(ServerId, Channel->ChannelId);
@@ -1077,6 +1134,37 @@ std::vector<std::pair<Uint64, Uint64>> FServersManager::GetUserVoiceChannels(con
     }
 
     return Result;
+}
+
+std::vector<Uint64> FServersManager::LeaveAllVoiceChannelsInServer(const Uint64 ServerId, const Uint64 UserId)
+{
+    std::vector<Uint64> LeftChannelIds;
+
+    const std::shared_ptr<FServer> Server = GetServerById(ServerId);
+    if (!Server)
+    {
+        return LeftChannelIds;
+    }
+
+    const std::vector<std::shared_ptr<FServerChannel>> Channels = Server->GetAllChannels();
+    for (const std::shared_ptr<FServerChannel>& Channel : Channels)
+    {
+        if (Channel->ChannelType != EServerChannelType::Voice)
+        {
+            continue;
+        }
+
+        std::unique_lock Lock(Server->GetMutex());
+        std::vector<Uint64>& Users = Channel->ConnectedUsers;
+        const auto It = std::ranges::find(Users, UserId);
+        if (It != Users.end())
+        {
+            Users.erase(It);
+            LeftChannelIds.push_back(Channel->ChannelId);
+        }
+    }
+
+    return LeftChannelIds;
 }
 
 void FServersManager::EnsureServerLoaded(const Uint64 ServerId)
@@ -1605,14 +1693,24 @@ void FServersManager::RenumberChannelPositions(const Uint64 ServerId)
         return;
     }
 
+    // Apply the new in-memory positions under the server lock (also invalidates
+    // the sorted-channel cache). The DB updates below use the loop index.
+    {
+        std::unordered_map<Uint64, uint32> NewPositions;
+        NewPositions.reserve(Channels.size());
+        for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
+        {
+            NewPositions[Channels[i]->ChannelId] = static_cast<uint32>(i);
+        }
+        Server->SetChannelPositions(NewPositions);
+    }
+
     try
     {
         soci::session& Session = Connect.GetSession();
 
         for (int32 i = 0; i < static_cast<int32>(Channels.size()); ++i)
         {
-            Channels[i]->Position = i;
-
             Session << "UPDATE server_channels SET position = :pos WHERE id = :cid AND server_id = :sid",
                 soci::use(i),
                 soci::use(Channels[i]->ChannelId),

@@ -1359,6 +1359,20 @@ void FServersSocketData::HandleKickMember(AnyWebSocket wsVariant, uWS::OpCode op
         return;
     }
 
+    // The kicked user may still be in a voice channel within this server. Remove
+    // them and notify the remaining members (mirrors LeaveServer/Cleanup semantics).
+    const std::vector<Uint64> LeftVoiceChannels = ServersManager->LeaveAllVoiceChannelsInServer(ServerId, TargetUserId);
+    for (const Uint64 VoiceChannelId : LeftVoiceChannels)
+    {
+        nlohmann::json VoiceLeaveJson;
+        VoiceLeaveJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerUserVoiceLeave);
+        VoiceLeaveJson["data"]["server_id"] = ServerId;
+        VoiceLeaveJson["data"]["channel_id"] = VoiceChannelId;
+        VoiceLeaveJson["data"]["user_id"] = TargetUserId;
+        VoiceLeaveJson["data"]["user_name"] = TargetUserName;
+        BroadcastToServerMembers(ServerId, VoiceLeaveJson, TargetUserId);
+    }
+
     // Notify the kicked user directly (they are no longer a member, so not in broadcast).
     nlohmann::json KickedJson;
     KickedJson["type"] = SocketMessageServersTypeToString(ESocketMessageServersType::ServerUserKicked);

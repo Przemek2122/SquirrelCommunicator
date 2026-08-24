@@ -45,9 +45,28 @@ FSocketManager::~FSocketManager()
 
 void FSocketManager::Stop()
 {
-	// Destroy each FSocketThread. The FSocket destructor closes the listen
-	// socket and every active websocket, which drains the uWS event loop so the
-	// worker thread returns from run(); the std::jthread destructor then joins.
+	// Close every listener and active connection. Draining each uWS loop
+	//    lets the worker threads return from run().
+	for (auto& SocketThread : SocketThreads)
+	{
+		if (SocketThread && SocketThread->SocketPtr)
+		{
+			SocketThread->SocketPtr->RequestShutdown();
+		}
+	}
+
+	// Join all worker threads. Only once they have returned is it safe to
+	//    destroy the FSocket objects (and the uWS loops they own); otherwise a
+	//    worker could still be inside run() using a freed loop.
+	for (auto& SocketThread : SocketThreads)
+	{
+		if (SocketThread && SocketThread->Thread.joinable())
+		{
+			SocketThread->Thread.join();
+		}
+	}
+
+	// Destroy the sockets now that no worker thread references them.
 	SocketThreads.clear();
 
 	LOG_INFO("Socket threads stopped.");

@@ -162,12 +162,20 @@ public:
     std::vector<std::shared_ptr<FServerChannel>> GetAllChannels() const;
 
     /**
-     * Invalidate the sorted channel cache.
-     * MUST be called after external code modifies channel positions directly
-     * on the shared_ptr objects returned by GetAllChannels(). This ensures
-     * the next GetAllChannels() call re-sorts instead of returning stale order.
+     * Invalidate the sorted channel cache (thread-safe: takes the server lock).
+     * The next GetAllChannels() call re-sorts instead of returning a stale order.
      */
     void InvalidateChannelCache();
+
+    /**
+     * Atomically update channel display positions and invalidate the sorted
+     * channel cache under a single lock acquisition. Callers (MoveChannel,
+     * ReorderChannels, RenumberChannelPositions) build a {ChannelId -> Position}
+     * map and hand it here so the in-memory Position fields are never written
+     * without holding ServerMutex (which would race with the sort in
+     * GetAllChannels()).
+     */
+    void SetChannelPositions(const std::unordered_map<Uint64, uint32>& NewPositions);
 
     /** Member management */
     void AddMember(const FServerMember& Member);
@@ -241,4 +249,7 @@ private:
 
     /** Server mutex for thread-safe access */
     mutable std::shared_mutex ServerMutex;
+
+    /** Internal cache invalidation (caller must hold a unique_lock on ServerMutex). */
+    void InvalidateChannelCacheLocked();
 };

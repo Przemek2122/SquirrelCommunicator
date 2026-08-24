@@ -11,17 +11,37 @@ FServer::FServer()
 
 void FServer::InvalidateChannelCache()
 {
-    // Called under unique_lock by all channel mutators.
-    // Also exposed publicly so ServersManager can invalidate after
-    // external position modifications (MoveChannel, ReorderChannels, RenumberChannelPositions).
+    std::unique_lock Lock(ServerMutex);
+    InvalidateChannelCacheLocked();
+}
+
+void FServer::InvalidateChannelCacheLocked()
+{
+    // Caller must hold a unique_lock on ServerMutex.
     bChannelCacheValid = false;
+}
+
+void FServer::SetChannelPositions(const std::unordered_map<Uint64, uint32>& NewPositions)
+{
+    std::unique_lock Lock(ServerMutex);
+
+    for (const auto& [ChannelId, Position] : NewPositions)
+    {
+        const auto Iter = Channels.find(ChannelId);
+        if (Iter != Channels.end())
+        {
+            Iter->second->Position = Position;
+        }
+    }
+
+    InvalidateChannelCacheLocked();
 }
 
 void FServer::AddChannel(const FServerChannel& Channel)
 {
     std::unique_lock Lock(ServerMutex);
     Channels[Channel.ChannelId] = std::make_shared<FServerChannel>(Channel);
-    InvalidateChannelCache();
+    InvalidateChannelCacheLocked();
 }
 
 bool FServer::RemoveChannel(const Uint64 ChannelId)
@@ -30,7 +50,7 @@ bool FServer::RemoveChannel(const Uint64 ChannelId)
     const bool bRemoved = Channels.erase(ChannelId) > 0;
     if (bRemoved)
     {
-        InvalidateChannelCache();
+        InvalidateChannelCacheLocked();
     }
     return bRemoved;
 }
@@ -48,9 +68,20 @@ std::shared_ptr<FServerChannel> FServer::GetChannel(const Uint64 ChannelId)
 
 std::vector<std::shared_ptr<FServerChannel>> FServer::GetAllChannels() const
 {
-    std::shared_lock Lock(ServerMutex);
+    // Fast path: return the cached sorted list if still valid.
+    {
+        std::shared_lock Lock(ServerMutex);
+        if (bChannelCacheValid)
+        {
+            return CachedSortedChannels;
+        }
+    }
 
-    // Return cached sorted list if still valid (invalidated on Add/Remove/Move/Reorder).
+    // Rebuild under a unique lock. Re-check the flag: another thread may have
+    // rebuilt the cache between releasing the shared lock above and acquiring
+    // this one (proper double-checked locking - writing the mutable cache under
+    // a shared lock would race with concurrent readers).
+    std::unique_lock Lock(ServerMutex);
     if (bChannelCacheValid)
     {
         return CachedSortedChannels;

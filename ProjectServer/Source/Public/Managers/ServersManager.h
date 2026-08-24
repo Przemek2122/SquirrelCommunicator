@@ -165,6 +165,14 @@ public:
      */
     std::vector<std::pair<Uint64, Uint64>> GetUserVoiceChannels(Uint64 UserId);
 
+    /**
+     * Remove a user from every voice channel they are connected to within a
+     * single server (used when a member is kicked). Returns the list of channel
+     * IDs the user was removed from, so the caller can broadcast voice-leave
+     * events to the remaining members.
+     */
+    std::vector<Uint64> LeaveAllVoiceChannelsInServer(Uint64 ServerId, Uint64 UserId);
+
     /** Ensure a server is loaded into memory cache from DB */
     void EnsureServerLoaded(Uint64 ServerId);
 
@@ -251,6 +259,17 @@ private:
 
     /** Mutex for invite map */
     mutable std::shared_mutex InviteMapMutex;
+
+    /**
+     * Cache of user_id -> server IDs the user is a member of. Populated lazily
+     * by GetUserServerIds() and invalidated on every membership mutation
+     * (join/leave/kick/delete). Eliminates a synchronous DB SELECT from the hot
+     * connect/disconnect path (BroadcastMemberStatus, CleanupUserVoiceChannels).
+     */
+    std::unordered_map<Uint64, std::vector<Uint64>> UserToServerIdsCache;
+
+    /** Mutex for UserToServerIdsCache */
+    mutable std::shared_mutex UserToServerIdsCacheMutex;
 
     /** Counter for periodic cleanup throttling (cleanup every ~300 ticks = 5 min) */
     int32 PostSecondTickCounter = 0;

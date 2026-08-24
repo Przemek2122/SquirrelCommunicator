@@ -25,6 +25,13 @@ public:
 	FSocket(int32 InSocketIndex, std::string InHost, int32 InPort, bool bInUseSSL, const std::string& InKeyPath, const std::string& InCertPath);
 	~FSocket();
 
+	/**
+	 * Close the listen socket and every active websocket (drains the uWS
+	 * event loop so the worker thread returns from run()). Safe to call
+	 * multiple times (subsequent calls are no-ops).
+	 */
+	void RequestShutdown();
+
 	/** Add task to be executed on this socket */
 	void AddDeferTaskForConnectionId(Uint64 UserId, FFunctorLambda<void, void* /* ws */>& FunctionToCallOnSocket);
 

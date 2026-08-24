@@ -4,6 +4,7 @@
 
 #include "EngineCompat.h"
 
+#include <chrono>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -51,9 +52,22 @@ private:
 	/** Base URL of the image service (e.g. "http://localhost:8083"). */
 	std::string ServiceAddress;
 
-	/** Guards SessionTokenToImageKey. */
+	/** Guards SessionTokenToImageKey and FailedKeyRegistrations. */
 	mutable std::shared_mutex SessionTokenToImageKeyMutex;
 
 	/** Per-session issued API keys. */
 	std::unordered_map<std::string, std::string> SessionTokenToImageKey;
+
+	/**
+	 * Cooldown applied after a failed key registration before the same session
+	 * is retried. Prevents a down/hanging image service from stalling the
+	 * socket event loop with a synchronous HTTP call on every reconnect.
+	 */
+	static constexpr std::chrono::seconds KeyRegistrationRetryCooldown = std::chrono::seconds(30);
+
+	/** Session tokens whose key registration recently failed, mapped to failure time. */
+	std::unordered_map<std::string, std::chrono::steady_clock::time_point> FailedKeyRegistrations;
+
+	/** Record a failed registration timestamp (thread-safe). */
+	void RecordKeyRegistrationFailure(const std::string& SessionToken);
 };

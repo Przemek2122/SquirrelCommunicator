@@ -3,6 +3,7 @@
 #include "Logger/Logger.h"
 #include "Managers/ImageServiceManager.h"
 
+#include <chrono>
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 
@@ -64,6 +65,16 @@ std::string FImageServiceManager::RegisterKey(const std::string& SessionToken)
 		{
 			return Iter->second;
 		}
+
+		// Negative cache: skip the HTTP call if a registration for this session
+		// recently failed, so a down image service can't stall the socket event
+		// loop on every reconnect. Retried once the cooldown elapses.
+		const auto FailIter = FailedKeyRegistrations.find(SessionToken);
+		if (FailIter != FailedKeyRegistrations.end() &&
+			(std::chrono::steady_clock::now() - FailIter->second) < KeyRegistrationRetryCooldown)
+		{
+			return "";
+		}
 	}
 
 	const std::string TargetURL = ServiceAddress + "/api/key";
@@ -76,6 +87,7 @@ std::string FImageServiceManager::RegisterKey(const std::string& SessionToken)
 
 	if (Response.status_code != 201)
 	{
+		RecordKeyRegistrationFailure(SessionToken);
 		if (Response.status_code == 403)
 		{
 			LOG_ERROR("Image service rejected the master key (403). SQRLL_IMAGE_API_KEY mismatch between backend and image service - no per-session key will be issued and GIF/upload requests will fail with 401.");
@@ -99,17 +111,22 @@ std::string FImageServiceManager::RegisterKey(const std::string& SessionToken)
 	catch (const nlohmann::json::exception& e)
 	{
 		LOG_ERROR("Failed to parse image API key registration response: " << e.what());
+		RecordKeyRegistrationFailure(SessionToken);
 		return "";
 	}
 
 	if (Key.empty())
 	{
 		LOG_ERROR("Image service returned an empty API key.");
+		RecordKeyRegistrationFailure(SessionToken);
 		return "";
 	}
 
 	{
 		std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
+
+		// Success clears any prior negative-cache entry.
+		FailedKeyRegistrations.erase(SessionToken);
 
 		const auto Iter = SessionTokenToImageKey.find(SessionToken);
 		if (Iter == SessionTokenToImageKey.end())
@@ -124,6 +141,12 @@ std::string FImageServiceManager::RegisterKey(const std::string& SessionToken)
 
 	LOG_DEBUG("Registered image API key for session.");
 	return Key;
+}
+
+void FImageServiceManager::RecordKeyRegistrationFailure(const std::string& SessionToken)
+{
+	std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
+	FailedKeyRegistrations[SessionToken] = std::chrono::steady_clock::now();
 }
 
 void FImageServiceManager::RevokeKey(const std::string& SessionToken)
