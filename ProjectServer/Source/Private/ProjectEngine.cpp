@@ -247,6 +247,7 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 	constexpr uint16_t ServerPortDefault = 8080;
 
 	int32 ServerPort = ServerPortDefault;
+	std::string RestListenHost = "127.0.0.1";
 	bIsSSLEnabled = false;
 	bool bDoesServerSettingsExist = ServerSettingsIni && ServerSettingsIni->IsLoaded();
 	if (bDoesServerSettingsExist)
@@ -255,6 +256,14 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 		if (ServerPortField.IsValid())
 		{
 			ServerPort = ServerPortField.GetValueAsInt();
+		}
+
+		// REST server bind address (loopback by default; same rationale as
+		// SocketListenHost). Clients reach the backend only through Apache.
+		const FIniField RestListenHostField = ServerSettingsIni->FindFieldByName("RestListenHost");
+		if (RestListenHostField.IsValid() && !RestListenHostField.GetValueAsString().empty())
+		{
+			RestListenHost = RestListenHostField.GetValueAsString();
 		}
 
 		const FIniField EnableSSLField = ServerSettingsIni->FindFieldByName("EnableSSL");
@@ -310,6 +319,7 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 		if (std::filesystem::exists(CertFilePath) && std::filesystem::exists(KeyFilePath))
 		{
 			CrowAppFutureAsync = CrowApp.port(static_cast<Uint16>(ServerPort))
+				.bindaddr(RestListenHost)
 				.ssl_file(CertFilePath, KeyFilePath)
 				.multithreaded()
 				.run_async();
@@ -332,6 +342,7 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 		LOG_STATE("REST server (CrowCPP) will start without SSL");
 
 		CrowAppFutureAsync = CrowApp.port(static_cast<uint16_t>(ServerPort))
+			.bindaddr(RestListenHost)
 			.multithreaded()
 			.run_async();
 	}
