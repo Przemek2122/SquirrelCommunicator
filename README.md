@@ -21,17 +21,17 @@ GitHub natively renders the diagram below to show how the different microservice
 
 ```mermaid
 graph TD
-    Client[Tauri / Web Client]
+    Client["Tauri / Web Client"]
 
     subgraph Core Backend
-        CPP_REST[C++ Crow REST API]
-        CPP_WS[C++ uWebSockets]
+        CPP_REST["C++ Crow REST API"]
+        CPP_WS["C++ uWebSockets"]
         DB[(MariaDB)]
     end
 
     subgraph Media Microservices
-        GO_VOICE[Go Voice / Video Router]
-        GO_IMAGE[Go Image Service]
+        GO_VOICE["Go Voice / Video Router"]
+        GO_IMAGE["Go Image Service"]
     end
 
     %% Client Connections
@@ -52,9 +52,9 @@ graph TD
     classDef go fill:#00ADD8,stroke:#fff,stroke-width:2px,color:#fff;
     classDef db fill:#F29111,stroke:#fff,stroke-width:2px,color:#fff;
 
-    class CPP_REST,CPP_WS cpp;
-    class GO_VOICE,GO_IMAGE go;
-    class DB db;
+    class CPP_REST,CPP_WS cpp
+    class GO_VOICE,GO_IMAGE go
+    class DB db
 ```
 
 ## ✨ Current Functionality
