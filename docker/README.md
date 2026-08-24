@@ -172,10 +172,17 @@ SQRLL_MESSAGE_ENCRYPTION_KEY=
 ##### Content for like 
 
 ```
+        # Go image service (HTTP) — media upload/download + GIFs (port 8083)
+        ProxyPass        /api/image  http://localhost:8083/api/image
+        ProxyPassReverse /api/image  http://localhost:8083/api/image
+
+        ProxyPass        /api/gifs   http://localhost:8083/api/gifs
+        ProxyPassReverse /api/gifs   http://localhost:8083/api/gifs
+
         # C++ backend REST (/api/v1/*)
         ProxyPass        /api  http://localhost:8080/api
         ProxyPassReverse /api  http://localhost:8080/api
-
+        
         RewriteEngine On
 
         # GO voice service (HTTP + WebSocket) — rooms, gifs, files, voice, screenshare
