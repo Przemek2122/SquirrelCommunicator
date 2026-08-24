@@ -165,6 +165,32 @@ void FServer::AddMessage(const FServerMessage& Message)
     ChannelMessages[Message.ChannelId].push_back(Message);
 }
 
+bool FServer::RemoveMessage(const Uint64 ChannelId, const Uint64 MessageId)
+{
+    std::unique_lock Lock(ServerMutex);
+
+    const auto ChannelIter = ChannelMessages.find(ChannelId);
+    if (ChannelIter == ChannelMessages.end())
+    {
+        return false;
+    }
+
+    std::vector<FServerMessage>& Messages = ChannelIter->second;
+    const auto MessageIter = std::find_if(Messages.begin(), Messages.end(),
+        [MessageId](const FServerMessage& Msg)
+        {
+            return Msg.MessageId == MessageId;
+        });
+
+    if (MessageIter == Messages.end())
+    {
+        return false;
+    }
+
+    Messages.erase(MessageIter);
+    return true;
+}
+
 void FServer::PrependMessages(const Uint64 ChannelId, const std::vector<FServerMessage>& Messages)
 {
     if (Messages.empty())

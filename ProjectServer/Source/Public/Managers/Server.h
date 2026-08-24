@@ -188,6 +188,13 @@ public:
     void AddMessage(const FServerMessage& Message);
 
     /**
+     * Remove a single message from the in-memory cache by ID.
+     * Returns true if the message was found and removed, false otherwise.
+     * Used when a message is deleted so the cache no longer serves it.
+     */
+    bool RemoveMessage(Uint64 ChannelId, Uint64 MessageId);
+
+    /**
      * Prepend a batch of messages to the front of the in-memory cache.
      * Used by DownloadMessagesFromDB when loading older message batches
      * from the database. The batch MUST be in ascending chronological

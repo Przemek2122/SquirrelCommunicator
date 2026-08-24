@@ -29,28 +29,31 @@ graph TD
         DB[(MariaDB)]
     end
 
-    subgraph Media Microservice
-        GO_SFU[Go Voice/Video Router]
+    subgraph Media Microservices
+        GO_VOICE[Go Voice / Video Router]
+        GO_IMAGE[Go Image Service]
     end
 
     %% Client Connections
     Client -- "HTTP POST (Auth, Tokens)" --> CPP_REST
     Client -- "WebSocket (Real-time Chat, Typing, Status)" --> CPP_WS
-    Client -- "WebRTC / UDP (Voice, Screen Share)" --> GO_SFU
+    Client -- "WebRTC / UDP (Voice, Screen Share)" --> GO_VOICE
+    Client -- "HTTP (Upload / Download Media, GIF Search)" --> GO_IMAGE
 
     %% Backend Communication
     CPP_REST -- "Read/Write Users" --> DB
     CPP_WS -- "Save/Load Messages" --> DB
 
     %% Microservice sync
-    CPP_WS -. "Signaling (Session IDs)" .-> GO_SFU
+    CPP_WS -. "Signaling (Voice Room Tokens)" .-> GO_VOICE
+    CPP_REST -. "Image API Key Issuance (S2S)" .-> GO_IMAGE
 
     classDef cpp fill:#00599C,stroke:#fff,stroke-width:2px,color:#fff;
     classDef go fill:#00ADD8,stroke:#fff,stroke-width:2px,color:#fff;
     classDef db fill:#F29111,stroke:#fff,stroke-width:2px,color:#fff;
 
     class CPP_REST,CPP_WS cpp;
-    class GO_SFU go;
+    class GO_VOICE,GO_IMAGE go;
     class DB db;
 ```
 
@@ -74,8 +77,9 @@ The architecture focuses on raw speed, concurrency, and ephemeral communication.
 * **uWebSockets:** Handles the massive real-time event-driven WebSocket communication loop.
 * **CMake:** Simplifies the build process and allows configuration across multiple platforms.
 
-### Media & Voice
-* **Go (Golang):** A dedicated, fast microservice handling media routing and ephemeral communication (like screen sharing and voice streams) using goroutines for high concurrency.
+### Media Microservices
+* **Go Voice / Video Router:** A dedicated Go microservice handling media routing and ephemeral communication (voice/video streams and screen sharing) using goroutines for high concurrency.
+* **Go Image Service:** A stateless, content-addressable Go microservice that stores media files (images, GIFs, videos) on disk and proxies GIF search/trending from the KLIPY provider.
 
 ### Infrastructure
 * **Docker:** Containerized setup ensuring a consistent deployment environment across the whole ecosystem.
@@ -103,6 +107,7 @@ The ecosystem consists of the following components:
 * **SquirrelComm-Back:** The core C++ server (REST + WebSockets) - *This repository*.
 * **Docker directory:** Deployment configurations and database schemas are located in the `docker` folder.
 * **Squirrel Microservice - Voice:** The Go-based media router (Separate repository).
+* **Squirrel Microservice - Image:** The Go-based content-addressable media storage + GIF proxy (Separate repository).
 * **SquirrelComm-Front:** The modern client-side application.
 
 > [!NOTE]

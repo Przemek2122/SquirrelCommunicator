@@ -40,8 +40,17 @@ void FSocketManagerHelper::BroadcastDataToUsers(const FProjectEngine* ProjectEng
 
 FSocketManager::~FSocketManager()
 {
-	// std::jthread auto-requests stop and joins on destruction
+	Stop();
+}
+
+void FSocketManager::Stop()
+{
+	// Destroy each FSocketThread. The FSocket destructor closes the listen
+	// socket and every active websocket, which drains the uWS event loop so the
+	// worker thread returns from run(); the std::jthread destructor then joins.
 	SocketThreads.clear();
+
+	LOG_INFO("Socket threads stopped.");
 }
 
 void FSocketManager::CreateSockets(std::string Host, int32 SocketPort, bool bUseSSL, const std::string& InKeyPath, const std::string& InCertPath)

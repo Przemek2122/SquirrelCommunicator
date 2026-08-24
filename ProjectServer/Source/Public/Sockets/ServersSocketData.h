@@ -22,6 +22,7 @@ public:
     void JoinServer(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId);
     void LeaveServer(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId);
     void ServerMessage(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId, const std::string& Content, EMessageType MessageType = EMessageType::Text);
+    void HandleServerMessageDelete(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId, Uint64 MessageId);
     void CreateChannel(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, const std::string& ChannelName, const std::string& ChannelType);
     void ServerInvite(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 TargetUserId);
     void ServerJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ServerId, Uint64 ChannelId);

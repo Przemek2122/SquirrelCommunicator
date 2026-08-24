@@ -32,6 +32,14 @@ public:
 
 	FSocket* GetSocketById(int32 InSocketId);
 
+	/**
+	 * Gracefully close every listener and active websocket, then join all
+	 * worker threads. Closing the listen socket and connections drains the
+	 * uWS event loop, so each std::jthread returns from run() and joins.
+	 * Safe to call multiple times (subsequent calls are no-ops).
+	 */
+	void Stop();
+
 protected:
 	std::vector<std::unique_ptr<FSocketThread>> SocketThreads;
 };

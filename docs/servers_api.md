@@ -580,6 +580,38 @@ These messages handle the community server system with channels and voice chat. 
         Server broadcasts type: server_message to all server members with:
             server_id, channel_id, message_id, sender_id, sender_name, content, message_type, timestamp.
 
+    type: server_message_delete
+        Permanently delete a message from a server text channel. The message is removed
+        from the database and from all connected clients in real time.
+
+        data:
+            server_id   string  REQUIRED. Server ID.
+            channel_id  string  REQUIRED. Channel ID the message belongs to.
+            message_id  string  REQUIRED. Message ID to delete.
+
+        Authorization: the message author or the server owner may delete a message.
+
+        Example request:
+            {
+                "type": "server_message_delete",
+                "data": {
+                    "server_id": "123456789",
+                    "channel_id": "42",
+                    "message_id": "987654321"
+                }
+            }
+
+        Server broadcasts type: server_message_deleted to all server members with:
+            server_id, channel_id, message_id.
+
+        Error if the user is not the author or owner:
+            type: error
+            message: permission denied: you can only delete your own messages
+
+        Error if the message does not exist:
+            type: error
+            message: message not found
+
     type: create_channel
         Create a new channel in a server. The channel is auto-assigned the next
         available position (appears at the bottom of the channel list).
@@ -1110,6 +1142,15 @@ These messages handle the community server system with channels and voice chat. 
             server_id     Server ID (number)
             channel_id  Renamed channel ID (number)
             new_name    New channel name (string)
+
+    type: server_message_deleted
+        Broadcast when a message is deleted from a channel. All members receive
+        this so they can remove the message from their local message list.
+
+        data:
+            server_id   Server ID (number)
+            channel_id  Channel ID the message belonged to (number)
+            message_id  Deleted message ID (number)
 
     type: server_member_permissions_updated
         Broadcast when a members permissions have been updated.

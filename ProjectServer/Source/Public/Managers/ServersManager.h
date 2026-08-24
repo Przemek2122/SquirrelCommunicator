@@ -12,6 +12,19 @@
 class FServer;
 
 /**
+ * Result of a DeleteMessage operation.
+ * Lets the socket layer translate internal failures into specific client errors.
+ */
+enum class EDeleteServerMessageResult : uint8
+{
+    Success,
+    ServerNotFound,
+    MessageNotFound,
+    NotAuthorized,
+    Failed
+};
+
+/**
  * Manager for user servers .
  * Handles:
  *  - Server creation and deletion
@@ -92,6 +105,14 @@ public:
     std::vector<FServerMessage> GetChannelMessages(Uint64 ServerId, Uint64 ChannelId, Uint64 BeforeTimestamp, Uint32 Limit);
 
     /**
+     * Delete a message from a server channel (hard delete: removed from DB and cache).
+     *
+     * Authorization: the message author or the server owner may delete a message.
+     * Returns a result enum so the socket layer can produce a specific error.
+     */
+    EDeleteServerMessageResult DeleteMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 MessageId, Uint64 RequestedByUserId);
+
+    /**
      * Invite operations
      *
      * CreateInvite: generates a one-time-use or limited-use invite link.
@@ -154,6 +175,8 @@ protected:
     bool DeleteChannelFromDB(Uint64 ServerId, Uint64 ChannelId);
     bool UpdateChannelNameInDB(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName);
     bool UploadMessageToDB(const FServerMessage& Message, Uint64& OutMessageId);
+    bool DeleteMessageFromDB(Uint64 MessageId, Uint64 ChannelId);
+    bool GetServerMessageOwnerFromDB(Uint64 MessageId, Uint64& OutChannelId, Uint64& OutSenderId);
     bool UploadMemberToDB(Uint64 ServerId, Uint64 UserId, Uint64 Permissions);
     bool RemoveMemberFromDB(Uint64 ServerId, Uint64 UserId);
     bool UpdateMemberPermissionsInDB(Uint64 ServerId, Uint64 UserId, Uint64 NewPermissions);

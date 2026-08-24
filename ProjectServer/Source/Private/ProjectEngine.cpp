@@ -21,6 +21,7 @@
 #include "Sockets/SocketManager.h"
 
 #include <filesystem>
+#include <chrono>
 
 // Endpoint factory macro - replaces FClassStorage
 #define ENDPOINT_FACTORY(EndpointName) FEndpointFactory([](FProjectEngine* engine) -> FCrowAppEndpoint* { return new EndpointName(engine); })
@@ -350,14 +351,35 @@ void FProjectEngine::StartServer(const std::shared_ptr<FIniObject>& ServerSettin
 
 void FProjectEngine::PreExit()
 {
+	LOG_INFO("Shutting down...");
+
+	// 1. Stop accepting new REST connections and drain in-flight requests.
 	CrowApp.stop();
 
-	//CrowAppFutureAsync.wait();
+	if (CrowAppFutureAsync.valid())
+	{
+		// Bounded wait so a stuck connection cannot hang shutdown forever.
+		const std::future_status Status = CrowAppFutureAsync.wait_for(std::chrono::seconds(5));
+		if (Status == std::future_status::timeout)
+		{
+			LOG_WARN("Crow (REST) server did not stop within 5 seconds; continuing shutdown.");
+		}
+		else
+		{
+			LOG_INFO("Stopped crow (REST) server.");
+		}
+	}
 
-	LOG_INFO("Stopped crow");
+	// 2. Stop the WebSocket server (closes listeners and all connections, then
+	//    joins worker threads). This must happen BEFORE the DB pool is released
+	//    because disconnect handlers touch the database.
+	SocketManager->Stop();
 
-	// Release all pooled DB connections
+	// 3. Release all pooled DB connections last, after every server that can
+	//    touch the database has been fully stopped.
 	FDataBaseConnect::ShutdownPool();
+
+	LOG_INFO("Shutdown complete.");
 }
 
 void FProjectEngine::AddHeaders(crow::response& CurrentResponse, const CUnorderedMap<std::string, std::string>& HeaderNameToValueMap)

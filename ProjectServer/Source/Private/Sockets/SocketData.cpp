@@ -128,6 +128,7 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("join_server"):               return ESocketMessageServersType::JoinServer;
         case HashString("leave_server"):              return ESocketMessageServersType::LeaveServer;
         case HashString("server_message"):            return ESocketMessageServersType::ServerMessage;
+        case HashString("server_message_delete"):     return ESocketMessageServersType::ServerMessageDelete;
         case HashString("create_channel"):          return ESocketMessageServersType::CreateChannel;
         case HashString("move_channel"):            return ESocketMessageServersType::MoveChannel;
         case HashString("reorder_channels"):        return ESocketMessageServersType::ReorderChannels;
@@ -163,6 +164,7 @@ ESocketMessageServersType StringToSocketMessageServersType(std::string_view InTy
         case HashString("server_member_status"):      return ESocketMessageServersType::ServerMemberStatus;
         case HashString("server_list"):             return ESocketMessageServersType::ServerList;
         case HashString("server_messages"):         return ESocketMessageServersType::ServerMessages;
+        case HashString("server_message_deleted"):  return ESocketMessageServersType::ServerMessageDeleted;
         case HashString("server_invite_created"):   return ESocketMessageServersType::ServerInviteCreated;
         case HashString("server_joined"):           return ESocketMessageServersType::ServerJoined;
         case HashString("server_member_permissions_updated"): return ESocketMessageServersType::ServerMemberPermissionsUpdated;
@@ -186,6 +188,7 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::JoinServer:             return "join_server";
         case ESocketMessageServersType::LeaveServer:            return "leave_server";
         case ESocketMessageServersType::ServerMessage:          return "server_message";
+        case ESocketMessageServersType::ServerMessageDelete:    return "server_message_delete";
         case ESocketMessageServersType::CreateChannel:        return "create_channel";
         case ESocketMessageServersType::MoveChannel:          return "move_channel";
         case ESocketMessageServersType::ReorderChannels:      return "reorder_channels";
@@ -221,6 +224,7 @@ std::string SocketMessageServersTypeToString(ESocketMessageServersType InTypeEnu
         case ESocketMessageServersType::ServerMemberStatus:     return "server_member_status";
         case ESocketMessageServersType::ServerList:           return "server_list";
         case ESocketMessageServersType::ServerMessages:       return "server_messages";
+        case ESocketMessageServersType::ServerMessageDeleted: return "server_message_deleted";
         case ESocketMessageServersType::ServerInviteCreated:  return "server_invite_created";
         case ESocketMessageServersType::ServerJoined:         return "server_joined";
         case ESocketMessageServersType::ServerMemberPermissionsUpdated: return "server_member_permissions_updated";

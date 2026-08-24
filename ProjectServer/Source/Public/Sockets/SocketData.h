@@ -86,6 +86,7 @@ enum class ESocketMessageServersType : uint8
     JoinServer,
     LeaveServer,
     ServerMessage,
+    ServerMessageDelete,    // Request to delete a message from a server channel
     CreateChannel,
     MoveChannel,            // Request to reorder a channel (change position)
     ReorderChannels,        // Request to reorder all channels at once (drag-and-drop batch)
@@ -122,6 +123,7 @@ enum class ESocketMessageServersType : uint8
     ServerMemberStatus,
     ServerList,             // Response with servers data
     ServerMessages,         // Response with message history
+    ServerMessageDeleted,   // Response/broadcast after a message is deleted
     ServerInviteCreated,    // Response with generated invite code
     ServerJoined,           // Response after joining via invite (full server data)
     ServerMemberPermissionsUpdated, // Response after permissions update

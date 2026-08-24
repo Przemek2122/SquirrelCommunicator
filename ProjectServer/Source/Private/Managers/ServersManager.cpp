@@ -642,6 +642,56 @@ Uint64 FServersManager::AddMessage(Uint64 ServerId, Uint64 ChannelId, Uint64 Sen
     return OutMessageId;
 }
 
+EDeleteServerMessageResult FServersManager::DeleteMessage(const Uint64 ServerId, const Uint64 ChannelId, const Uint64 MessageId, const Uint64 RequestedByUserId)
+{
+    const std::shared_ptr<FServer> Server = GetServerById(ServerId);
+    if (!Server)
+    {
+        LOG_ERROR("DeleteMessage: Server not found: " << ServerId);
+        return EDeleteServerMessageResult::ServerNotFound;
+    }
+
+    // Resolve the message's channel and author so we can authorize the deletion.
+    Uint64 MessageChannelId = 0;
+    Uint64 MessageSenderId = 0;
+    if (!GetServerMessageOwnerFromDB(MessageId, MessageChannelId, MessageSenderId))
+    {
+        LOG_ERROR("DeleteMessage: Message " << MessageId << " not found in DB");
+        return EDeleteServerMessageResult::MessageNotFound;
+    }
+
+    // Defensive: the message must actually belong to the requested channel.
+    if (MessageChannelId != ChannelId)
+    {
+        LOG_ERROR("DeleteMessage: Message " << MessageId << " does not belong to channel " << ChannelId);
+        return EDeleteServerMessageResult::MessageNotFound;
+    }
+
+    // Authorization: message author or server owner may delete.
+    const bool bIsAuthor = (MessageSenderId == RequestedByUserId);
+    const bool bIsOwner = (Server->GetOwnerId() == RequestedByUserId);
+    if (!bIsAuthor && !bIsOwner)
+    {
+        LOG_WARN("DeleteMessage: User " << RequestedByUserId << " is not authorized to delete message "
+                 << MessageId << " (sender=" << MessageSenderId << ", owner=" << Server->GetOwnerId() << ")");
+        return EDeleteServerMessageResult::NotAuthorized;
+    }
+
+    // Delete from DB first.
+    if (!DeleteMessageFromDB(MessageId, ChannelId))
+    {
+        LOG_ERROR("DeleteMessage: Failed to delete message " << MessageId << " from DB");
+        return EDeleteServerMessageResult::Failed;
+    }
+
+    // Remove from the in-memory cache (best effort; cache may not have it loaded).
+    Server->RemoveMessage(ChannelId, MessageId);
+
+    LOG_INFO("Message " << MessageId << " deleted from channel " << ChannelId
+             << " in server " << ServerId << " by user " << RequestedByUserId);
+    return EDeleteServerMessageResult::Success;
+}
+
 std::vector<FServerMessage> FServersManager::GetChannelMessages(const Uint64 ServerId, const Uint64 ChannelId, const Uint64 BeforeTimestamp, const Uint32 Limit)
 {
     const std::shared_ptr<FServer> Server = GetServerById(ServerId);
@@ -1226,6 +1276,75 @@ bool FServersManager::UploadMessageToDB(const FServerMessage& Message, Uint64& O
     catch (const std::exception& e)
     {
         LOG_ERROR("UploadMessageToDB error: " << e.what());
+        return false;
+    }
+}
+
+bool FServersManager::DeleteMessageFromDB(const Uint64 MessageId, const Uint64 ChannelId)
+{
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        return false;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        soci::statement St = (Session.prepare <<
+            "DELETE FROM server_messages WHERE id = :msgId AND channel_id = :channelId",
+            soci::use(MessageId),
+            soci::use(ChannelId));
+
+        St.execute();
+
+        const long long Affected = St.get_affected_rows();
+        return Affected > 0;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("DeleteMessageFromDB error: " << e.what());
+        return false;
+    }
+}
+
+bool FServersManager::GetServerMessageOwnerFromDB(const Uint64 MessageId, Uint64& OutChannelId, Uint64& OutSenderId)
+{
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        return false;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        long long ChannelId = 0;
+        long long SenderId = 0;
+        soci::indicator SenderInd;
+
+        Session << "SELECT channel_id, sender_id FROM server_messages WHERE id = :msgId",
+            soci::into(ChannelId),
+            soci::into(SenderId, SenderInd),
+            soci::use(MessageId);
+
+        if (!Session.got_data())
+        {
+            return false;
+        }
+
+        OutChannelId = static_cast<Uint64>(ChannelId);
+        // sender_id is NULLable (ON DELETE SET NULL); a NULL sender means the author's
+        // account is gone, so only the server owner can delete it.
+        OutSenderId = (SenderInd == soci::i_null) ? 0 : static_cast<Uint64>(SenderId);
+
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("GetServerMessageOwnerFromDB error: " << e.what());
         return false;
     }
 }
