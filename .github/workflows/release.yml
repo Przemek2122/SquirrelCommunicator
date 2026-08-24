@@ -107,6 +107,9 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
+          # Local / self-hosted builds can use docker/UploadSentrySymbols.sh, which
+          # reads the same values from docker/.env.sentry (gitignored). CI reads
+          # them from GitHub Secrets instead.
           curl -sL https://sentry.io/get-cli/ | bash
 
           # The release identifier is the git commit hash — the exact value that

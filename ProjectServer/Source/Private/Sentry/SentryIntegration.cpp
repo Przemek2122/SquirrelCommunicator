@@ -115,7 +115,7 @@
 void SentryIntegration::Initialize()
 {
 #ifdef SQRLL_HAS_SENTRY
-    // The DSN is injected via environment (docker/.env.backend) rather than
+    // The DSN is injected via environment (docker/.env.sentry) rather than
     // hardcoded in source, so it is never committed to the repository.
     const char* Dsn = std::getenv("SENTRY_DSN");
     if (Dsn == nullptr || Dsn[0] == '\0')

@@ -80,8 +80,20 @@ SQRLL_COMM_DB_PASSWORD=
 
 # Brevo API key
 SQRLL_COMM_MAIL_API_KEY=
+```
 
-# --- Sentry crash reporting (optional but recommended) ---
+### `.env.sentry` (Sentry crash reporting)
+
+All Sentry configuration lives in this single gitignored file. It is split into
+**runtime** values (read by the backend container at startup) and **upload**
+values (read by `sentry-cli` when uploading debug symbols).
+
+The backend loads this file via `env_file` in `docker-compose.yml` (with
+`required: false`), so Sentry stays **optional** — if the file is missing the
+backend simply logs a warning and continues.
+
+```
+# --- Runtime (backend container) ---
 # Public ingest endpoint for this project. It is safe to keep here (it is also
 # embedded in the shipped client binaries), but it is NOT the auth token.
 SENTRY_DSN=
@@ -93,7 +105,24 @@ SENTRY_ENVIRONMENT=production
 # Optional: override the crashpad database directory (minidumps, pending reports).
 # Defaults to ".sentry-native" in the working directory (/app inside the image).
 # SENTRY_DB_PATH=/app/.sentry-native
+
+# --- Upload (sentry-cli debug symbol upload) ---
+# Auth token from Sentry (Organization -> Settings -> Auth Tokens). PRIVATE.
+SENTRY_AUTH_TOKEN=
+
+# Your Sentry organization slug.
+SENTRY_ORG=
+
+# Your Sentry project slug.
+SENTRY_PROJECT=
 ```
+
+> [!NOTE]
+> Because the whole file is loaded into the backend container via `env_file`,
+> the upload values (`SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT`) are
+> also present in the container's environment — the backend simply ignores them.
+> If you'd rather keep the token off the host entirely, leave the upload block
+> empty here and upload symbols from CI only (GitHub Secrets).
 
 ### `.env.voice` (voice service container env)
 
@@ -110,7 +139,7 @@ SQRLL_VOICE_PORT=8082
 SQRLL_VOICE_API_KEY=
 ```
 
-### `.env.image` (voice service container env)
+### `.env.image` (image service container env)
 
 ```
 # Address for image service
@@ -172,28 +201,35 @@ are captured as minidumps and uploaded to Sentry automatically.
 
 | Variable | Secret? | Purpose |
 |---|---|---|
-| `SENTRY_DSN` | Public-ish | Ingest endpoint that tells the running server *where* to send crash events. Set in `.env.backend`. |
-| `SENTRY_AUTH_TOKEN` | **PRIVATE** | Used by CI (`sentry-cli`) to *upload debug symbols*. Never put this in `.env` files or source — store it in GitHub Secrets. |
+| `SENTRY_DSN` | Public-ish | Ingest endpoint that tells the running server *where* to send crash events. Set in `.env.sentry`. |
+| `SENTRY_AUTH_TOKEN` | **PRIVATE** | Used by `sentry-cli` to *upload debug symbols*. Set in `.env.sentry` (gitignored) or GitHub Secrets for CI. |
 
 ### Runtime variables (container)
 
-Set these in `.env.backend`:
+Set these in `.env.sentry`:
 
 - `SENTRY_DSN` — required to enable crash reporting. If empty, the server runs normally but does not report crashes.
 - `SENTRY_ENVIRONMENT` — optional label (`production`, `staging`, `development`). Defaults to `production`.
 - `SENTRY_DB_PATH` — optional crashpad database directory. Defaults to `.sentry-native` in the working directory.
 
-### CI variables (GitHub Secrets)
+### Upload variables (debug symbols)
 
-Used by `.github/workflows/release.yml` to upload debug symbols so crashes are
-symbolicated (stack traces show source lines instead of raw addresses):
+Used by `sentry-cli` to upload debug symbols so crashes are symbolicated (stack
+traces show source lines instead of raw addresses):
 
 - `SENTRY_AUTH_TOKEN` — an auth token from Sentry (Organization → Settings → Auth Tokens).
 - `SENTRY_ORG` — your Sentry organization slug.
 - `SENTRY_PROJECT` — your Sentry project slug.
 
-If any of these are missing, the release workflow still completes — it just skips
-the debug-symbol upload step.
+These are **private**. They are stored in two places depending on how you build:
+
+- **GitHub Actions (CI):** stored in GitHub Secrets and read by
+  `.github/workflows/release.yml`.
+- **Local / self-hosted builds:** stored in `docker/.env.sentry` (gitignored) and
+  read by [`docker/UploadSentrySymbols.sh`](UploadSentrySymbols.sh).
+
+If any of these are missing, the upload is skipped — the workflow / script still
+completes successfully.
 
 ### Verifying crash reporting works
 
@@ -203,7 +239,7 @@ container, look for:
 
 - `Sentry initialized (release: …, environment: …, database: …, dsn: set)` — Sentry
   is on and a DSN was found. If instead you see `SENTRY_DSN is not set`, crash
-  reporting is disabled and you must set `SENTRY_DSN` in `.env.backend`.
+  reporting is disabled and you must set `SENTRY_DSN` in `.env.sentry`.
 - `Sentry: …` `WARN`/`ERROR` lines — these reveal why events are not arriving
   (e.g. `crashpad_handler` not found, an invalid DSN, or network/transport
   failures). The handler must be executable and located next to `communicatorsrv`.
