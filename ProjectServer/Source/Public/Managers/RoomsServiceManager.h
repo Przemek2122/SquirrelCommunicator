@@ -14,6 +14,24 @@ enum class ERoomExistenceStatus
 };
 
 /**
+ * Result of a room-creation attempt against the Go Voice Service.
+ * The Go service distinguishes three states:
+ *   201 Created  -> brand new room
+ *   200 OK       -> room already existed with the SAME token (harmless)
+ *   409 Conflict -> room already existed with a DIFFERENT token (token drift)
+ * Previously 200 and 409 were collapsed into a generic "Failed to create room"
+ * error, which hid token drift and caused callers to silently fail. This enum
+ * makes each case explicit so callers can react correctly.
+ */
+enum class ERoomCreateStatus
+{
+    Created,                     // 201 - brand new room
+    AlreadyExists,               // 200 - room already existed with the SAME token
+    AlreadyExistsDifferentToken, // 409 - room already existed with a DIFFERENT token (token drift)
+    Failed                       // network error or unexpected status
+};
+
+/**
  * This class manages room-related microservices and provides functionality for room operations.
  *
  * @TODO: This part uses crow threads, in case of high traffic, it would be good to consider another pool of threads for voice microservice calls.
@@ -29,9 +47,12 @@ public:
      * Creates a new room with the specified name and token.
      *
      * @param RoomName The name of the room to create.
-     * @return True if the room creation was successful, false otherwise.
+     * @return Created when the room was newly created, AlreadyExists when the
+     *         room already existed with a matching token, AlreadyExistsDifferentToken
+     *         when the room already existed with a different token (token drift),
+     *         or Failed on any other outcome.
      */
-    bool CreateRoom(const std::string& RoomName);
+    ERoomCreateStatus CreateRoom(const std::string& RoomName);
 
     /**
      * Call to query GO Voice Service to check if a room exists.

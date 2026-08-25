@@ -6,6 +6,8 @@ This document describes all server endpoints and WebSocket message types availab
 
 Media files (images, GIFs, videos) are handled by a separate content-addressable image service; its REST API is documented in docs/image_service_api.md. This document covers the image_api_key WebSocket event (Section 2.1.4) that grants the client access to that service.
 
+Voice/video rooms and screen sharing are handled by the Go voice service; its REST + WebSocket API (including handshake parameters) is documented in docs/voice_service_api.md. This document covers the data_stream_channel / server_join_voice messages (Sections 2.1.3 and 2.2.1) that provision those rooms.
+
 ============================================
 SECTION 1: REST API ENDPOINTS
 ============================================
@@ -493,6 +495,11 @@ These messages use the priv section and handle direct messages, conversations, f
             data:
                 name   Voice room name
                 token  Voice room access token
+
+        After receiving name/token the client connects directly to the Go voice
+        service WebSocket (wss://<host>/voice-ws) using the room name and
+        token as handshake parameters. See docs/voice_service_api.md Section 3
+        for the full handshake parameter table (query string vs headers).
 
     type: user_calling
         Notify another user about an incoming call.

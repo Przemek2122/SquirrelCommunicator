@@ -1221,12 +1221,16 @@ void FPrivateSocketData::OnMessageReceived_DataStreamChannel(AnyWebSocket wsVari
 			if (CheckRoomResult == ERoomExistenceStatus::NotExists)
 			{
 				// Create voice room if missing
-				const bool bIsRoomCreated = ProjectEngine->GetRoomsManager()->CreateRoom(RoomName);
-				if (!bIsRoomCreated)
+				const ERoomCreateStatus CreateStatus = ProjectEngine->GetRoomsManager()->CreateRoom(RoomName);
+				if (CreateStatus == ERoomCreateStatus::AlreadyExistsDifferentToken ||
+					CreateStatus == ERoomCreateStatus::Failed)
 				{
-					LOG_ERROR("Failed to create voice room");
-					return;
+					// The room exists in Go but with a different token (drift), or the call
+					// failed outright. Do NOT hand the client a stale/empty token.
+					LOG_ERROR("Failed to create voice room (status: " << static_cast<int32>(CreateStatus) << ")");
+					return FSocket::EarlyExit(wsVariant, "voice room unavailable", opCode);
 				}
+				// Created or AlreadyExists -> proceed with the locally cached token.
 			}
 
 			const std::string RoomToken = ProjectEngine->GetRoomsManager()->GetRoomToken(RoomName);

@@ -872,7 +872,16 @@ void FServersSocketData::ServerJoinVoice(AnyWebSocket wsVariant, uWS::OpCode opC
     const ERoomExistenceStatus CheckResult = ProjectEngine->GetRoomsManager()->CheckRoom(VoiceServerName);
     if (CheckResult == ERoomExistenceStatus::NotExists)
     {
-        ProjectEngine->GetRoomsManager()->CreateRoom(VoiceServerName);
+        const ERoomCreateStatus CreateStatus = ProjectEngine->GetRoomsManager()->CreateRoom(VoiceServerName);
+        if (CreateStatus == ERoomCreateStatus::AlreadyExistsDifferentToken ||
+            CreateStatus == ERoomCreateStatus::Failed)
+        {
+            // The room exists in Go but with a different token (drift), or the
+            // call failed outright. Do NOT hand the client a stale/empty token.
+            LOG_ERROR("Failed to create Go voice room: " << VoiceServerName << " (status: " << static_cast<int32>(CreateStatus) << ")");
+            return FSocket::EarlyExit(wsVariant, "voice room unavailable", opCode);
+        }
+        // Created or AlreadyExists -> proceed with the locally cached token.
     }
 
     const std::string VoiceToken = ProjectEngine->GetRoomsManager()->GetRoomToken(VoiceServerName);

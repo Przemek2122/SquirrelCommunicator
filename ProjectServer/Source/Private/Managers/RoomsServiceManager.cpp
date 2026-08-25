@@ -31,12 +31,12 @@ FRoomsServiceManager::FRoomsServiceManager()
     }
 }
 
-bool FRoomsServiceManager::CreateRoom(const std::string& RoomName)
+ERoomCreateStatus FRoomsServiceManager::CreateRoom(const std::string& RoomName)
 {
-    // If either the name OR the token is empty, abort.
+    // If the room name is empty there is nothing to create.
     if (RoomName.empty())
     {
-        return false;
+        return ERoomCreateStatus::Failed;
     }
 
     // 1. Build the request body in JSON format
@@ -45,7 +45,6 @@ bool FRoomsServiceManager::CreateRoom(const std::string& RoomName)
     JSONData["Token"] = CreateRoomToken(RoomName);
 
     // 2. Construct the target URL
-    // Let's assume ServiceAddress is "http://localhost:8082"
     const std::string TargetURL = ServiceAddress + "/api/rooms/create";
 
     // 3. Synchronous POST request (blocks the current thread, which is fine here)
@@ -59,32 +58,53 @@ bool FRoomsServiceManager::CreateRoom(const std::string& RoomName)
         cpr::Timeout{3000}                         // Failsafe: max 3 seconds wait time
     );
 
-    // 4. Verify the response from Go
-    // Your Go code uses w.WriteHeader(http.StatusCreated), which is code 201.
-    if (CPRResponse.status_code == 201)
+    // 4. Interpret the response from Go.
+    //    Go reports three distinct success / near-success states:
+    //      201 Created   -> brand new room
+    //      200 OK        -> room already existed with the SAME token (harmless)
+    //      409 Conflict  -> room already existed with a DIFFERENT token (token drift)
+    switch (CPRResponse.status_code)
     {
-        try
+        case 201: // Created
         {
-            nlohmann::json JsonResponse = nlohmann::json::parse(CPRResponse.text);
-
-            if (JsonResponse["created"].get<bool>())
+            try
             {
-                LOG_DEBUG("Created room in Go Voice Service.");
+                nlohmann::json JsonResponse = nlohmann::json::parse(CPRResponse.text);
 
-                return true;
+                if (JsonResponse["created"].get<bool>())
+                {
+                    LOG_DEBUG("Created room in Go Voice Service.");
+
+                    return ERoomCreateStatus::Created;
+                }
             }
-        }
-        catch (const nlohmann::json::exception& e)
-        {
-            LOG_ERROR("parsing of CreateRoom failed: " << e.what());
-        }
-    }
-    else
-    {
-        LOG_ERROR("Failed to create room in Go. Status: " << CPRResponse.status_code << " Msg: " << CPRResponse.text);
-    }
+            catch (const nlohmann::json::exception& e)
+            {
+                LOG_ERROR("parsing of CreateRoom failed: " << e.what());
+            }
 
-    return false;
+            // A 201 with a malformed body is still a failure.
+            return ERoomCreateStatus::Failed;
+        }
+
+        case 200: // Already exists with the SAME token
+        {
+            LOG_DEBUG("Room already exists in Go Voice Service with matching token.");
+            return ERoomCreateStatus::AlreadyExists;
+        }
+
+        case 409: // Already exists with a DIFFERENT token
+        {
+            LOG_WARN("Room already exists in Go Voice Service with a DIFFERENT token (token drift). Room: " << RoomName);
+            return ERoomCreateStatus::AlreadyExistsDifferentToken;
+        }
+
+        default:
+        {
+            LOG_ERROR("Failed to create room in Go. Status: " << CPRResponse.status_code << " Msg: " << CPRResponse.text);
+            return ERoomCreateStatus::Failed;
+        }
+    }
 }
 
 ERoomExistenceStatus FRoomsServiceManager::CheckRoom(const std::string& RoomName)
