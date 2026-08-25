@@ -19,6 +19,7 @@
 #include "Rest/AuthEndpoint.h"
 #include "Rest/TransferTokenEndpoint.h"
 #include "Sockets/SocketManager.h"
+#include "Managers/ImageServiceManager.h"
 
 #include <filesystem>
 #include <chrono>
@@ -194,6 +195,15 @@ void FProjectEngine::Init()
 
 		UserManager->Init();
 
+		// Configure image-service key invalidation TTL (bounds the staleness window
+		// after an image-service restart; keys are re-issued on the next login /
+		// reconnect once they exceed this interval).
+		if (FImageServiceManager* ImageServiceManager = UserManager->GetImageServiceManager())
+		{
+			ImageServiceManager->SetKeyInvalidationSeconds(BackendSettings->GetImageKeyInvalidationSeconds());
+			ImageServiceManager->SetInstanceProbeIntervalSeconds(BackendSettings->GetImageInstanceProbeIntervalSeconds());
+		}
+
 		// HTTP/REST crow server
 		StartServer(ServerSettingsIni);
 
@@ -230,6 +240,14 @@ void FProjectEngine::PostSecondTick()
 	UserManager->PostSecondTick();
 	TransferTokenManager->PostSecondTick();
 	ServersManager->PostSecondTick();
+	ConversationsManager->PostSecondTick();
+
+	// Detect image-service restarts via its /health instance id and invalidate
+	// cached per-session keys when it changes. No-ops between probe intervals.
+	if (FImageServiceManager* ImageServiceManager = UserManager->GetImageServiceManager())
+	{
+		ImageServiceManager->ProbeInstanceId();
+	}
 
 	// Periodically scan the DB pool for dead connections and reconnect them.
 	// At borrow-time, dead connections fall back to standalone connections,

@@ -6,6 +6,14 @@
 #include <string_view>
 
 /**
+ * Literal tombstone content shown in place of a soft-deleted message.
+ * Deleting a message replaces its content with this placeholder instead of
+ * removing the row, so both private and server chat history keep a visible
+ * "CONTENT DELETED" marker while the original content is gone.
+ */
+inline constexpr std::string_view DeletedMessagePlaceholder = "CONTENT DELETED";
+
+/**
  * Discriminates what a chat message actually carries.
  *
  * Previously everything was treated as text (the message body held raw text or,

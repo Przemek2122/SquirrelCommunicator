@@ -11,6 +11,86 @@ Uint64 FConversationsManager::GetOrCreateConversation(const CArray<Uint64>& InUs
 	return UploadOrGetConversation(InUserIds.Vector(), bIsNewConversation);
 }
 
+void FConversationsManager::PostSecondTick()
+{
+	const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
+	const int32 CleanupIntervalSeconds = Settings->GetMessageRetentionCleanupIntervalSeconds();
+	const int32 RetainCount = Settings->GetMessageRetentionCount();
+
+	// Retention cleanup is disabled when the interval or retain count is <= 0.
+	if (CleanupIntervalSeconds <= 0 || RetainCount <= 0)
+	{
+		return;
+	}
+
+	PostSecondTickCounter++;
+	if (PostSecondTickCounter >= CleanupIntervalSeconds)
+	{
+		PostSecondTickCounter = 0;
+		CleanupOldMessages(RetainCount);
+	}
+}
+
+void FConversationsManager::CleanupOldMessages(const int32 RetainCount)
+{
+	FDataBaseConnect Connect;
+	if (!Connect.IsConnected())
+	{
+		LOG_ERROR("CleanupOldMessages: Database connection failed");
+		return;
+	}
+
+	try
+	{
+		soci::session& Session = Connect.GetSession();
+
+		// Enumerate every conversation so each can be trimmed independently.
+		std::vector<Uint64> ConversationIds;
+		{
+			Uint64 ConversationId = 0;
+			soci::statement St = (Session.prepare <<
+				"SELECT conversation_id FROM conversations",
+				soci::into(ConversationId));
+
+			St.execute();
+			while (St.fetch())
+			{
+				ConversationIds.push_back(ConversationId);
+			}
+		}
+
+		int32 TotalDeleted = 0;
+		for (const Uint64 ConversationId : ConversationIds)
+		{
+			// Delete every message except the most recent `RetainCount` (by id). The
+			// double-nested subquery materializes the keep-set, working around
+			// MySQL/MariaDB error 1093 (cannot target the same table in a subquery).
+			soci::statement Del = (Session.prepare <<
+				"DELETE FROM messages WHERE conversation_id = :convId AND id NOT IN ("
+				"  SELECT id FROM ("
+				"    SELECT id FROM messages WHERE conversation_id = :convId2 ORDER BY id DESC LIMIT :retain"
+				"  ) AS recent"
+				")",
+				soci::use(ConversationId, "convId"),
+				soci::use(ConversationId, "convId2"),
+				soci::use(RetainCount, "retain"));
+
+			Del.execute();
+			TotalDeleted += static_cast<int32>(Del.get_affected_rows());
+		}
+
+		if (TotalDeleted > 0)
+		{
+			LOG_INFO("Message retention cleanup: deleted " << TotalDeleted
+				<< " old private messages (keeping " << RetainCount << " per conversation)");
+		}
+	}
+	catch (const std::exception& e)
+	{
+		LOG_ERROR("CleanupOldMessages error: " << e.what());
+	}
+}
+
 std::shared_ptr<FConversationData> FConversationsManager::GetConversation(const Uint64 InConversationId)
 {
 	std::shared_ptr<FConversationData> ConversationDataSharedPtr = nullptr;
@@ -184,7 +264,12 @@ void FConversationsManager::DeleteMessage(const Uint64 InRequesterId, const Uint
     // 1. Database Update First
     const EDatabaseOperationResult Result = UpdateMessageDeleteInDB(InRequesterId, InConversationId, InMessageId);
 
-    if (Result == EDatabaseOperationResult::Success)
+    if (Result != EDatabaseOperationResult::Success)
+    {
+        // DB rejected the delete (e.g. not the author, or message missing).
+        return false;
+    }
+
     {
         std::shared_ptr<FConversationData> ConversationDataSharedPtr;
 
@@ -194,34 +279,32 @@ void FConversationsManager::DeleteMessage(const Uint64 InRequesterId, const Uint
             auto ConvIt = ConversationIdToConversationData.Map().find(InConversationId);
             if (ConvIt == ConversationIdToConversationData.end() || ConvIt->second == nullptr)
             {
-                return;
+                return false;
             }
             ConversationDataSharedPtr = ConvIt->second;
         }
 
-        // 3. Delete the message (WRITE lock at the conversation level)
+        // 3. Soft-delete the message (WRITE lock at the conversation level).
+        //    Replace the content with the tombstone placeholder and mark the
+        //    status as Deleted instead of erasing the entry, so the cached
+        //    history stays consistent with the persisted row.
         {
             std::unique_lock WriteLock(ConversationDataSharedPtr->Lock);
             std::deque<FConversationMessageData>& Deque = ConversationDataSharedPtr->MessagesDeque.Deque();
 
-            auto It = std::lower_bound(
-                Deque.begin(),
-                Deque.end(),
-                InMessageId,
-                [](const FConversationMessageData& Msg, const Uint64 Id) {
-                    return Msg.MessageId < Id;
-                }
-            );
-
-            if (It != Deque.end() && It->MessageId == InMessageId)
+            for (auto It = Deque.begin(); It != Deque.end(); ++It)
             {
-                // std::deque::erase removes the element and shifts the rest.
-                // This is a relatively fast operation for std::deque.
-                Deque.erase(It);
+                if (It->MessageId == InMessageId)
+                {
+                    It->Message = std::string(DeletedMessagePlaceholder);
+                    It->Status = EConversationMessageStatus::Deleted;
+                    break;
+                }
             }
         }
 
         // Remember to broadcast change when using this function
+        return true;
     }
 }
 void FConversationsManager::GetLastConversationByUserId(const Uint64 InUserId, const int32 Offset, const int32 Limit, CArray<Uint64>& OutConversationIds)
@@ -555,17 +638,18 @@ EDatabaseOperationResult FConversationsManager::UpdateMessageDeleteInDB(const Ui
 		{
 			soci::session& DataBaseSession = Connect.GetSession();
 
-			// Message status: Deleted=2; is_encrypted=0 since text is cleared
+			// Message status: Deleted=2; is_encrypted=0 since content is replaced
+			// with the tombstone placeholder (plain text, not encrypted).
 			const int MsgStatus = static_cast<int>(EConversationMessageStatus::Deleted);
 
-			std::string EmptyText = "";
+			const std::string TombstoneText(DeletedMessagePlaceholder);
 
 			soci::statement St = (DataBaseSession.prepare <<
 				"UPDATE messages SET "
 				"text = :text, "
 				"text_status = :status, is_encrypted = :encrypted "
 				"WHERE id = :msgId AND conversation_id = :convId AND sender_id = :senderId",
-				soci::use(EmptyText, "text"),
+				soci::use(TombstoneText, "text"),
 				soci::use(MsgStatus, "status"),
 				soci::use(static_cast<int>(0), "encrypted"),
 				soci::use(InMessageId, "msgId"),
@@ -574,6 +658,16 @@ EDatabaseOperationResult FConversationsManager::UpdateMessageDeleteInDB(const Ui
 			);
 
 			St.execute();
+
+			// Only the message author may delete their own message; the UPDATE's
+			// WHERE clause enforces this, so zero affected rows means unauthorized
+			// (or missing) message.
+			if (St.get_affected_rows() == 0)
+			{
+				LOG_ERROR("No rows affected");
+
+				return EDatabaseOperationResult::DatabaseFailed;
+			}
 
 			return EDatabaseOperationResult::Success;
 		}

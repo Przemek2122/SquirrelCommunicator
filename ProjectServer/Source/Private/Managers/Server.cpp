@@ -222,6 +222,33 @@ bool FServer::RemoveMessage(const Uint64 ChannelId, const Uint64 MessageId)
     return true;
 }
 
+bool FServer::MarkMessageDeleted(const Uint64 ChannelId, const Uint64 MessageId)
+{
+    std::unique_lock Lock(ServerMutex);
+
+    const auto ChannelIter = ChannelMessages.find(ChannelId);
+    if (ChannelIter == ChannelMessages.end())
+    {
+        return false;
+    }
+
+    std::vector<FServerMessage>& Messages = ChannelIter->second;
+    const auto MessageIter = std::ranges::find_if(Messages,
+          [MessageId](const FServerMessage& Msg)
+          {
+              return Msg.MessageId == MessageId;
+          });
+
+    if (MessageIter == Messages.end())
+    {
+        return false;
+    }
+
+    MessageIter->Content = std::string(DeletedMessagePlaceholder);
+    MessageIter->MessageType = EMessageType::Text;
+    return true;
+}
+
 void FServer::PrependMessages(const Uint64 ChannelId, const std::vector<FServerMessage>& Messages)
 {
     if (Messages.empty())

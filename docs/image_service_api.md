@@ -177,6 +177,29 @@ GET /health
         {"status": "ok"}
 
 --------------------------------------------
+INSTANCE IDENTIFICATION
+--------------------------------------------
+
+GET /instance
+
+    Returns the running instance's unique identifier — a random 32-character
+    Base62 hash, regenerated on every process start and never persisted. Like
+    /health, this endpoint is unauthenticated (the ID is a non-secret
+    operational identifier, not authentication material).
+
+    Response 200:
+        { "instanceId": "7k2QnXp4wR9vT0cL5mY3aB8dE1fG6hJ" }
+
+    Because the image service's key registry is RAM-only, a restart silently
+    orphans every issued per-session key. The backend polls this endpoint every
+    ImageInstanceProbeIntervalSeconds and, when instanceId changes (i.e. the
+    process restarted), invalidates all cached per-session keys and re-issues
+    them on the next login / WebSocket reconnect.
+
+    When the endpoint is absent (older service) or returns a non-200 / empty
+    body, the backend falls back to time-based (TTL) invalidation only.
+
+--------------------------------------------
 ENVIRONMENT VARIABLES
 --------------------------------------------
 

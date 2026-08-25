@@ -44,6 +44,7 @@ ESocketMessagePrivateType StringToSocketMessagePrivateType(const std::string_vie
     {
         case HashString("message"):                 return ESocketMessagePrivateType::Message;
         case HashString("message_edit"):            return ESocketMessagePrivateType::MessageEdit;
+        case HashString("message_delete"):          return ESocketMessagePrivateType::MessageDelete;
         case HashString("typing"):                  return ESocketMessagePrivateType::Typing;
         case HashString("message_delivered"):       return ESocketMessagePrivateType::MessageDelivered;
         case HashString("message_read"):            return ESocketMessagePrivateType::MessageRead;
@@ -84,6 +85,7 @@ std::string SocketMessagePrivateTypeToString(const ESocketMessagePrivateType InT
     {
         case ESocketMessagePrivateType::Message:                return "message";
         case ESocketMessagePrivateType::MessageEdit:            return "message_edit";
+        case ESocketMessagePrivateType::MessageDelete:          return "message_delete";
         case ESocketMessagePrivateType::Typing:                 return "typing";
         case ESocketMessagePrivateType::MessageDelivered:       return "message_delivered";
         case ESocketMessagePrivateType::MessageRead:            return "message_read";

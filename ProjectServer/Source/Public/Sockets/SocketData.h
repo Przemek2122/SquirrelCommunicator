@@ -41,6 +41,7 @@ enum class ESocketMessagePrivateType : uint8
 
     Message,
     MessageEdit,
+    MessageDelete,
     Typing,
     MessageDelivered,
     MessageRead,

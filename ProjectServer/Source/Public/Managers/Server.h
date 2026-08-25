@@ -203,6 +203,14 @@ public:
     bool RemoveMessage(Uint64 ChannelId, Uint64 MessageId);
 
     /**
+     * Soft-delete a message in the in-memory cache: replace its content with
+     * the tombstone placeholder and reset its type to text, keeping the entry
+     * in the history (matching the persisted row, which is soft-deleted too).
+     * Returns true if the message was found and marked, false otherwise.
+     */
+    bool MarkMessageDeleted(Uint64 ChannelId, Uint64 MessageId);
+
+    /**
      * Prepend a batch of messages to the front of the in-memory cache.
      * Used by DownloadMessagesFromDB when loading older message batches
      * from the database. The batch MUST be in ascending chronological

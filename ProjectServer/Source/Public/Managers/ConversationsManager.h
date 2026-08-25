@@ -105,7 +105,7 @@ public:
 
 	Uint64 AddMessage(Uint64 InConversationId, Uint64 InSenderId, const std::string& InMessage, EMessageType InMessageType = EMessageType::Text);
 	void EditMessage(Uint64 InRequesterId, Uint64 InConversationId, Uint64 InMessageId, const std::string& InNewMessage);
-	void DeleteMessage(Uint64 InRequesterId, Uint64 InConversationId, Uint64 InMessageId);
+	bool DeleteMessage(Uint64 InRequesterId, Uint64 InConversationId, Uint64 InMessageId);
 
 	void GetLastConversationByUserId(Uint64 InUserId, int32 Offset, int32 Limit, CArray<Uint64>& OutConversationIds);
 
@@ -114,6 +114,9 @@ public:
 	 * @returns conversations
 	 */
 	std::vector<FConversationMessageData> GetConversationMessagesForRange(std::shared_ptr<FConversationData>& Conversation, int32 Offset, int32 Count);
+
+	/** Called every second by the engine for periodic tasks (message retention cleanup). */
+	void PostSecondTick();
 
 private:
 	/** Query DB for conversations of user */
@@ -152,6 +155,9 @@ private:
 	/** Send message to DB */
 	EDatabaseOperationResult UploadMessage(Uint64 InConversationId, Uint64 SenderId, const std::string& InMessage, EMessageType InMessageType, Uint64& OutId);
 
+	/** Delete all but the latest `RetainCount` messages per conversation (hard delete in DB). */
+	void CleanupOldMessages(int32 RetainCount);
+
 protected:
 	/** Map with conversations mapped into their data structs */
 	CUnorderedMap<Uint64, std::shared_ptr<FConversationData>, Uint64> ConversationIdToConversationData;
@@ -164,6 +170,9 @@ protected:
 
 	/** Mutex for UserIdToConversation */
 	std::shared_mutex UserIdToConversationMutex;
+
+	/** Tick counter for throttling the periodic message retention cleanup. */
+	int32 PostSecondTickCounter = 0;
 
 
 };

@@ -588,8 +588,10 @@ These messages handle the community server system with channels and voice chat. 
             server_id, channel_id, message_id, sender_id, sender_name, content, message_type, timestamp.
 
     type: server_message_delete
-        Permanently delete a message from a server text channel. The message is removed
-        from the database and from all connected clients in real time.
+        Soft-delete a message from a server text channel. The message content is
+        replaced with a "CONTENT DELETED" tombstone; the row is retained in the
+        database so channel history keeps showing a placeholder instead of a hole.
+        The change propagates to all connected clients in real time.
 
         data:
             server_id   string  REQUIRED. Server ID.
@@ -609,7 +611,7 @@ These messages handle the community server system with channels and voice chat. 
             }
 
         Server broadcasts type: server_message_deleted to all server members with:
-            server_id, channel_id, message_id.
+            server_id, channel_id, message_id, content ("CONTENT DELETED"), message_type ("text").
 
         Error if the user is not the author or owner:
             type: error
@@ -1151,13 +1153,16 @@ These messages handle the community server system with channels and voice chat. 
             new_name    New channel name (string)
 
     type: server_message_deleted
-        Broadcast when a message is deleted from a channel. All members receive
-        this so they can remove the message from their local message list.
+        Broadcast when a message is soft-deleted from a channel. All members receive
+        this so they can replace the message content with the "CONTENT DELETED"
+        tombstone in their local message list (the row is not removed).
 
         data:
-            server_id   Server ID (number)
-            channel_id  Channel ID the message belonged to (number)
-            message_id  Deleted message ID (number)
+            server_id     Server ID (number)
+            channel_id    Channel ID the message belonged to (number)
+            message_id    Deleted message ID (number)
+            content       "CONTENT DELETED" tombstone (string)
+            message_type  "text" (string)
 
     type: server_member_permissions_updated
         Broadcast when a members permissions have been updated.

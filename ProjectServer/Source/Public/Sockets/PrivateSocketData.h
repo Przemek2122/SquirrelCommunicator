@@ -29,6 +29,9 @@ public:
     /** Called when user is editing a message */
     void OnMessageReceived_MessageEdit(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 MessageId, const std::string& Content);
 
+    /** Called when user is deleting a message (soft delete -> tombstone) */
+    void OnMessageReceived_MessageDelete(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId, Uint64 MessageId);
+
     /** Called when user is typing */
     void OnMessageReceived_Typing(AnyWebSocket wsVariant, uWS::OpCode opCode, Uint64 ConversationId);
 

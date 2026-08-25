@@ -715,6 +715,10 @@ void FServersSocketData::HandleServerMessageDelete(AnyWebSocket wsVariant, uWS::
             BroadcastJson["data"]["server_id"] = ServerId;
             BroadcastJson["data"]["channel_id"] = ChannelId;
             BroadcastJson["data"]["message_id"] = MessageId;
+            // Include the tombstone so clients replace the content in place
+            // instead of removing the message from the UI.
+            BroadcastJson["data"]["content"] = std::string(DeletedMessagePlaceholder);
+            BroadcastJson["data"]["message_type"] = MessageTypeToString(EMessageType::Text);
 
             BroadcastToServerMembers(ServerId, BroadcastJson);
 

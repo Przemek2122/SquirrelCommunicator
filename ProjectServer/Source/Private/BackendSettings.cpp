@@ -24,6 +24,8 @@ FBackendSettings::FBackendSettings()
     , UnauthenticatedRequestsPerHour(300)
     , AuthenticatedRequestsPerHour(2000)
     , WebSocketIdleTimeoutSeconds(300)          // 5 minutes
+    , ImageKeyInvalidationSeconds(3600)          // 1 hour
+    , ImageInstanceProbeIntervalSeconds(30)      // poll image /health every 30s
     , VerboseLoggingLevel(1)                     // 1 = ERROR + WARN (default for production)
     , InviteDefaultMaxUses(1000)
     , InviteDefaultExpiresInSeconds(2592000)   // 30 days
@@ -35,6 +37,8 @@ FBackendSettings::FBackendSettings()
     , InviteCreateLimitPerHour(20)
     , InviteUseLimitPerHour(30)
     , RegisterAccountLimitPerHour(10)
+    , MessageRetentionCount(50)
+    , MessageRetentionCleanupIntervalSeconds(300)
     , MessageEncryptionSettings("", 32, 1, true)
 {
 }
@@ -70,6 +74,19 @@ void FBackendSettings::LoadBackendSettings()
         if (WebSocketIdleTimeoutSecondsField.IsValid())
         {
             WebSocketIdleTimeoutSeconds = WebSocketIdleTimeoutSecondsField.GetValueAsInt();
+        }
+
+        // --- Image service settings ---
+        const FIniField ImageKeyInvalidationSecondsField = BackendSettingsIniObject->FindFieldByName("ImageKeyInvalidationSeconds");
+        if (ImageKeyInvalidationSecondsField.IsValid())
+        {
+            ImageKeyInvalidationSeconds = ImageKeyInvalidationSecondsField.GetValueAsInt();
+        }
+
+        const FIniField ImageInstanceProbeIntervalSecondsField = BackendSettingsIniObject->FindFieldByName("ImageInstanceProbeIntervalSeconds");
+        if (ImageInstanceProbeIntervalSecondsField.IsValid())
+        {
+            ImageInstanceProbeIntervalSeconds = ImageInstanceProbeIntervalSecondsField.GetValueAsInt();
         }
 
         // --- Logging settings ---
@@ -141,6 +158,19 @@ void FBackendSettings::LoadBackendSettings()
         if (RegisterAccountLimitPerHourField.IsValid())
         {
             RegisterAccountLimitPerHour = RegisterAccountLimitPerHourField.GetValueAsInt();
+        }
+
+        // --- Message retention settings ---
+        const FIniField MessageRetentionCountField = BackendSettingsIniObject->FindFieldByName("MessageRetentionCount");
+        if (MessageRetentionCountField.IsValid())
+        {
+            MessageRetentionCount = MessageRetentionCountField.GetValueAsInt();
+        }
+
+        const FIniField MessageRetentionCleanupIntervalSecondsField = BackendSettingsIniObject->FindFieldByName("MessageRetentionCleanupIntervalSeconds");
+        if (MessageRetentionCleanupIntervalSecondsField.IsValid())
+        {
+            MessageRetentionCleanupIntervalSeconds = MessageRetentionCleanupIntervalSecondsField.GetValueAsInt();
         }
 
         // --- Message encryption key: read file path from INI, load key from file ---

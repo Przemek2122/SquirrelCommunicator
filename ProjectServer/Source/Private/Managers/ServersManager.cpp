@@ -28,6 +28,77 @@ void FServersManager::PostSecondTick()
         PostSecondTickCounter = 0;
         FGlobalDefines::GEngine->GetAbuseProtection()->PeriodicInviteAbuseCleanup();
     }
+
+    // Message retention cleanup (keep the last N messages per text channel).
+    const FBackendSettings* Settings = FGlobalDefines::GEngine->GetBackendSettings();
+    const int32 CleanupIntervalSeconds = Settings->GetMessageRetentionCleanupIntervalSeconds();
+    const int32 RetainCount = Settings->GetMessageRetentionCount();
+    if (CleanupIntervalSeconds > 0 && RetainCount > 0)
+    {
+        MessageRetentionCounter++;
+        if (MessageRetentionCounter >= CleanupIntervalSeconds)
+        {
+            MessageRetentionCounter = 0;
+            CleanupOldMessages(RetainCount);
+        }
+    }
+}
+
+void FServersManager::CleanupOldMessages(const int32 RetainCount)
+{
+    FDataBaseConnect Connect;
+    if (!Connect.IsConnected())
+    {
+        LOG_ERROR("CleanupOldMessages: Database connection failed");
+        return;
+    }
+
+    try
+    {
+        soci::session& Session = Connect.GetSession();
+
+        // Enumerate all text channels (voice channels carry no messages).
+        std::vector<Uint64> ChannelIds;
+        {
+            Uint64 ChannelId = 0;
+            soci::statement St = (Session.prepare <<
+                "SELECT id FROM server_channels WHERE type = 'text'",
+                soci::into(ChannelId));
+
+            St.execute();
+            while (St.fetch())
+            {
+                ChannelIds.push_back(ChannelId);
+            }
+        }
+
+        int32 TotalDeleted = 0;
+        for (const Uint64 ChannelId : ChannelIds)
+        {
+            soci::statement Del = (Session.prepare <<
+                "DELETE FROM server_messages WHERE channel_id = :cid AND id NOT IN ("
+                "  SELECT id FROM ("
+                "    SELECT id FROM server_messages WHERE channel_id = :cid2 ORDER BY id DESC LIMIT :retain"
+                "  ) AS recent"
+                ")",
+                soci::use(ChannelId, "cid"),
+                soci::use(ChannelId, "cid2"),
+                soci::use(RetainCount, "retain"));
+
+            Del.execute();
+            TotalDeleted += static_cast<int32>(Del.get_affected_rows());
+        }
+
+        if (TotalDeleted > 0)
+        {
+            LOG_INFO("Message retention cleanup: deleted " << TotalDeleted
+                << " old server messages (keeping " << RetainCount << " per channel)");
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("CleanupOldMessages error: " << e.what());
+    }
 }
 
 std::shared_ptr<FServer> FServersManager::GetServerById(const Uint64 InServerId)
@@ -729,17 +800,18 @@ EDeleteServerMessageResult FServersManager::DeleteMessage(const Uint64 ServerId,
         return EDeleteServerMessageResult::NotAuthorized;
     }
 
-    // Delete from DB first.
-    if (!DeleteMessageFromDB(MessageId, ChannelId))
+    // Soft-delete in DB first (retains the row, replaces content with a tombstone).
+    if (!MarkMessageDeletedInDB(MessageId, ChannelId))
     {
-        LOG_ERROR("DeleteMessage: Failed to delete message " << MessageId << " from DB");
+        LOG_ERROR("DeleteMessage: Failed to soft-delete message " << MessageId << " from DB");
         return EDeleteServerMessageResult::Failed;
     }
 
-    // Remove from the in-memory cache (best effort; cache may not have it loaded).
-    Server->RemoveMessage(ChannelId, MessageId);
+    // Mark the message as deleted in the in-memory cache (best effort; the cache
+    // may not have it loaded, in which case the next DB load serves the tombstone).
+    Server->MarkMessageDeleted(ChannelId, MessageId);
 
-    LOG_INFO("Message " << MessageId << " deleted from channel " << ChannelId
+    LOG_INFO("Message " << MessageId << " soft-deleted (tombstoned) in channel " << ChannelId
              << " in server " << ServerId << " by user " << RequestedByUserId);
     return EDeleteServerMessageResult::Success;
 }
@@ -1368,7 +1440,7 @@ bool FServersManager::UploadMessageToDB(const FServerMessage& Message, Uint64& O
     }
 }
 
-bool FServersManager::DeleteMessageFromDB(const Uint64 MessageId, const Uint64 ChannelId)
+bool FServersManager::MarkMessageDeletedInDB(const Uint64 MessageId, const Uint64 ChannelId)
 {
     FDataBaseConnect Connect;
     if (!Connect.IsConnected())
@@ -1380,10 +1452,19 @@ bool FServersManager::DeleteMessageFromDB(const Uint64 MessageId, const Uint64 C
     {
         soci::session& Session = Connect.GetSession();
 
+        // Soft delete: keep the row but replace content with the tombstone and
+        // flag it as deleted. is_encrypted is cleared because the placeholder is
+        // plain text and must not be decrypted on read.
+        const std::string TombstoneText(DeletedMessagePlaceholder);
+        const int DeletedStatus = 2; // 0=Sent, 1=Edited, 2=Deleted
+
         soci::statement St = (Session.prepare <<
-            "DELETE FROM server_messages WHERE id = :msgId AND channel_id = :channelId",
-            soci::use(MessageId),
-            soci::use(ChannelId));
+            "UPDATE server_messages SET content = :content, text_status = :status, is_encrypted = 0 "
+            "WHERE id = :msgId AND channel_id = :channelId",
+            soci::use(TombstoneText, "content"),
+            soci::use(DeletedStatus, "status"),
+            soci::use(MessageId, "msgId"),
+            soci::use(ChannelId, "channelId"));
 
         St.execute();
 
@@ -1392,7 +1473,7 @@ bool FServersManager::DeleteMessageFromDB(const Uint64 MessageId, const Uint64 C
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("DeleteMessageFromDB error: " << e.what());
+        LOG_ERROR("MarkMessageDeletedInDB error: " << e.what());
         return false;
     }
 }

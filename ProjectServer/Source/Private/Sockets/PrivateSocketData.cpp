@@ -95,6 +95,33 @@ void FPrivateSocketData::PrimarySwitch(AnyWebSocket wsVariant, nlohmann::json& J
 			break;
 		}
 
+		case ESocketMessagePrivateType::MessageDelete:
+		{
+			if (JsonMessage["data"].contains("conversation_id") && JsonMessage["data"].contains("message_id"))
+			{
+				const std::string ConversationIdString = JsonMessage["data"]["conversation_id"];
+				const Uint64 ConversationId = std::stoull(ConversationIdString);
+
+				Uint64 MessageId = 0;
+				if (JsonMessage["data"]["message_id"].is_string())
+				{
+					MessageId = std::stoull(JsonMessage["data"]["message_id"].get<std::string>());
+				}
+				else
+				{
+					MessageId = JsonMessage["data"]["message_id"].get<Uint64>();
+				}
+
+				OnMessageReceived_MessageDelete(wsVariant, opCode, ConversationId, MessageId);
+			}
+			else
+			{
+				FSocket::EarlyExit(wsVariant, "missing data", opCode);
+			}
+
+			break;
+		}
+
 		case ESocketMessagePrivateType::Typing:
 		{
 			if (JsonMessage["data"].contains("conversationId"))
@@ -523,6 +550,48 @@ void FPrivateSocketData::OnMessageReceived_MessageEdit(AnyWebSocket wsVariant, u
 
 						FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector(), JsonRoot.dump());
 	                }
+				}
+			}
+		}
+	}, wsVariant);
+}
+
+void FPrivateSocketData::OnMessageReceived_MessageDelete(AnyWebSocket wsVariant, uWS::OpCode opCode, const Uint64 ConversationId, const Uint64 MessageId)
+{
+	std::visit([&](auto* ws)
+	{
+		FWebSocketSessionData* WebSocketSessionData = ws->getUserData();
+		if (WebSocketSessionData != nullptr)
+		{
+			FConversationsManager* ConversationManager = ProjectEngine->GetConversationsManager();
+			const Uint64 ConnectionUserId = WebSocketSessionData->UserId;
+
+			// Check if ConnectionUserId belongs to conversation by ConversationId (also check if conversation even exists)
+			if (ConversationManager->IsUserInConversation(ConnectionUserId, ConversationId))
+			{
+				// Check if message belongs to given conversation
+				if (ConversationManager->IsMessageInConversation(MessageId, ConversationId))
+				{
+					// Soft-delete: only the author's own message (enforced in DB).
+					// Returns false if unauthorized or missing.
+					if (ConversationManager->DeleteMessage(ConnectionUserId, ConversationId, MessageId))
+					{
+						std::shared_ptr<FConversationData> Conversation = ConversationManager->GetConversation(ConversationId);
+						if (Conversation != nullptr)
+						{
+							nlohmann::json MessageJson;
+							MessageJson["message_id"] = MessageId;
+							MessageJson["conversation_id"] = ConversationId;
+							MessageJson["conversation_message"] = std::string(DeletedMessagePlaceholder);
+							MessageJson["status"] = static_cast<int>(EConversationMessageStatus::Deleted);
+
+							nlohmann::json JsonRoot;
+							JsonRoot["type"] = SocketMessagePrivateTypeToString(ESocketMessagePrivateType::MessageDelete);
+							JsonRoot["message"] = MessageJson;
+
+							FSocketManagerHelper::BroadcastDataToUsers(ProjectEngine, Conversation->UsersIds.Vector(), JsonRoot.dump());
+						}
+					}
 				}
 			}
 		}

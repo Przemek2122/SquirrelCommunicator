@@ -39,6 +39,26 @@ public:
     /** WebSocket idle timeout in seconds before uWS disconnects an inactive client (default 300 = 5 min) */
     int32 GetWebSocketIdleTimeoutSeconds() const { return WebSocketIdleTimeoutSeconds; }
 
+    // --- Image service settings ---
+
+    /**
+     * How long (in seconds) a per-session image-service API key is kept before
+     * it is invalidated and re-issued on the next login / reconnect. Bounds the
+     * staleness window after an image-service restart (its key registry is RAM
+     * only). Values <= 0 disable invalidation (keys are cached indefinitely).
+     */
+    int32 GetImageKeyInvalidationSeconds() const { return ImageKeyInvalidationSeconds; }
+
+    /**
+     * How often (in seconds) the backend polls the image service's /health
+     * endpoint to read its "instance_id" and detect a restart (which wipes
+     * the service's RAM-only key registry, orphaning every issued per-session
+     * key). On a detected instance change the backend drops all cached keys
+     * and re-issues them on the next login / reconnect. Values <= 0 disable
+     * the probe entirely (time-based invalidation still applies).
+     */
+    int32 GetImageInstanceProbeIntervalSeconds() const { return ImageInstanceProbeIntervalSeconds; }
+
     // --- Logging settings ---
 
     /**
@@ -95,6 +115,19 @@ public:
     /** Max new account registrations per IP per hour (default 10) */
     int32 GetRegisterAccountLimitPerHour() const { return RegisterAccountLimitPerHour; }
 
+    // --- Message retention settings ---
+
+    /**
+     * Number of most recent messages kept per private conversation and per
+     * server text channel when the periodic retention cleanup runs. Older
+     * messages are hard-deleted from the database. Values <= 0 disable the
+     * cleanup entirely.
+     */
+    int32 GetMessageRetentionCount() const { return MessageRetentionCount; }
+
+    /** How often (in seconds) the retention cleanup runs. Values <= 0 disable it. */
+    int32 GetMessageRetentionCleanupIntervalSeconds() const { return MessageRetentionCleanupIntervalSeconds; }
+
     // --- Message encryption ---
 
     /** Path to the encryption key file (from INI). Relative to Assets/Config or absolute. */
@@ -143,6 +176,10 @@ protected:
     // --- WebSocket settings ---
     int32 WebSocketIdleTimeoutSeconds;
 
+    // --- Image service settings ---
+    int32 ImageKeyInvalidationSeconds;
+    int32 ImageInstanceProbeIntervalSeconds;
+
     // --- Logging settings ---
     int32 VerboseLoggingLevel;
 
@@ -163,6 +200,10 @@ protected:
 
     // --- Registration rate limiting ---
     int32 RegisterAccountLimitPerHour;
+
+    // --- Message retention settings ---
+    int32 MessageRetentionCount;
+    int32 MessageRetentionCleanupIntervalSeconds;
 
     // --- Message encryption ---
     std::string MessageEncryptionKeyFilePath;

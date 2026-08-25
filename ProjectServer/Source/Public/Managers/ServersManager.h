@@ -105,7 +105,9 @@ public:
     std::vector<FServerMessage> GetChannelMessages(Uint64 ServerId, Uint64 ChannelId, Uint64 BeforeTimestamp, Uint32 Limit);
 
     /**
-     * Delete a message from a server channel (hard delete: removed from DB and cache).
+     * Soft-delete a message from a server channel: replaces its content with a
+     * "CONTENT DELETED" tombstone in both DB and cache, retaining the row so the
+     * channel history keeps showing a placeholder instead of a hole.
      *
      * Authorization: the message author or the server owner may delete a message.
      * Returns a result enum so the socket layer can produce a specific error.
@@ -183,7 +185,7 @@ protected:
     bool DeleteChannelFromDB(Uint64 ServerId, Uint64 ChannelId);
     bool UpdateChannelNameInDB(Uint64 ServerId, Uint64 ChannelId, const std::string& NewName);
     bool UploadMessageToDB(const FServerMessage& Message, Uint64& OutMessageId);
-    bool DeleteMessageFromDB(Uint64 MessageId, Uint64 ChannelId);
+    bool MarkMessageDeletedInDB(Uint64 MessageId, Uint64 ChannelId);
     bool GetServerMessageOwnerFromDB(Uint64 MessageId, Uint64& OutChannelId, Uint64& OutSenderId);
     bool UploadMemberToDB(Uint64 ServerId, Uint64 UserId, Uint64 Permissions);
     bool RemoveMemberFromDB(Uint64 ServerId, Uint64 UserId);
@@ -235,6 +237,9 @@ protected:
     /** Download messages for a channel from DB (timestamp-paginated) */
     bool DownloadMessagesFromDB(Uint64 ChannelId, const std::shared_ptr<FServer>& Server, Uint64 BeforeTimestamp = 0, Uint32 Limit = 50);
 
+    /** Delete all but the latest `RetainCount` messages per text channel (hard delete in DB). */
+    void CleanupOldMessages(int32 RetainCount);
+
     /** Generate a unique token for a server */
     static std::string GenerateServerToken();
 
@@ -273,4 +278,7 @@ private:
 
     /** Counter for periodic cleanup throttling (cleanup every ~300 ticks = 5 min) */
     int32 PostSecondTickCounter = 0;
+
+    /** Counter for throttling the periodic message retention cleanup. */
+    int32 MessageRetentionCounter = 0;
 };
