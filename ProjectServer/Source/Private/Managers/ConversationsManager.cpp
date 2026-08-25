@@ -259,7 +259,7 @@ void FConversationsManager::EditMessage(const Uint64 InRequesterId, const Uint64
     }
 }
 
-void FConversationsManager::DeleteMessage(const Uint64 InRequesterId, const Uint64 InConversationId, const Uint64 InMessageId)
+bool FConversationsManager::DeleteMessage(const Uint64 InRequesterId, const Uint64 InConversationId, const Uint64 InMessageId)
 {
     // 1. Database Update First
     const EDatabaseOperationResult Result = UpdateMessageDeleteInDB(InRequesterId, InConversationId, InMessageId);
