@@ -26,6 +26,12 @@
  * To self-heal that, each cached key carries an issue timestamp and is treated
  * as expired once its invalidation interval (configurable via the INI) elapses;
  * the next login / reconnect then re-issues a fresh key.
+ *
+ * Availability: every HTTP call to the image service is guarded by a short
+ * timeout and a global circuit breaker. When the service is down (or hanging),
+ * consecutive failures open the breaker and all further key registration /
+ * instance probes short-circuit without an HTTP round-trip, so a missing image
+ * service can never stall the WebSocket event loop or the login threads.
  */
 class FImageServiceManager
 {
@@ -50,6 +56,24 @@ public:
 	 *                   SetKeyInvalidationSeconds still applies).
 	 */
 	void SetInstanceProbeIntervalSeconds(const int32 InSeconds);
+
+	/**
+	 * Configure the global circuit breaker that fails fast when the image
+	 * service is unreachable.
+	 *
+	 * @param InThreshold       Number of consecutive failed HTTP calls before
+	 *                          the breaker opens and all further key
+	 *                          registration / instance probes short-circuit
+	 *                          (return empty / skip the HTTP round-trip)
+	 *                          without blocking on a doomed request.
+	 *                          Values <= 0 disable the breaker.
+	 * @param InCooldownSeconds How long the breaker stays open before it
+	 *                          half-opens to allow a single probe to test
+	 *                          whether the service is back. Values <= 0 mean
+	 *                          the breaker, once tripped, stays open until the
+	 *                          backend is restarted.
+	 */
+	void SetCircuitBreakerSettings(const int32 InThreshold, const int32 InCooldownSeconds);
 
 	/**
 	 * Poll the image service /instance endpoint (subject to the configured
@@ -134,4 +158,28 @@ private:
 
 	/** The last instance id reported by the image service (empty = unknown). */
 	std::string LastKnownInstanceId;
+
+	/** Consecutive failed image-service HTTP calls (drives the circuit breaker). */
+	int32 ConsecutiveImageServiceFailures = 0;
+
+	/** Number of consecutive failures that opens the breaker. <= 0 = disabled. */
+	int32 CircuitBreakerThreshold = 0;
+
+	/** How long the breaker stays open before half-opening for a single retry. */
+	std::chrono::seconds CircuitBreakerCooldown = std::chrono::seconds(60);
+
+	/** When the breaker last opened (epoch = closed). */
+	std::chrono::steady_clock::time_point CircuitOpenedAt = std::chrono::steady_clock::time_point{};
+
+	/**
+	 * @return true when the circuit breaker is currently open (fail fast, no
+	 *         HTTP round-trip). Caller must hold SessionTokenToImageKeyMutex.
+	 */
+	bool IsCircuitOpenLocked(std::chrono::steady_clock::time_point Now) const;
+
+	/** Record one failed HTTP call; opens the breaker at the threshold. Caller holds lock. */
+	void RecordImageServiceFailureLocked();
+
+	/** Record a successful HTTP call; closes the breaker. Caller holds lock. */
+	void RecordImageServiceSuccessLocked();
 };

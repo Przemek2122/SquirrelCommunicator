@@ -3,6 +3,7 @@
 #include "EngineCompat.h"
 #include "Managers/MessageType.h"
 #include <shared_mutex>
+#include <atomic>
 
 enum class EDatabaseOperationResult : Uint8;
 
@@ -115,7 +116,7 @@ public:
 	 */
 	std::vector<FConversationMessageData> GetConversationMessagesForRange(std::shared_ptr<FConversationData>& Conversation, int32 Offset, int32 Count);
 
-	/** Called every second by the engine for periodic tasks (message retention cleanup). */
+	/** Called every second by the engine for periodic tasks (in-memory message cache trim). */
 	void PostSecondTick();
 
 private:
@@ -155,7 +156,7 @@ private:
 	/** Send message to DB */
 	EDatabaseOperationResult UploadMessage(Uint64 InConversationId, Uint64 SenderId, const std::string& InMessage, EMessageType InMessageType, Uint64& OutId);
 
-	/** Delete all but the latest `RetainCount` messages per conversation (hard delete in DB). */
+	/** Clip each cached conversation to the newest `RetainCount` messages (memory only, no DB changes). */
 	void CleanupOldMessages(int32 RetainCount);
 
 protected:
@@ -173,6 +174,9 @@ protected:
 
 	/** Tick counter for throttling the periodic message retention cleanup. */
 	int32 PostSecondTickCounter = 0;
+
+	/** Guards against overlapping retention runs (defensive; cleanup runs on the tick thread). */
+	std::atomic<bool> bCleanupInProgress{ false };
 
 
 };

@@ -50,14 +50,47 @@ public:
     int32 GetImageKeyInvalidationSeconds() const { return ImageKeyInvalidationSeconds; }
 
     /**
-     * How often (in seconds) the backend polls the image service's /health
-     * endpoint to read its "instance_id" and detect a restart (which wipes
+     * How often (in seconds) the backend polls the image service's /instance
+     * endpoint to read its "instanceId" and detect a restart (which wipes
      * the service's RAM-only key registry, orphaning every issued per-session
      * key). On a detected instance change the backend drops all cached keys
      * and re-issues them on the next login / reconnect. Values <= 0 disable
      * the probe entirely (time-based invalidation still applies).
      */
     int32 GetImageInstanceProbeIntervalSeconds() const { return ImageInstanceProbeIntervalSeconds; }
+
+    /**
+     * Number of consecutive failed image-service HTTP calls that opens the
+     * circuit breaker (after which key registration and instance probes fail
+     * fast without an HTTP round-trip). Values <= 0 disable the breaker.
+     */
+    int32 GetImageServiceCircuitBreakerThreshold() const { return ImageServiceCircuitBreakerThreshold; }
+
+    /**
+     * How long (in seconds) the image-service circuit breaker stays open
+     * before it half-opens to allow a single probe to test whether the
+     * service is back. Values <= 0 mean the breaker, once tripped, stays
+     * open until the backend is restarted.
+     */
+    int32 GetImageServiceCircuitBreakerCooldownSeconds() const { return ImageServiceCircuitBreakerCooldownSeconds; }
+
+    // --- Voice service settings ---
+
+    /**
+     * Number of consecutive failed voice-service HTTP calls that opens the
+     * circuit breaker (after which room checks / creates fail fast without an
+     * HTTP round-trip, so a down voice service can't stall the WebSocket event
+     * loop). Values <= 0 disable the breaker.
+     */
+    int32 GetVoiceServiceCircuitBreakerThreshold() const { return VoiceServiceCircuitBreakerThreshold; }
+
+    /**
+     * How long (in seconds) the voice-service circuit breaker stays open
+     * before it half-opens to allow a single probe to test whether the
+     * service is back. Values <= 0 mean the breaker, once tripped, stays
+     * open until the backend is restarted.
+     */
+    int32 GetVoiceServiceCircuitBreakerCooldownSeconds() const { return VoiceServiceCircuitBreakerCooldownSeconds; }
 
     // --- Logging settings ---
 
@@ -119,13 +152,15 @@ public:
 
     /**
      * Number of most recent messages kept per private conversation and per
-     * server text channel when the periodic retention cleanup runs. Older
-     * messages are hard-deleted from the database. Values <= 0 disable the
-     * cleanup entirely.
+     * server text channel in the in-memory cache. When the periodic trim
+     * runs, older cached messages are dropped from RAM only - the database is
+     * never modified, so history stays fully accessible and is re-fetched on
+     * demand when a client scrolls back. Values <= 0 disable the trim.
+     * Disabled by default (the interval setting defaults to 0).
      */
     int32 GetMessageRetentionCount() const { return MessageRetentionCount; }
 
-    /** How often (in seconds) the retention cleanup runs. Values <= 0 disable it. */
+    /** How often (in seconds) the in-memory cache trim runs. Values <= 0 disable it. */
     int32 GetMessageRetentionCleanupIntervalSeconds() const { return MessageRetentionCleanupIntervalSeconds; }
 
     // --- Message encryption ---
@@ -179,6 +214,12 @@ protected:
     // --- Image service settings ---
     int32 ImageKeyInvalidationSeconds;
     int32 ImageInstanceProbeIntervalSeconds;
+    int32 ImageServiceCircuitBreakerThreshold;
+    int32 ImageServiceCircuitBreakerCooldownSeconds;
+
+    // --- Voice service settings ---
+    int32 VoiceServiceCircuitBreakerThreshold;
+    int32 VoiceServiceCircuitBreakerCooldownSeconds;
 
     // --- Logging settings ---
     int32 VerboseLoggingLevel;

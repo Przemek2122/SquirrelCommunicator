@@ -268,6 +268,29 @@ void FServer::PrependMessages(const Uint64 ChannelId, const std::vector<FServerM
     Vec.insert(Vec.begin(), Messages.begin(), Messages.end());
 }
 
+void FServer::TrimChannelMessagesToCount(const int32 RetainCount)
+{
+    if (RetainCount <= 0)
+    {
+        return;
+    }
+
+    std::unique_lock Lock(ServerMutex);
+
+    for (auto& Pair : ChannelMessages)
+    {
+        std::vector<FServerMessage>& Messages = Pair.second;
+
+        // Messages are stored oldest-first (newest last), so keep the last
+        // RetainCount entries and drop the older prefix.
+        if (Messages.size() > static_cast<size_t>(RetainCount))
+        {
+            Messages.erase(Messages.begin(), Messages.end() - RetainCount);
+        }
+    }
+}
+
+
 std::vector<FServerMessage> FServer::GetChannelMessages(const Uint64 ChannelId, const Uint64 BeforeTimestamp, const Uint32 Limit)
 {
     std::shared_lock Lock(ServerMutex);

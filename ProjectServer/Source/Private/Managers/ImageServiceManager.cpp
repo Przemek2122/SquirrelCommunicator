@@ -79,6 +79,75 @@ void FImageServiceManager::SetInstanceProbeIntervalSeconds(const int32 InSeconds
 	}
 }
 
+void FImageServiceManager::SetCircuitBreakerSettings(const int32 InThreshold, const int32 InCooldownSeconds)
+{
+	std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
+
+	CircuitBreakerThreshold = (InThreshold > 0) ? InThreshold : 0;
+	CircuitBreakerCooldown = (InCooldownSeconds > 0) ? std::chrono::seconds(InCooldownSeconds) : std::chrono::seconds(0);
+
+	// Disabling the breaker resets its state so a later re-enable starts clean.
+	if (CircuitBreakerThreshold <= 0)
+	{
+		ConsecutiveImageServiceFailures = 0;
+		CircuitOpenedAt = std::chrono::steady_clock::time_point{};
+	}
+}
+
+bool FImageServiceManager::IsCircuitOpenLocked(const std::chrono::steady_clock::time_point Now) const
+{
+	// Breaker disabled.
+	if (CircuitBreakerThreshold <= 0)
+	{
+		return false;
+	}
+
+	// Not enough consecutive failures to trip yet.
+	if (ConsecutiveImageServiceFailures < CircuitBreakerThreshold)
+	{
+		return false;
+	}
+
+	// No cooldown configured: once tripped, stay open until the backend is
+	// restarted (operator explicitly disabled auto-recovery).
+	if (CircuitBreakerCooldown.count() <= 0)
+	{
+		return true;
+	}
+
+	// Tripped. During the cooldown window the circuit is open (fail fast).
+	// Once it elapses we half-open: a single call is allowed through to test
+	// whether the service has come back.
+	return (Now - CircuitOpenedAt) < CircuitBreakerCooldown;
+}
+
+void FImageServiceManager::RecordImageServiceFailureLocked()
+{
+	// Breaker disabled: nothing to track.
+	if (CircuitBreakerThreshold <= 0)
+	{
+		return;
+	}
+
+	// Clamp so the counter can never overflow on a permanently-down service.
+	if (ConsecutiveImageServiceFailures < CircuitBreakerThreshold)
+	{
+		++ConsecutiveImageServiceFailures;
+	}
+
+	if (ConsecutiveImageServiceFailures >= CircuitBreakerThreshold)
+	{
+		// (Re)open the circuit; each further failure restarts the cooldown.
+		CircuitOpenedAt = std::chrono::steady_clock::now();
+	}
+}
+
+void FImageServiceManager::RecordImageServiceSuccessLocked()
+{
+	ConsecutiveImageServiceFailures = 0;
+	CircuitOpenedAt = std::chrono::steady_clock::time_point{};
+}
+
 void FImageServiceManager::ProbeInstanceId()
 {
 	if (!IsEnabled())
@@ -99,6 +168,14 @@ void FImageServiceManager::ProbeInstanceId()
 		{
 			return;
 		}
+
+		// While the circuit breaker is open, skip the HTTP probe entirely so a
+		// down service can't stall the tick thread with a doomed 2s request.
+		if (IsCircuitOpenLocked(Now))
+		{
+			return;
+		}
+
 		LastInstanceProbeTime = Now;
 	}
 
@@ -113,6 +190,8 @@ void FImageServiceManager::ProbeInstanceId()
 
 	if (Response.status_code != 200)
 	{
+		std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
+		RecordImageServiceFailureLocked();
 		return;
 	}
 
@@ -127,33 +206,38 @@ void FImageServiceManager::ProbeInstanceId()
 	}
 	catch (const nlohmann::json::exception&)
 	{
-		return;
+		// Malformed body but the service responded 200; treat as reachable below.
 	}
 
-	if (InstanceId.empty())
 	{
-		// Older image service without the /instance endpoint (or one that
-		// returns a non-200 / empty body); fall back to the time-based (TTL)
-		// invalidation only.
-		return;
-	}
+		std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
 
-	std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
+		// The service answered (200): it is up, so close the circuit.
+		RecordImageServiceSuccessLocked();
 
-	if (LastKnownInstanceId.empty())
-	{
-		// First observation: just record it. Nothing has been issued against a
-		// previous instance, so there is nothing to invalidate.
-		LastKnownInstanceId = InstanceId;
-		LOG_DEBUG("Recorded image service instance id.");
-		return;
-	}
+		if (InstanceId.empty())
+		{
+			// Older image service without the /instance endpoint (or one that
+			// returns a non-200 / empty body); fall back to the time-based (TTL)
+			// invalidation only.
+			return;
+		}
 
-	if (LastKnownInstanceId != InstanceId)
-	{
-		LOG_WARN("Image service instance id changed - the service restarted and lost its RAM-only key registry. Invalidating all cached per-session keys.");
-		InvalidateAllCachedKeysLocked();
-		LastKnownInstanceId = InstanceId;
+		if (LastKnownInstanceId.empty())
+		{
+			// First observation: just record it. Nothing has been issued against a
+			// previous instance, so there is nothing to invalidate.
+			LastKnownInstanceId = InstanceId;
+			LOG_DEBUG("Recorded image service instance id.");
+			return;
+		}
+
+		if (LastKnownInstanceId != InstanceId)
+		{
+			LOG_WARN("Image service instance id changed - the service restarted and lost its RAM-only key registry. Invalidating all cached per-session keys.");
+			InvalidateAllCachedKeysLocked();
+			LastKnownInstanceId = InstanceId;
+		}
 	}
 }
 
@@ -207,6 +291,14 @@ std::string FImageServiceManager::RegisterKey(const std::string& SessionToken)
 			// after an image-service restart.
 			SessionTokenToImageKey.erase(Iter);
 			SessionTokenToImageKeyIssuedAt.erase(SessionToken);
+		}
+
+		// Global circuit breaker: when the image service has been unreachable for
+		// N consecutive calls, fail fast (return no key) without an HTTP round-trip,
+		// so a down service can't stall the socket event loop / login threads.
+		if (IsCircuitOpenLocked(std::chrono::steady_clock::now()))
+		{
+			return "";
 		}
 
 		// Negative cache: skip the HTTP call if a registration for this session
@@ -268,8 +360,9 @@ std::string FImageServiceManager::RegisterKey(const std::string& SessionToken)
 	{
 		std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
 
-		// Success clears any prior negative-cache entry.
+		// Success clears any prior negative-cache entry and closes the breaker.
 		FailedKeyRegistrations.erase(SessionToken);
+		RecordImageServiceSuccessLocked();
 
 		const auto Iter = SessionTokenToImageKey.find(SessionToken);
 		if (Iter == SessionTokenToImageKey.end())
@@ -291,6 +384,7 @@ void FImageServiceManager::RecordKeyRegistrationFailure(const std::string& Sessi
 {
 	std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
 	FailedKeyRegistrations[SessionToken] = std::chrono::steady_clock::now();
+	RecordImageServiceFailureLocked();
 }
 
 void FImageServiceManager::RevokeKey(const std::string& SessionToken)
@@ -318,6 +412,18 @@ void FImageServiceManager::RevokeKey(const std::string& SessionToken)
 	if (!IsEnabled() || Key.empty())
 	{
 		return;
+	}
+
+	// Circuit breaker fail-fast: if the service is known down, skip the doomed
+	// HTTP DELETE rather than stalling the session-cleanup thread. The key is
+	// already dropped from our cache; the service's copy becomes unreachable
+	// once the client's session ends anyway.
+	{
+		std::unique_lock<std::shared_mutex> Lock(SessionTokenToImageKeyMutex);
+		if (IsCircuitOpenLocked(std::chrono::steady_clock::now()))
+		{
+			return;
+		}
 	}
 
 	const std::string TargetURL = ServiceAddress + "/api/key";

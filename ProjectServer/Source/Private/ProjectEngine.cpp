@@ -104,6 +104,9 @@ void FProjectEngine::Init()
 		AbuseProtectionPtr = std::make_unique<FAbuseProtection>(BackendSettings.get());
 		DefaultHeadersCache = GetDefaultHeaders();
 		RoomsManager = std::make_unique<FRoomsServiceManager>();
+		RoomsManager->SetCircuitBreakerSettings(
+			BackendSettings->GetVoiceServiceCircuitBreakerThreshold(),
+			BackendSettings->GetVoiceServiceCircuitBreakerCooldownSeconds());
 
 		// Get time for token to be alive
 		const FIniField PasswordResetTokenAliveTimeMinsField = ServerSettingsIni->FindFieldByName("PasswordResetTokenAliveTimeMins");
@@ -202,6 +205,9 @@ void FProjectEngine::Init()
 		{
 			ImageServiceManager->SetKeyInvalidationSeconds(BackendSettings->GetImageKeyInvalidationSeconds());
 			ImageServiceManager->SetInstanceProbeIntervalSeconds(BackendSettings->GetImageInstanceProbeIntervalSeconds());
+			ImageServiceManager->SetCircuitBreakerSettings(
+				BackendSettings->GetImageServiceCircuitBreakerThreshold(),
+				BackendSettings->GetImageServiceCircuitBreakerCooldownSeconds());
 		}
 
 		// HTTP/REST crow server

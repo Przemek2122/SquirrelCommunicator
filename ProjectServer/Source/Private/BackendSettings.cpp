@@ -25,7 +25,11 @@ FBackendSettings::FBackendSettings()
     , AuthenticatedRequestsPerHour(2000)
     , WebSocketIdleTimeoutSeconds(300)          // 5 minutes
     , ImageKeyInvalidationSeconds(3600)          // 1 hour
-    , ImageInstanceProbeIntervalSeconds(30)      // poll image /health every 30s
+    , ImageInstanceProbeIntervalSeconds(30)      // poll image /instance every 30s
+    , ImageServiceCircuitBreakerThreshold(3)     // open after 3 consecutive failures
+    , ImageServiceCircuitBreakerCooldownSeconds(60) // stay open 60s before half-open retry
+    , VoiceServiceCircuitBreakerThreshold(3)     // open after 3 consecutive failures
+    , VoiceServiceCircuitBreakerCooldownSeconds(60) // stay open 60s before half-open retry
     , VerboseLoggingLevel(1)                     // 1 = ERROR + WARN (default for production)
     , InviteDefaultMaxUses(1000)
     , InviteDefaultExpiresInSeconds(2592000)   // 30 days
@@ -38,7 +42,7 @@ FBackendSettings::FBackendSettings()
     , InviteUseLimitPerHour(30)
     , RegisterAccountLimitPerHour(10)
     , MessageRetentionCount(50)
-    , MessageRetentionCleanupIntervalSeconds(300)
+    , MessageRetentionCleanupIntervalSeconds(0)
     , MessageEncryptionSettings("", 32, 1, true)
 {
 }
@@ -87,6 +91,31 @@ void FBackendSettings::LoadBackendSettings()
         if (ImageInstanceProbeIntervalSecondsField.IsValid())
         {
             ImageInstanceProbeIntervalSeconds = ImageInstanceProbeIntervalSecondsField.GetValueAsInt();
+        }
+
+        const FIniField ImageServiceCircuitBreakerThresholdField = BackendSettingsIniObject->FindFieldByName("ImageServiceCircuitBreakerThreshold");
+        if (ImageServiceCircuitBreakerThresholdField.IsValid())
+        {
+            ImageServiceCircuitBreakerThreshold = ImageServiceCircuitBreakerThresholdField.GetValueAsInt();
+        }
+
+        const FIniField ImageServiceCircuitBreakerCooldownSecondsField = BackendSettingsIniObject->FindFieldByName("ImageServiceCircuitBreakerCooldownSeconds");
+        if (ImageServiceCircuitBreakerCooldownSecondsField.IsValid())
+        {
+            ImageServiceCircuitBreakerCooldownSeconds = ImageServiceCircuitBreakerCooldownSecondsField.GetValueAsInt();
+        }
+
+        // --- Voice service settings ---
+        const FIniField VoiceServiceCircuitBreakerThresholdField = BackendSettingsIniObject->FindFieldByName("VoiceServiceCircuitBreakerThreshold");
+        if (VoiceServiceCircuitBreakerThresholdField.IsValid())
+        {
+            VoiceServiceCircuitBreakerThreshold = VoiceServiceCircuitBreakerThresholdField.GetValueAsInt();
+        }
+
+        const FIniField VoiceServiceCircuitBreakerCooldownSecondsField = BackendSettingsIniObject->FindFieldByName("VoiceServiceCircuitBreakerCooldownSeconds");
+        if (VoiceServiceCircuitBreakerCooldownSecondsField.IsValid())
+        {
+            VoiceServiceCircuitBreakerCooldownSeconds = VoiceServiceCircuitBreakerCooldownSecondsField.GetValueAsInt();
         }
 
         // --- Logging settings ---

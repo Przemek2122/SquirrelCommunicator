@@ -218,6 +218,13 @@ public:
      */
     void PrependMessages(Uint64 ChannelId, const std::vector<FServerMessage>& Messages);
 
+    /**
+     * Clip every cached channel's in-memory message vector to the newest
+     * `RetainCount` messages. Memory only - the database is never modified.
+     * Used by the periodic retention trim to bound RAM usage.
+     */
+    void TrimChannelMessagesToCount(int32 RetainCount);
+
     /** Get messages before a timestamp. BeforeTimestamp=0 means no filter (get most recent). */
     std::vector<FServerMessage> GetChannelMessages(Uint64 ChannelId, Uint64 BeforeTimestamp, Uint32 Limit);
 

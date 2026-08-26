@@ -33,63 +33,57 @@ void FConversationsManager::PostSecondTick()
 
 void FConversationsManager::CleanupOldMessages(const int32 RetainCount)
 {
-	FDataBaseConnect Connect;
-	if (!Connect.IsConnected())
+	// Guard against overlapping runs. The trim runs on the engine tick thread and
+	// can outlive a single interval under load; skip if a previous run is still
+	// in flight so trims never pile up.
+	if (bCleanupInProgress.exchange(true))
 	{
-		LOG_ERROR("CleanupOldMessages: Database connection failed");
 		return;
 	}
 
-	try
+	// RAII release so the guard is always cleared even if an exception escapes.
+	struct FCleanupGuard
 	{
-		soci::session& Session = Connect.GetSession();
+		std::atomic<bool>& Flag;
+		~FCleanupGuard() { Flag.store(false); }
+	} CleanupGuard{ bCleanupInProgress };
 
-		// Enumerate every conversation so each can be trimmed independently.
-		std::vector<Uint64> ConversationIds;
+	if (RetainCount <= 0)
+	{
+		return;
+	}
+
+	// Memory-only trim. The database is NEVER touched here: older history stays
+	// fully accessible and is re-fetched from the DB on demand when a client
+	// scrolls back past the cached window. We only clip the in-RAM message cache
+	// per conversation to bound memory usage.
+	std::vector<std::shared_ptr<FConversationData>> Conversations;
+	{
+		std::shared_lock Lock(ConversationIdToConversationDataMutex);
+		Conversations.reserve(ConversationIdToConversationData.Size());
+		for (const auto& Pair : ConversationIdToConversationData.Map())
 		{
-			Uint64 ConversationId = 0;
-			soci::statement St = (Session.prepare <<
-				"SELECT conversation_id FROM conversations",
-				soci::into(ConversationId));
-
-			St.execute();
-			while (St.fetch())
+			if (Pair.second)
 			{
-				ConversationIds.push_back(ConversationId);
+				Conversations.push_back(Pair.second);
 			}
 		}
-
-		int32 TotalDeleted = 0;
-		for (const Uint64 ConversationId : ConversationIds)
-		{
-			// Delete every message except the most recent `RetainCount` (by id). The
-			// double-nested subquery materializes the keep-set, working around
-			// MySQL/MariaDB error 1093 (cannot target the same table in a subquery).
-			soci::statement Del = (Session.prepare <<
-				"DELETE FROM messages WHERE conversation_id = :convId AND id NOT IN ("
-				"  SELECT id FROM ("
-				"    SELECT id FROM messages WHERE conversation_id = :convId2 ORDER BY id DESC LIMIT :retain"
-				"  ) AS recent"
-				")",
-				soci::use(ConversationId, "convId"),
-				soci::use(ConversationId, "convId2"),
-				soci::use(RetainCount, "retain"));
-
-			Del.execute();
-			TotalDeleted += static_cast<int32>(Del.get_affected_rows());
-		}
-
-		if (TotalDeleted > 0)
-		{
-			LOG_INFO("Message retention cleanup: deleted " << TotalDeleted
-				<< " old private messages (keeping " << RetainCount << " per conversation)");
-		}
 	}
-	catch (const std::exception& e)
+
+	for (const std::shared_ptr<FConversationData>& ConversationData : Conversations)
 	{
-		LOG_ERROR("CleanupOldMessages error: " << e.what());
+		std::unique_lock WriteLock(ConversationData->Lock);
+		std::deque<FConversationMessageData>& Deque = ConversationData->MessagesDeque.Deque();
+
+		// The deque is ordered newest-first (index 0 is the newest message), so
+		// keep the first RetainCount entries and drop the older tail.
+		if (Deque.size() > static_cast<size_t>(RetainCount))
+		{
+			Deque.erase(Deque.begin() + RetainCount, Deque.end());
+		}
 	}
 }
+
 
 std::shared_ptr<FConversationData> FConversationsManager::GetConversation(const Uint64 InConversationId)
 {

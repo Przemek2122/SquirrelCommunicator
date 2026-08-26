@@ -6,6 +6,7 @@
 #include "Managers/Server.h"
 
 #include <shared_mutex>
+#include <atomic>
 #include <unordered_map>
 #include <vector>
 
@@ -237,7 +238,7 @@ protected:
     /** Download messages for a channel from DB (timestamp-paginated) */
     bool DownloadMessagesFromDB(Uint64 ChannelId, const std::shared_ptr<FServer>& Server, Uint64 BeforeTimestamp = 0, Uint32 Limit = 50);
 
-    /** Delete all but the latest `RetainCount` messages per text channel (hard delete in DB). */
+    /** Clip each cached server text channel to the newest `RetainCount` messages (memory only, no DB changes). */
     void CleanupOldMessages(int32 RetainCount);
 
     /** Generate a unique token for a server */
@@ -281,4 +282,7 @@ private:
 
     /** Counter for throttling the periodic message retention cleanup. */
     int32 MessageRetentionCounter = 0;
+
+    /** Guards against overlapping retention runs (defensive; cleanup runs on the tick thread). */
+    std::atomic<bool> bCleanupInProgress{ false };
 };

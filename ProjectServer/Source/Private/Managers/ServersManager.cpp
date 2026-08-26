@@ -46,60 +46,49 @@ void FServersManager::PostSecondTick()
 
 void FServersManager::CleanupOldMessages(const int32 RetainCount)
 {
-    FDataBaseConnect Connect;
-    if (!Connect.IsConnected())
+    // Guard against overlapping runs. The trim runs on the engine tick thread and
+    // can outlive a single interval under load; skip if a previous run is still
+    // in flight so trims never pile up.
+    if (bCleanupInProgress.exchange(true))
     {
-        LOG_ERROR("CleanupOldMessages: Database connection failed");
         return;
     }
 
-    try
+    // RAII release so the guard is always cleared even if an exception escapes.
+    struct FCleanupGuard
     {
-        soci::session& Session = Connect.GetSession();
+        std::atomic<bool>& Flag;
+        ~FCleanupGuard() { Flag.store(false); }
+    } CleanupGuard{ bCleanupInProgress };
 
-        // Enumerate all text channels (voice channels carry no messages).
-        std::vector<Uint64> ChannelIds;
+    if (RetainCount <= 0)
+    {
+        return;
+    }
+
+    // Memory-only trim. The database is NEVER touched here: server channel
+    // history stays fully accessible and is re-fetched from the DB on demand
+    // when a client scrolls back. We only clip the in-RAM per-channel message
+    // cache to bound memory usage.
+    std::vector<std::shared_ptr<FServer>> Servers;
+    {
+        std::shared_lock Lock(ServersMapMutex);
+        Servers.reserve(ServersMap.size());
+        for (const auto& Pair : ServersMap)
         {
-            Uint64 ChannelId = 0;
-            soci::statement St = (Session.prepare <<
-                "SELECT id FROM server_channels WHERE type = 'text'",
-                soci::into(ChannelId));
-
-            St.execute();
-            while (St.fetch())
+            if (Pair.second)
             {
-                ChannelIds.push_back(ChannelId);
+                Servers.push_back(Pair.second);
             }
         }
-
-        int32 TotalDeleted = 0;
-        for (const Uint64 ChannelId : ChannelIds)
-        {
-            soci::statement Del = (Session.prepare <<
-                "DELETE FROM server_messages WHERE channel_id = :cid AND id NOT IN ("
-                "  SELECT id FROM ("
-                "    SELECT id FROM server_messages WHERE channel_id = :cid2 ORDER BY id DESC LIMIT :retain"
-                "  ) AS recent"
-                ")",
-                soci::use(ChannelId, "cid"),
-                soci::use(ChannelId, "cid2"),
-                soci::use(RetainCount, "retain"));
-
-            Del.execute();
-            TotalDeleted += static_cast<int32>(Del.get_affected_rows());
-        }
-
-        if (TotalDeleted > 0)
-        {
-            LOG_INFO("Message retention cleanup: deleted " << TotalDeleted
-                << " old server messages (keeping " << RetainCount << " per channel)");
-        }
     }
-    catch (const std::exception& e)
+
+    for (const std::shared_ptr<FServer>& Server : Servers)
     {
-        LOG_ERROR("CleanupOldMessages error: " << e.what());
+        Server->TrimChannelMessagesToCount(RetainCount);
     }
 }
+
 
 std::shared_ptr<FServer> FServersManager::GetServerById(const Uint64 InServerId)
 {
