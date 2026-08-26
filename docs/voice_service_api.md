@@ -88,6 +88,29 @@ Check whether a room already exists.
         200 OK
             Body: {"exists": true|false}
 
+--------------------------------------------
+2.3 Availability / fail-fast behaviour
+--------------------------------------------
+
+The backend treats the voice service as an optional dependency and never
+crashes when it is down or misconfigured:
+
+- Every REST call is bounded by a 3-second timeout.
+- A connection failure / timeout yields HTTP status 0, which the backend maps
+  to `ERoomCreateStatus::Failed` (create) or `ERoomExistenceStatus::Unknown`
+  (check). Neither is an error path that can throw or crash.
+- If `SQRLL_VOICE_API_KEY` / `SQRLL_VOICE_ADDRESS` are unset, room calls fail
+  fast (no HTTP round-trip).
+- A global circuit breaker (see `VoiceServiceCircuitBreakerThreshold` /
+  `VoiceServiceCircuitBreakerCooldownSeconds` in BackendSettings.ini) opens
+  after N consecutive failures and short-circuits further room checks / creates
+  until it half-opens after a cooldown. This prevents a down service from
+  stalling the WebSocket event loop (voice joins are served synchronously).
+
+When the service is unreachable, the backend responds to the client with
+`"voice room unavailable"` (create failure) or hands back an empty room token
+(check returned Unknown) rather than crashing.
+
 ============================================
 SECTION 3: WEBSOCKET API (client <-> voice service)
 ============================================

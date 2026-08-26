@@ -199,6 +199,14 @@ GET /instance
     When the endpoint is absent (older service) or returns a non-200 / empty
     body, the backend falls back to time-based (TTL) invalidation only.
 
+    Every HTTP call the backend makes to this service is additionally wrapped
+    in a circuit breaker (ImageServiceCircuitBreakerThreshold /
+    ImageServiceCircuitBreakerCooldownSeconds in BackendSettings.ini): after a
+    few consecutive failures it fails fast without contacting the service, so a
+    down image service cannot stall the WebSocket event loop or the login
+    threads. It half-opens after the cooldown to probe whether the service has
+    recovered.
+
 --------------------------------------------
 ENVIRONMENT VARIABLES
 --------------------------------------------
